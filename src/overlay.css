@@ -1,0 +1,10 @@
+/* Controls remain legible and clickable at every content transparency level. */
+:root:has(.overlay-shell),body:has(.overlay-shell){background:transparent}
+.overlay-shell{background:rgb(16 19 24 / calc(.73 * var(--overlay-opacity,1)))}
+.overlay-shell .overlay-chat,.overlay-shell .overlay-bottom,.overlay-shell .donation-toasts{opacity:var(--overlay-opacity,1)}
+.overlay-grip{flex-shrink:0;flex-wrap:wrap;gap:10px;background:#151a22}
+.overlay-controls{flex-wrap:wrap}
+.overlay-opacity{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:8px 14px;background:#151a22;color:#c5ceda;font-size:11px;-webkit-app-region:no-drag}
+.overlay-opacity input{min-width:40px;flex:1;width:auto}
+.overlay-opacity output{min-width:32px;text-align:right;font-variant-numeric:tabular-nums}
+.overlay-chat{min-height:0}
