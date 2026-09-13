@@ -44,3 +44,12 @@ ASR가 늦게 끝난 뒤의 침묵을 녹음한 말로 저장하면 안 된다. 
 브라우저 MediaRecorder와 장치의 실제 인코딩, Windows 마이크·loopback 전환, 실제 React 렌더러의 장시간 사용은 아직 검증하지 않았다. 현재 테스트는 주입한 캡처 이벤트와 실제 파일/HTTP/React SSR/모델 호출을 구분한다. 음성 구간은 15초 단위라 발언 전체가 구간 경계를 넘으면 일부만 담길 수 있다. 서버의 기존 WebM 크기/헤더 검사는 완전한 미디어 디코더 검사가 아니다.
 
 이전 클라이언트의 녹음 시각 없는 전사나 키보드 입력은 계속 전달되지만 음성 핫클립 근거로 승격하지 않는다. 댓글 AI는 계속 클립 설명과 채팅을 읽으며, 파일 음성을 새로 청취했다고 표시하지 않는다. 새로운 설정을 강제로 켜거나 사용자 자료를 변경하지 않았다. 실행 중 사용자 앱과 기존 배포 폴더는 그대로이며, 변경본의 실제 앱 적용·장치 검증은 후속 단계다. Computer Use 중단은 시간이 지나도 자동 해제하지 않는다. Steam 판매 준비 완료를 뜻하지 않는다.
+
+
+## 통합과 보존
+
+제품 커밋 `3f665f367da9a8aa30854e6788c04fa7307affd8`을 별도 `live-capture-integration` worktree에서 다시 **351개 검사 + TypeScript/Vite**, 음성 전체 흐름과 기존 영상 전송 회귀로 검증했다. 통합 잠금의 소유권, main/개발/통합의 HEAD·인덱스·변경 파일, 원격 main을 확인하고 main에 fast-forward했다. 외부 push는 하지 않았다.
+
+원본은 작업 폴더 `artifacts/audio-clips-integration-result.json`, 통합 폴더 `artifacts/audio-clips-integration-check.log`, `audio-clips-integration-transfer.log`, `audio-video-integration-transfer.log`, `audio-workflow-integration/`, `audio-video-regression-integration/`이다. 최종 소스·합성 입력/응답·파일 생성기·복호화 결과·통합 자료를 `artifacts/audio-hotclips-evidence/manifest.json`의 파일별 SHA-256으로 보존한다. 실패했던 최초 빌드(종류의 TypeScript 리터럴 타입)와 시험 시계 설정 오류도 원본 로그와 함께 보존하며, 최종 통과와 구분한다.
+
+기존 수집기는 PID29916, 생성 시각 `2026-09-13T06:06:54.756327Z`, 정확한 Node 실행 파일·진입점으로 재확인했다. 916회 확인 시 378개 메시지·오류 0이었으며 새로운 수집 경로, 장치, 외부 전송을 추가하거나 종료 시각을 늘리지 않았다. 이는 해당 시점의 관측이다.
