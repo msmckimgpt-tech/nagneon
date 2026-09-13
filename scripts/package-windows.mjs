@@ -77,6 +77,7 @@ for(const dir of ['python','model'])for(const file of await files(join(speechPat
 }
 await writeFile(join(speechTarget,'manifest.json'),JSON.stringify(speechManifest,null,2));
 await cp(join(root,'scripts/speech_worker.py'),join(resources,'speech/speech_worker.py'));
+await cp(join(root,'scripts/clip_inspector.py'),join(resources,'speech/clip_inspector.py'));
 await cp(join(root,'third-party/whisper'),join(speechTarget,'licenses/whisper'),{recursive:true});
 const payload=[];for(const file of await files(speechTarget))payload.push({path:file,sha256:await hash(join(speechTarget,file))});
 await writeFile(join(speechTarget,'payload-manifest.json'),JSON.stringify(payload,null,2));

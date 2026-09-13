@@ -10,6 +10,8 @@ import { LocalSpeech } from './local-speech.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
 import { Clips } from './clips.js';
+import {ClipInspector} from './clip-inspector.js';
+import {clipRecordingRoutes} from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
 import { Settings, Frame } from './schema.js';
@@ -32,6 +34,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   provider ||= process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
   if(provider.check)await provider.check();
   const speech=new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
+  const clipInspector=new ClipInspector(runtime.clips);
   const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,audioError:speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
   const stores=[];
@@ -147,12 +150,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     if(kind==='audio')res.type('audio/webm');
     res.sendFile(clips.file(c.id,ext));
   });
-  for(const kind of ['video','audio'])app.post(`/api/clips/:id/${kind}`,express.raw({type:kind+'/webm',limit:'20mb'}),(req,res)=>{
-    const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);
-    const candidate=clips.get(z.string().uuid().parse(req.params.id));
-    if(!studio.running||!studio.settings.clipBufferEnabled||!studio.settings.autoHighlights||!candidate.creator||candidate.source!=='spectator'||(kind==='audio'&&!candidate.audioEligible)||candidate.sessionId!==studio.sessionId||metadata.startedAt>candidate.observedAt||metadata.endedAt<candidate.observedAt)throw new Error('관객이 선택한 순간이 허용된 클립 버퍼 안에 있어야 합니다.');
-    const clip=clips.recording(candidate.id,req.body,{...metadata,kind});studio.publish();res.json(clip);
-  });
+  clipRecordingRoutes(app,{studio,clips,inspector:clipInspector});
   app.post('/api/clips/:id/comments',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().optional()}).parse(req.body);const comment=clips.comment(z.string().uuid().parse(req.params.id),{...body,name:studio.settings.streamer});studio.publish();res.json(comment);});
   app.delete('/api/clips/:id/comments/:commentId',(req,res)=>{clips.removeComment(z.string().uuid().parse(req.params.id),z.string().uuid().parse(req.params.commentId));studio.publish();res.json({ok:true});});
   app.post('/api/clips/:id/react',async(req,res)=>{const body=z.object({targets:z.array(z.string().max(40)).min(1).max(4),parentId:z.string().uuid().nullable().optional()}).parse(req.body);res.json(await studio.clipFeatures.comments({id:z.string().uuid().parse(req.params.id),...body}));});
@@ -188,7 +186,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();speech.close();sound.close();server.closeAllConnections();await new Promise(r=>server.close(r));}};
+  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close();speech.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,new Promise(r=>server.close(r))]);}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);

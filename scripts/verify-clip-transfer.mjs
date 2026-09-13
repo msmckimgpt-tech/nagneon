@@ -46,7 +46,7 @@ try{
   };
   uploads=new ClipUploads({sessionId,takeAt:at=>buffer.takeAt(at),allowed:()=>s.running,onError:m=>errors.push(m),request,retryDelays:[5,5]});
   uploads.add([clip]);uploads.add([clip]);
-  for(let i=0;i<200&&!confirmed;i++)await delay(10);
+  for(let i=0;i<2500&&!confirmed;i++)await delay(10);
   assert.ok(confirmed);assert.deepEqual(transport,['POST','GET']);assert.deepEqual(errors,[]);
   const path=`/api/clips/${clip.id}/media/${kind}`,headers={Authorization:'Bearer '+service.accessToken};
   const retrieved=await fetch(service.url+path,{headers});assert.equal(retrieved.status,200);assert.ok(retrieved.headers.get('content-type').startsWith(kind+'/webm'));const downloaded=Buffer.from(await retrieved.arrayBuffer());assert.equal(hash(downloaded),hash(bytes));writeFileSync(join(output,'retrieved.webm'),downloaded);

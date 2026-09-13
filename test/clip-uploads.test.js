@@ -27,10 +27,10 @@ test('lost response after server commit is confirmed without a duplicate POST',a
   q.add([candidate()]);await until(()=>methods.length===2);await delay(15);
   assert.deepEqual(methods,['POST','GET']);assert.deepEqual(errors,[]);
 });
-test('permanent failure has bounded retries and one error, not an SSE retry storm',async t=>{
+test('permanent failure stops after one POST and one error, without an SSE retry storm',async t=>{
   let posts=0;const {q,errors}=make({request:async(_path,init)=>{if(init.method)posts++;return Response.json({error:'disk full'},{status:409});}});t.after(()=>q.dispose());
   q.add([candidate()]);await until(()=>errors.length===1);for(let i=0;i<10;i++)q.add([candidate()]);await delay(15);
-  assert.equal(posts,3);assert.equal(errors.length,1);assert.match(errors[0],/장면 기록은 저장/);
+  assert.equal(posts,1);assert.equal(errors.length,1);assert.match(errors[0],/장면 기록은 저장/);
 });
 test('revoking consent while waiting for the segment sends nothing',async t=>{
   let allowed=true,resolve;const waiting=new Promise(r=>resolve=r);

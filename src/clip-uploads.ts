@@ -3,6 +3,11 @@ type Candidate={id:string;source:string;sessionId?:string;video:boolean;audio?:b
 type Options={sessionId:string;takeAt:(at:number)=>Promise<ClipSegment|null>;allowed:()=>boolean;onError:(message:string)=>void;
   request?:typeof fetch;now?:()=>number;retryDelays?:number[];timeoutMs?:number};
 
+class ClipRequestError extends Error {
+  retryable:boolean;
+  constructor(message:string,retryable:boolean){super(message);this.retryable=retryable;}
+}
+
 // One bounded upload at a time. Keep its Blob across retries, and check whether
 // the server committed a lost response before sending those same bytes again.
 export class ClipUploads {
@@ -30,12 +35,12 @@ export class ClipUploads {
   private async call(path:string,init:RequestInit={}){
     const controller=new AbortController();const cancel=()=>controller.abort();
     this.abort.signal.addEventListener('abort',cancel,{once:true});
-    const timer=setTimeout(cancel,this.options.timeoutMs??10_000);
+    const timer=setTimeout(cancel,this.options.timeoutMs??25_000);
     try{
       if(!this.allowed())throw new Error('clip upload cancelled');
       const response=await this.request(path,{...init,headers:{'X-Backseat-Client':'studio',...init.headers},signal:controller.signal});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||'핫클립 영상을 저장하지 못했습니다.');
+      if(!response.ok)throw new ClipRequestError(data.error||'핫클립 미디어를 저장하지 못했습니다.',response.status===429||response.status>=500);
       return data;
     }finally{clearTimeout(timer);this.abort.signal.removeEventListener('abort',cancel);}
   }
@@ -64,7 +69,7 @@ export class ClipUploads {
         const saved=await this.call(`${path}/${kind}?${params}`,{method:'POST',headers:{'Content-Type':kind+'/webm'},body:recording.blob});
         if(saved.id!==clip.id||!saved[kind])throw new Error('핫클립 저장을 확인하지 못했습니다.');
         return;
-      }catch(error){failure=error;}
+      }catch(error){failure=error;if(error instanceof ClipRequestError&&!error.retryable)break;}
     }
     // The final POST may also have committed before its response was lost.
     if(this.allowed())try{const saved=await this.call(path);if(saved.id===clip.id&&(saved.video||saved.audio))return;}catch{}
