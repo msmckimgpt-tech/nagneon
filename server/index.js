@@ -90,7 +90,8 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.get('/api/events',(req,res)=>{
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
     const send=(state)=>res.write(`data: ${JSON.stringify(state)}\n\n`);send(studio.state());studio.on('state',send);
-    const timer=setInterval(()=>res.write(': heartbeat\n\n'),15000);req.on('close',()=>{clearInterval(timer);studio.off('state',send);});
+    const display=value=>res.write(`event: chat-display\ndata: ${JSON.stringify(value)}\n\n`);studio.on('chat-display',display);
+    const timer=setInterval(()=>res.write(': heartbeat\n\n'),15000);req.on('close',()=>{clearInterval(timer);studio.off('state',send);studio.off('chat-display',display);});
   });
   app.put('/api/settings',(req,res)=>{studio.configure(req.body);res.json(studio.state());});
   app.post('/api/audience/arrive',async(req,res)=>{
