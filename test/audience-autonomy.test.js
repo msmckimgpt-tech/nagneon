@@ -114,7 +114,8 @@ test('natural arrivals create at the actual chance, avoid suspend catch-up and u
   now+=1000;s.pump();while(s.busy)await turn();assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,60);
   now+=3600000;s.pump();while(s.busy)await turn();assert.ok(s.calls<=2,'one chance at wake, no backlog');
   const creator=s.settings.personas.find(p=>!p.system);const c=s.clips.create({title:'조용한 식물 이야기',game:'Just Chatting',scene:'공개 취향 대화',participants:[],messages:[],sessionId:s.sessionId,creator:{id:creator.id,name:creator.name,reason:'내 관심사'},source:'spectator'});
-  now+=360000;s.pump();while(s.busy)await turn();assert.equal(args.special.source.path,'clip');assert.equal(args.special.source.clipId,c.id);assert.equal(args.special.clip.scene,'공개 취향 대화');
+  now+=360000;s.pump();while(s.busy)await turn();assert.equal(args.special.source.path,'clip');assert.equal(args.special.source.clipId,c.id);assert.equal(args.special.clip.interest,'일상 대화와 취향 교류');assert.equal(args.special.clip.scene,undefined);
+  const admitted=s.settings.personas.at(-1);assert.equal(s.clips.recallArrival(s.audience.data.members[admitted.id].arrivalClip,now).scene,'공개 취향 대화');
 });
 
 test('viewer evolution needs witnessed speech and keeps notes, names and prior authors on the same ID',async t=>{

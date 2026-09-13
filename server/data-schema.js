@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {ArrivalClipReading} from './arrival-clip-memory.js';
 const number=z.number().finite().nonnegative(),time=number.max(8.64e15),id=z.string().min(1).max(100),text=z.string();
 const obj=shape=>z.object(shape).passthrough();
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
@@ -9,7 +10,7 @@ const observationNote=obj({id,text,at:time,witnesses:z.array(actor).max(40).opti
 const message=obj({id,personaId:id,name:text,text,kind:text,time:time});
 // watched: 관객별 개인 시청 초. 게임별 엔트리에 저장되어 재시작 후에도 유지된다. 키는 actor 로 제한해 성장/오염을 막는다.
 export const KnowledgeData=z.record(text,obj({name:text,seconds:number,observations:z.array(observationNote),notes:z.array(note),watched:z.record(actor,number).optional()}));
-export const AudienceData=obj({members:z.record(actor,obj({sessions:number.int(),seconds:number,recognized:number.int(),affinity:number.max(1),peers:z.record(actor,number),memories:z.array(text),joinedAt:time.optional()})),lore:z.array(obj({text,expiresAt:time})),posts:z.array(obj({id,name:text,text,time:time,kind:text}))});
+export const AudienceData=obj({members:z.record(actor,obj({sessions:number.int(),seconds:number,recognized:number.int(),affinity:number.max(1),peers:z.record(actor,number),memories:z.array(text),joinedAt:time.optional(),arrivalClip:ArrivalClipReading.optional()})),lore:z.array(obj({text,expiresAt:time})),posts:z.array(obj({id,name:text,text,time:time,kind:text}))});
 const purchase=obj({id,kind:z.enum(['profile','relations','thought','interview','contract','arrival']),key:text,cost:number.int(),status:z.enum(['pending','completed','failed']),at:time,fingerprint:text,shares:z.record(actor,number.int()).optional()});
 export const EconomyData=obj({version:z.literal(1),balance:number.int(),wallets:z.record(actor,obj({balance:number.int().max(200),refillAt:time,lastDonationAt:time,paidUntil:time})),ledger:z.array(obj({id,at:time,kind:text,amount:z.number().finite(),text,anonymous:z.boolean().optional(),personaId:actor.optional(),name:z.string().max(100).optional()})),purchases:z.array(purchase),quotes:z.array(obj({id,sessionId:id,targets:z.array(actor),kind:text,text,ask:number,floor:number,round:number,status:text,expiresAt:time,history:z.array(obj({speaker:text,text}))})),moments:z.array(obj({fingerprint:text,at:time,amount:number})),rewardBlockedUntil:time,lastRewardAt:time}).superRefine((value,ctx)=>{
   for(const p of value.purchases)if(p.kind==='contract'&&p.status==='pending'&&(!p.shares||Object.values(p.shares).reduce((a,b)=>a+b,0)!==p.cost))ctx.addIssue({code:'custom',message:'협상 보관 포인트 기록이 맞지 않습니다.'});

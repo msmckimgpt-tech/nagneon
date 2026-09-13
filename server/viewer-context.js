@@ -65,7 +65,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
       // time must not turn earlier shared conversations into secondhand reports.
       // Hearing a claim still does not prove its contents, nor imply seeing video.
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[]).map(e=>({...e,experience:e.kind==='donation'?'witnessed-donation':e.speakerId===p.id?'own-words':'witnessed-words'}))}:{}),
-      ...(clips?{clipMemories:clips.recall(p.id,speech,now)}:{}),
+      ...(clips?{clipMemories:clips.recall(p.id,speech,now),arrivalClipMemory:clips.recallArrival(member?.arrivalClip,now)}:{}),
       chatHistory:witnessed.slice(-35),
       chatAttention:chatAttention(witnessed,p,{now}),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
@@ -73,6 +73,6 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null
     };
   }
-  const members=audience.members.map(({memories,note,preferences,...member})=>member);
+  const members=audience.members.map(({memories,note,preferences,arrivalClip,...member})=>member);
   return {audience:structuredClone({...audience,members}),viewerContext:packets};
 }

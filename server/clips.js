@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
+import {recallArrivalClip} from './arrival-clip-memory.js';
 const MAX_STORAGE=500*1024*1024;
 export class Clips {
   constructor({data=[],save=()=>{},dir,now=Date.now}={}){this.data=data;this.save=save;this.dir=dir;this.now=now;}
@@ -9,6 +10,7 @@ export class Clips {
   get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,...publicClip}=clip;return structuredClone(publicClip);}
   list(){return this.data.map(({comments,messages,readings,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
   recall(viewerId,query='',now=this.now()){return recallClips(this.data,viewerId,query,now);}
+  recallArrival(reading,now=this.now()){return recallArrivalClip(this.data,reading,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
   file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
   writeMedia(id,extension,buffer){if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');const file=this.file(id,extension);mkdirSync(this.dir,{recursive:true});writeFileSync(file+'.tmp',buffer);renameSync(file+'.tmp',file);return file;}

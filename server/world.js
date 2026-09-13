@@ -14,6 +14,13 @@ export const WorldData=z.object({
     receipts:z.record(z.string().uuid(),z.object({status:z.enum(['pending','completed','failed']),cost:z.number().int().nonnegative(),at:z.number(),source:z.object({path:z.enum(['points','broadcast','clip']),key:z.string(),label:z.string(),clipId:z.string().optional()}),personaId:z.string().optional(),error:z.string().optional()})).default({}),
     broadcastSeconds:z.number().nonnegative().default(0),lastArrivalAt:z.number().nonnegative().default(0)
   })
+}).superRefine((value,ctx)=>{
+  for(const [id,member] of Object.entries(value.audience.members)){
+    const reading=member.arrivalClip;if(!reading)continue;
+    const receipt=value.autonomy.receipts[reading.receiptId];
+    if(!receipt||receipt.status!=='completed'||receipt.personaId!==id||receipt.source.path!=='clip'||receipt.source.clipId!==reading.clipId||member.origin?.path!=='clip'||member.origin?.clipId!==reading.clipId||receipt.at>reading.receivedAt)
+      ctx.addIssue({code:'custom',message:'클립 유입 기억과 관객 생성 기록이 일치하지 않습니다.',path:['audience','members',id,'arrivalClip']});
+  }
 });
 export function migrateWorld(settings,audience,economy,{fresh=false}={}){
   const next=structuredClone({version:1,settings,audience,economy,autonomy:{retired:{},receipts:{},broadcastSeconds:0,lastArrivalAt:0}});
