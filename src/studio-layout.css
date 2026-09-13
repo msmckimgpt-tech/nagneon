@@ -62,3 +62,6 @@
 .capture-preparation span{color:#abb4a6;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .capture-preparation button{flex-shrink:0}
 @media(max-width:600px){.capture-preparation{padding:12px;gap:10px;align-items:flex-start;flex-wrap:wrap}}
+.reaction-diagnostics{padding:18px 20px;border-top:1px solid #343d32;font-size:13px;line-height:1.6}
+.reaction-diagnostics summary{cursor:pointer;font-weight:600}
+.reaction-diagnostics p{overflow-wrap:anywhere}

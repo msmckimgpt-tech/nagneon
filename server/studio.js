@@ -28,6 +28,7 @@ import {donationMessage} from './chat-attention.js';
 import {temporalVideo} from './temporal-video.js';
 import {VIDEO_REACTION_TTL_MS} from '../shared/temporal-policy.js';
 import {sameViewingVisit,retainPresentReactions} from './live-presence.js';
+import {ReactionDiagnostics} from './reaction-diagnostics.js';
 
 export class Studio extends EventEmitter {
   constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,clipPerception,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
@@ -37,12 +38,12 @@ export class Studio extends EventEmitter {
     this.clips=clips||new Clips({now});this.clipFeatures=new ClipFeatures(this,this.clips);
     this.training=new TrainingRun({now});this.trainingMessages=[];this.director=new Director(this,{data:directorData,save:saveDirector});
     this.seasons=new StorySeasons(this,{data:seasonsData,save:saveSeasons});
-    this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
+    this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.reactions=new ReactionDiagnostics(now);this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);this.community=new Community(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
     this.communityActivity=new CommunityActivity(this);
     this.clipPerception=clipPerception||new ClipPerception();
   }
-  resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
+  resetCounters(){this.reactions.reset();this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   endVideo({sessionId,sourceId}){
     if(sessionId!==this.sessionId||!this.running)return {ok:true};
     for(const [id,at] of this.endedVideoSources)if(this.now()-at>60000)this.endedVideoSources.delete(id);
@@ -140,23 +141,24 @@ export class Studio extends EventEmitter {
       ...this.queue.filter(m=>(!Number.isFinite(m.expiresAt)||this.now()<m.expiresAt)&&sameViewingVisit(this.audience,m.personaId,m.viewingVisit))
     ].filter(m=>m.advice&&m.adviceRequestId===requestId).length:0;
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits,advicePolicy,adviceRequestId}={}){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits,advicePolicy,adviceRequestId,diagnosticId}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:{positive:obs.positiveMoment.positive,impact:obs.positiveMoment.impact},at:observedAt};
-    let delay=0,admittedHints=this.admittedAdvice(adviceRequestId);
+    let delay=0,admittedHints=this.admittedAdvice(adviceRequestId);this.reactions.reject(diagnosticId,'pace',Math.max(0,obs.messages.length-this.settings.chatPace));
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
-      if(origin==='live'&&Number.isFinite(expiresAt)&&this.now()>=expiresAt)continue;
+      if(origin==='live'&&Number.isFinite(expiresAt)&&this.now()>=expiresAt){this.reactions.reject(diagnosticId,'expired');continue;}
       const p=this.settings.personas.find(p=>p.id===m.personaId && p.enabled);
       const blocked=this.settings.blockedWords.some(w=>m.text.normalize('NFKC').toLocaleLowerCase().includes(w.normalize('NFKC').toLocaleLowerCase()));
       const recent=[...this.messages.slice(-60),...this.queue];
       const duplicate=origin==='live'?repeatedChat(m,recent,this.now()):recent.some(x=>x.text===m.text);
-      if(!p || blocked || duplicate || (m.spoiler&&this.settings.spoilerGuard)){if(p&&!duplicate)this.log(`매니저: ${p.name} 메시지 보류`);continue;}
+      if(!p || blocked || duplicate || (m.spoiler&&this.settings.spoilerGuard)){this.reactions.reject(diagnosticId,!p?'disabled':blocked?'blocked':duplicate?'duplicate':'spoiler');if(p&&!duplicate)this.log(`매니저: ${p.name} 메시지 보류`);continue;}
       if(origin==='live'&&m.advice){
         const policy=advicePolicy||liveAdvicePolicy('',this.settings.adviceMode,this.messages);
-        if(!policy.allowed||(policy.maxMessages!==null&&admittedHints>=policy.maxMessages))continue;
+        if(!policy.allowed||(policy.maxMessages!==null&&admittedHints>=policy.maxMessages)){this.reactions.reject(diagnosticId,'advice');continue;}
         admittedHints++;
       }
       delay+=600+this.random()*1600;
-      this.queue.push({...m,origin,chatDriven,...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.reactions.admit(diagnosticId);
+      this.queue.push({...m,origin,chatDriven,...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
@@ -165,15 +167,16 @@ export class Studio extends EventEmitter {
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
   pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running){this.communityActivity?.tick();return;}const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
-    const count=this.queue.length;this.queue=this.queue.filter(m=>m.origin!=='live'||((!Number.isFinite(m.expiresAt)||now<m.expiresAt)&&(this.settings.mode!=='live'||sameViewingVisit(this.audience,m.personaId,m.viewingVisit))));if(this.queue.length!==count)this.publish();
+    const count=this.queue.length;this.queue=this.queue.filter(m=>{if(m.origin!=='live')return true;const expired=Number.isFinite(m.expiresAt)&&now>=m.expiresAt,absent=this.settings.mode==='live'&&!sameViewingVisit(this.audience,m.personaId,m.viewingVisit);if(expired||absent){this.reactions.drop(m.diagnosticId,expired?'expired':'absent');return false;}return true;});if(this.queue.length!==count)this.publish();
     const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0){this.communityActivity?.tick();return;}
-    const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled))return;this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.advice?{advice:true,...(m.adviceRequestId?{adviceRequestId:m.adviceRequestId}:{})}:{}),...(m.chatDriven?{chatDriven:true}:{})});}catch(error){this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
+    const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled)){this.reactions.drop(m.diagnosticId,'disabled');return;}this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.advice?{advice:true,...(m.adviceRequestId?{adviceRequestId:m.adviceRequestId}:{})}:{}),...(m.chatDriven?{chatDriven:true}:{})});this.reactions.delivered(m.diagnosticId);}catch(error){this.reactions.drop(m.diagnosticId,'delivery-error');this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
   reserveCall(){if(this.calls>=this.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다. 방송을 종료하고 한도를 확인하세요.');this.calls++;}
   // 요청 캡처 시점의 목격자 스냅샷: 화면을 함께 본 것으로 인정할, 이번 세션에 실제 입장한(joinedAt>=startedAt) active/lurking 관객.
   // 모델 응답이 지연되어 그 사이 입장/이탈이 생겨도 이 스냅샷을 기준으로 목격을 판단한다(늦게 온 관객은 목격자가 아니다).
   presentWitnesses(){if(this.settings.mode!=='live')return [];return this.settings.personas.filter(p=>p.enabled&&['active','lurking'].includes(this.audience.presence[p.id])&&this.audience.data.members[p.id]?.joinedAt>=this.startedAt).map(p=>p.id);}
-  async react({image,video,speech=''}){
+  async react(input){const sessionId=this.sessionId,result=await this.reactInput(input);if(sessionId===this.sessionId&&this.settings.mode==='live'&&result?.skipped)this.reactions.skip(result.skipped);return result;}
+  async reactInput({image,video,speech=''}){
     if(this.communityActivity.active)await this.communityActivity.yield();else this.communityActivity.interrupt();
     if(video&&this.endedVideoSources.has(video.sourceId))return {skipped:'ended-screen'};
     if(!this.running)throw new Error('방송을 먼저 시작하세요.');if(this.busy)return {skipped:'busy'};
@@ -218,6 +221,7 @@ export class Studio extends EventEmitter {
         this.viewing.acknowledge(viewing);return {skipped:'unchanged-input'};
       }
     }
+    let diagnosticId,diagnosticOutcome='accepted';
     const operation={controller:new AbortController(),hasSpeech:!!speech||!!directed,directed:!!directed,superseded:false,sourceId:idleConversation?undefined:screenTimeline?.sourceId};this.liveReaction=operation;
     const signal=AbortSignal.any([this.controller.signal,operation.controller.signal]);
     this.lastRequest=viewing?.at??this.now();this.busy=true;this.lastError='';this.publish();
@@ -243,23 +247,28 @@ export class Studio extends EventEmitter {
         const adviceRequestId=speechBatch.ids.at(-1)||(speech?this.messages.findLast(m=>m.kind==='streamer'&&m.text===speech)?.id:undefined);
         let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};
-        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
-        if(epoch!==this.epoch||!this.running)return {skipped:'stopped'};
-        this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded)return {skipped:'superseded'};
-        if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
+        this.reserveCall();if(!directed)diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
+        const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        this.reactions.generated(diagnosticId,result.observation.messages.length);
+        if(epoch!==this.epoch||!this.running){diagnosticOutcome='stopped';return {skipped:'stopped'};}
+        this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded){diagnosticOutcome='superseded';return {skipped:'superseded'};}
+        if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial)){diagnosticOutcome='episode-ended';return {skipped:'episode-ended'};}
         const visualExpiresAt=screenTimeline?screenTimeline.through+VIDEO_REACTION_TTL_MS:capturedAt+SCREEN_REACTION_TTL_MS;
-        if(screenTimeline&&!idleConversation&&!operation.hasSpeech&&this.now()>=visualExpiresAt){this.viewing.acknowledge(viewing);this.observation=null;this.knowledge.lastSeen=null;return {skipped:'stale-screen'};}
+        if(screenTimeline&&!idleConversation&&!operation.hasSpeech&&this.now()>=visualExpiresAt){diagnosticOutcome='stale-screen';this.reactions.reject(diagnosticId,'expired',result.observation.messages.length);this.viewing.acknowledge(viewing);this.observation=null;this.knowledge.lastSeen=null;return {skipped:'stale-screen'};}
         const observation=directed?result.observation:retainPresentReactions(result.observation,visits,this.audience);
+        const eligibleMessages=observation.messages.filter(m=>audience.eligible.includes(m.personaId));
+        this.reactions.reject(diagnosticId,'absent',result.observation.messages.length-eligibleMessages.length);
         if(idleConversation){
           // A chat opportunity is not a fresh visual observation, achievement,
           // donation trigger, clip pick or evidence of changed preferences.
-          this.accept({...observation,messages:observation.messages.filter(m=>audience.eligible.includes(m.personaId)).slice(0,1)},capturedAt,true,'live',{chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
+          this.reactions.reject(diagnosticId,'pace',Math.max(0,eligibleMessages.length-1));
+          this.accept({...observation,messages:eligibleMessages.slice(0,1)},capturedAt,true,'live',{diagnosticId,chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
           this.viewing.acknowledge(viewing);this.failures=0;this.retryAt=0;return {ok:true};
         }
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
-        if(correction.rejected){this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
+        if(correction.rejected){diagnosticOutcome='transcription-review';this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
         const chatDriven=!speech.trim()&&!directed&&this.viewing.sameExternalInput(viewing);
-        this.accept({...observation,messages:observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',{chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
+        this.accept({...observation,messages:eligibleMessages},capturedAt,!!directed,directed?'directed':'live',{diagnosticId,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
         const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
         for(const d of donations)this.publishMessage(donationMessage(d));
         if(this.autonomy&&!directed){
@@ -273,8 +282,8 @@ export class Studio extends EventEmitter {
       }
       if(viewing&&!directed)this.viewing.acknowledge(viewing);
       this.speechInbox.acknowledge(speechBatch.ids);this.failures=0;this.retryAt=0;return {ok:true};
-    }catch(error){if(operation.superseded&&epoch===this.epoch)return {skipped:'superseded'};if(epoch===this.epoch){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);}throw error;}
-    finally{if(this.liveReaction===operation)this.liveReaction=null;if(epoch===this.epoch){this.busy=false;this.publish();}}
+    }catch(error){diagnosticOutcome=operation.superseded?'superseded':epoch!==this.epoch?'stopped':'error';if(operation.superseded&&epoch===this.epoch)return {skipped:'superseded'};if(epoch===this.epoch){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);}throw error;}
+    finally{this.reactions.finish(diagnosticId,diagnosticOutcome);if(this.liveReaction===operation)this.liveReaction=null;if(epoch===this.epoch){this.busy=false;this.publish();}}
   }
   async transcribe(buffer,mime,requestSignal){
     if(!this.running||this.settings.mode!=='live')throw new Error('음성 인식은 실제 AI 방송에서 사용할 수 있습니다.');
