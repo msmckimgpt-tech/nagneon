@@ -39,8 +39,8 @@ export function ConnectionPanel({state}:{state:State}){
     {probe?.status==='ready'&&<div className="probe-result success" role="status"><Check size={18}/><div><b>Astra 응답 확인됨 · {((probe.latencyMs||0)/1000).toFixed(1)}초</b><p>{probe.reply}</p><small>{probe.checkedAt?new Date(probe.checkedAt).toLocaleTimeString('ko-KR'):''} 확인 · 이후 네트워크와 계정 사용량에 따라 달라질 수 있어요.</small></div></div>}
     {probe?.status==='failed'&&<p className="connection-problem" role="alert">{probe.message}</p>}
     {probe?.status==='cancelled'&&<p role="status">응답 확인을 취소했습니다. 이미 전송된 요청은 사용량에 반영될 수 있습니다.</p>}
-    <div className="speech-ready"><span className={'dot '+(state.provider.localAudio?'green':'')}/><b>한국어 로컬 음성 인식</b><span>{state.provider.localAudio?'준비됨':state.provider.audioError?'시작하지 못함':'준비 중'}</span></div>
-    {state.provider.audioError&&<p className="field-note">음성 인식 구성 요소를 시작하지 못했습니다. 앱을 다시 실행하거나 설치를 복구해주세요. 키보드 대화는 계속 사용할 수 있어요.</p>}
+    <div className="speech-ready"><span className={'dot '+(state.provider.localAudio?'green':'')}/><b>한국어 로컬 음성 인식</b><span>{state.provider.localAudio?'준비됨':state.provider.audioError?'다시 준비 필요':state.provider.audioPreparing?'준비 중':'대기 중'}</span></div>
+    {state.provider.audioError&&<><p className="field-note">{state.provider.audioError} 방송과 키보드 대화는 계속할 수 있어요.</p><button className="secondary" disabled={pending||state.provider.audioPreparing} onClick={()=>void perform(()=>api('audio/prepare'))}><RefreshCw size={14}/> 음성 인식 다시 준비</button></>}
     {error&&<p role="alert" className="connection-problem">{error}</p>}
   </section>;
 }

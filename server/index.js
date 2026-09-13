@@ -29,13 +29,13 @@ import {JournalStore} from './journal-store.js';
 import {World,WorldData,migrateWorld} from './world.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
+export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
   provider ||= process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
   if(provider.check)await provider.check();
-  const speech=new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
+  const speech=speechWorker||new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
   const clipInspector=new ClipInspector(runtime.clips);
-  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error});
+  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
   const stores=[];
   const useStore=(name,schema,initial)=>{
@@ -171,10 +171,18 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/react',async(req,res)=>res.json(await studio.react(Frame.parse(req.body))));
   app.post('/api/viewing-end',(req,res)=>res.json(studio.endVideo(z.object({sessionId:z.string().uuid(),sourceId:z.string().uuid()}).parse(req.body))));
   soundRoutes(app,studio,sound);
+  app.post('/api/audio/prepare',async(_req,res)=>{
+    if(!localSpeech)return res.json({ok:true,local:false});
+    const controller=new AbortController();const disconnect=()=>{if(!res.writableEnded)controller.abort();};res.on('close',disconnect);
+    try{await speech.prepare(controller.signal);if(!controller.signal.aborted)res.json({ok:true,local:true});}
+    finally{res.off('close',disconnect);studio.publish();}
+  });
   app.post('/api/audio',express.raw({type:['audio/webm','audio/mp4','audio/ogg','audio/wav'],limit:'8mb'}),async(req,res)=>{
     if(!Buffer.isBuffer(req.body)||!req.body.length)throw new Error('음성 데이터가 비어 있습니다.');
     const controller=new AbortController();const disconnect=()=>{if(!res.writableEnded)controller.abort();};res.on('close',disconnect);
-    try{const result=await studio.transcribe(req.body,req.headers['content-type'].split(';')[0],controller.signal);if(!controller.signal.aborted)res.json(result);}finally{res.off('close',disconnect);}
+    try{const result=await studio.transcribe(req.body,req.headers['content-type'].split(';')[0],controller.signal);if(!controller.signal.aborted)res.json(result);}
+    catch(error){if(localSpeech&&!speech.ready){if(!controller.signal.aborted)res.status(409).json({error:error.message,needsPreparation:true});}else throw error;}
+    finally{res.off('close',disconnect);}
   });
   app.post('/api/moderate',(req,res)=>{const {action,id}=z.object({action:z.enum(['delete','ban','unban','clear']),id:z.string().default('')}).parse(req.body);studio.moderate(action,id);res.json(studio.state());});
   app.get('/api/journal',(req,res)=>res.json(journal.list(z.object({viewerId:z.string().max(80).optional(),query:z.string().max(300).optional(),pinned:z.enum(['true','false']).optional().transform(v=>v==='true'),offset:z.coerce.number().int().min(0).max(4000).default(0),limit:z.coerce.number().int().min(1).max(40).default(30)}).parse(req.query))));
@@ -188,7 +196,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close();speech.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,new Promise(r=>server.close(r))]);}};
+  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,new Promise(r=>server.close(r))]);}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);
