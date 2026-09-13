@@ -39,3 +39,7 @@
 실제 실행 후 전체 **2,451개 파일의 SHA-256**, 현재 소스 **67개**, ASAR/fuses 검사가 통과했고 미등록 파일·캐시 추가가 없었다(`artifacts/package-integrity-test.json`, `delivered-validation-eYo0Dt/integrity.log`). 런타임 결과와 동일한 ASAR 해시를 요구했으며, 과거 다른 배포본의 실행 결과를 재사용하지 않았다. 오케스트레이터의 3단계 결과도 모두 0이며 `artifacts/delivered-validation-result.json`에 보존한다.
 
 서명·설치 프로그램·새 Windows·물리 장치·여러 게임의 장기 방송·상용 연동 조건·Steam 심사 합격은 별도 남은 기준이다. 사용자 앱·화면·게임·장치를 조작하거나 재시작하지 않았다. 이번 폴더는 개발 검증 산출물이며 현재 켜 둔 앱을 교체한 것이 아니다.
+
+## 통합 기록
+
+제품/검증 도구 커밋 `20003b5a277571ffcf5f18fc7b5a8acd1923bf5d`를 별도 `release-runtime-integration` worktree에서 다시 확인했다. 자체 `npm ci` 후 **495개 테스트와 TypeScript/Vite 빌드**가 통과했고, 그 통합 소스/화면 빌드의 **67개 배포 대상**이 이번 실제 실행 ASAR/리소스와 일치했다. 원본은 두 worktree의 `artifacts/release-integration-check.log`, 흐름은 개발 worktree의 `artifacts/release-integration-result.json`이다. 이 기록만 추가한 뒤 main에 fast-forward하며 푸시·사용자 앱 교체·네이티브 실행은 하지 않는다.
