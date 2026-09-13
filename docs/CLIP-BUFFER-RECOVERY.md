@@ -29,10 +29,19 @@
 - 영상 저장 허용 해제, 관객 클립 선택 해제, 다른 세션, 관객이 본 시각 밖의 영상은 실제 HTTP에서 각각 409로 거절됐고 추가 미디어 파일이 생기지 않았다.
 - 저장 파일을 PyAV로 복호화해 75개 영상 프레임(5fps·15초), 첫/마지막 색상, 단일 영상·음성 트랙을 확인했다. 기존 `verify-clip-sound.py`로 440Hz와 880Hz 두 합성 소리를 확인했다. 마이크·loopback 캡처나 실제 게임 영상의 재생 검증을 대신하지 않는다.
 
-원본은 이 worktree의 `artifacts/clip-*.log`, `clip-transfer-first/`, `clip-transfer-final/`, `clip-video-decode.json`, `make-clip-fixture.py`, `verify-clip-frames.py`, 기준 소스/재현 스크립트다. 사용자 자료는 포함하지 않는다. 전체 검사·통합 결과와 증거 목록은 아래 통합 기록에 추가한다.
+원본은 이 worktree의 `artifacts/clip-*.log`, `clip-transfer-first/`, `clip-transfer-final/`, `clip-video-decode.json`, `make-clip-fixture.py`, `verify-clip-frames.py`, 기준 소스/재현 스크립트다. 사용자 자료는 포함하지 않는다. 전체 검사·통합 결과와 증거 목록은 아래 통합 기록을 따른다.
 
 ## 남은 수용 검사
 
 15초 구간 경계에 걸친 긴 명장면을 앞뒤 녹화와 합치는 편집 기능은 구현하지 않았다. 소스 변경·동의 해제로 버퍼가 비워졌거나 메모리/시간 한도를 지난 장면에는 영상 대신 기존 장면 기록이 남는다. 화면을 연결하지 않은 Just Chatting의 대화 기록은 유지되지만 별도 음성 전용 핫클립 파일은 이번 변경 범위가 아니다.
 
 실제 Electron MediaRecorder의 구간 경계·부하·장시간 사용, 사용자 앱에서 화면·마이크·출력 소리 변경과 영상 재생은 미검증이다. Computer Use 중단이 끝나도 자동으로 재개하지 않는다. 현재 실행 중인 사용자 앱이나 이전 배포 폴더를 덮어쓰지 않았다. Steam 판매 준비 완료로 해석하지 않는다.
+
+
+## 통합 기록
+
+제품 커밋 `411f58727a375230b2d891adc54a7137cb88e2c0`을 `live-capture-integration`에서 **323개 검사 + TypeScript/Vite 빌드**로 다시 검증했다. 그 소스의 실제 HTTP·파일 시험도 `POST, GET`만으로 복구, 해시 일치·206 범위 조회·재시작 복구·권한/관측 시각 거부 4건을 통과했다. 원본은 통합 worktree의 `artifacts/clip-buffer-integration-check.log`, `clip-buffer-integration-transfer.log`, `clip-transfer-integration/result.json`, 작업 폴더의 `artifacts/clip-buffer-integration-result.json`이다.
+
+통합 잠금과 main/통합/개발 HEAD·인덱스·원격을 확인하고 main에 fast-forward했다. 외부 push는 하지 않았다. 테스트 추가 이후 UI 안내 문구만 더 조정했고, 최종 통합 검사가 그 정확한 코드에 대해 통과했다. `artifacts/clip-buffer-evidence/manifest.json`에 최종 소스, 전/후 검증, 합성 WebM·생성기·복호화 결과, 통합 원본의 파일별 SHA-256을 보존한다. 실제 사용자 대화는 포함하지 않는다.
+
+기존 사용자 테스트 수집기의 PID29916, 생성 시각 `2026-09-13T06:06:54.756327Z`, 정확한 node 실행 경로·진입점을 확인했다. 766회 확인 시 378개 메시지·수집 오류 0이었으며 수집 범위와 종료 시각을 늘리지 않았다. 이 숫자는 해당 시점의 관측이다.
