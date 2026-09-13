@@ -7,10 +7,22 @@ const topics=[
   {id:'memories',title:'함께한 이야기',test:/기억나|처음.*방송|추억|그때/,prompt:'자기에게 실제 제공된 대화 기록만 기억한다. 새 관객도 맥락을 물으며 참여할 수 있게 하고 단골만의 대화로 소외시키지 않는다.'}
 ];
 export class Ambient {
-  constructor(studio){this.studio=studio;this.active=null;this.until=0;this.quietUntil=0;this.turns=0;}
-  reset(){this.active=null;this.until=0;this.quietUntil=0;this.turns=0;}
+  constructor(studio){this.studio=studio;this.reset();}
+  reset(){this.active=null;this.until=0;this.quietUntil=0;this.turns=0;this.nextIdleAt=0;}
+  idle(witnesses){
+    const s=this.studio,now=s.now();
+    if(now<this.quietUntil||now<this.nextIdleAt||s.queue.length||!witnesses.length)return null;
+    if(!s.messages.some(m=>m.kind==='streamer'&&!m.fictional&&m.time<=now&&now-m.time<1200000))return null;
+    const last=Math.max(s.startedAt,...s.messages.filter(m=>!m.fictional).map(m=>m.time));
+    if(now-last<60000)return null;
+    // One opportunity per 75–135s, including empty responses. This cannot
+    // continuously wake itself or generate points/clips from an old scene.
+    this.nextIdleAt=now+75000+s.random()*60000;
+    return {id:'quiet-company',idle:true,instruction:'새 화면 사건은 없다. 자기에게 제공된 방송 대화와 취향에서 가끔 한 명이 가볍게 말을 건네도 좋다. 한 줄의 자기 감상이나 취향 이야기로 같이 있는 느낌을 낸다. 이미 답한 질문·축하·약속을 반복하지 않고 답을 재촉하지 않는다. 대화할 근거가 없거나 집중/휴식 중이면 침묵도 가능하다. 최대 한 명만 말한다. 새 장면·소리·진행 변화·마이크 고장을 추측하지 않는다.'};
+  }
   context(speech){const s=this.studio,now=s.now();
-    if(/그만|쉬고 싶|조용히|말.*걸지|다른 얘기|그 얘기.*싫/.test(speech)){this.active=null;this.quietUntil=now+600000;return {quiet:true,instruction:'스트리머가 그만하거나 쉬기를 원했다. 놀이와 새 화제를 중단하고 재촉하지 않는다.'};}
+    if(/(?:채팅|질문|말|얘기|중계).{0,12}그만|그만\s*(?:해|하|말)|쉬고 싶|조용히|말.*걸지|그 얘기.*싫/.test(speech)){this.active=null;this.quietUntil=now+600000;return {quiet:true,instruction:'스트리머가 그만하거나 쉬기를 원했다. 놀이와 새 화제를 중단하고 재촉하지 않는다.'};}
+    if(/다시.{0,8}(?:얘기|말|채팅)|말\s*걸어|심심|같이\s*얘기/.test(speech))this.quietUntil=0;
     if(now<this.quietUntil)return {quiet:true,instruction:'잠시 쉬는 중. 먼저 질문이나 이벤트를 꺼내지 않는다. 새로운 명시적 질문에는 짧게 답한다.'};
     if(this.active&&(now>this.until||this.turns>=5))this.active=null;
     const topic=topics.find(t=>t.test.test(speech));

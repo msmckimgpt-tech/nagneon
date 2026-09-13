@@ -1,4 +1,4 @@
-export type ClipSegment={blob:Blob;startedAt:number;endedAt:number;hasAudio:boolean;sessionId:string;kind:'video'|'audio'};
+export type ClipSegment={blob:Blob;startedAt:number;endedAt:number;hasAudio:boolean;sessionId:string;kind:'video'|'audio';audioLayout?:'mixed'|'separate'|'microphone-only';voice?:ClipSegment};
 type Timer=ReturnType<typeof setTimeout>;
 type Clock={now:()=>number;set:typeof setTimeout;clear:typeof clearTimeout};
 const clock:Clock={now:Date.now,set:setTimeout,clear:clearTimeout};

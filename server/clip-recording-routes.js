@@ -18,13 +18,14 @@ export function clipRecordingRoutes(app,{studio,clips,inspector,uploadTimeoutMs=
     res.once('close',release);res.once('finish',release);next();
   };
   const bodyFailure=(error,req,res,next)=>{if(req.clipSignal?.aborted&&(res.headersSent||res.destroyed))return;next(error);};
-  for(const kind of ['video','audio'])app.post(`/api/clips/:id/${kind}`,reserve,express.raw({type:kind+'/webm',limit:'20mb'}),bodyFailure,async(req,res)=>{
-    const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);
+  for(const kind of ['video','audio','voice'])app.post(`/api/clips/:id/${kind}`,reserve,express.raw({type:(kind==='voice'?'audio':kind)+'/webm',limit:'20mb'}),bodyFailure,async(req,res)=>{
+    const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true'),audioLayout:z.enum(['mixed','separate','microphone-only']).default('mixed')}).parse(req.query);
     const id=z.string().uuid().parse(req.params.id),epoch=studio.epoch;
     const authorized=()=>{
       const c=clips.get(id);
       if(epoch!==studio.epoch||!studio.running||!studio.settings.clipBufferEnabled||!studio.settings.autoHighlights||!c.creator||c.source!=='spectator'||(kind==='audio'&&!c.audioEligible)||c.sessionId!==studio.sessionId||metadata.startedAt>c.observedAt||metadata.endedAt<c.observedAt||Math.abs(clips.now()-metadata.endedAt)>120000)throw Error('관객이 선택한 순간이 허용된 클립 버퍼 안에 있어야 합니다.');
-      if(c.video||c.audio)throw Error('이미 미디어가 연결된 클립입니다.');
+      if(kind==='voice'){if(c.voice||!(c.video||c.audio)||c.audioLayout!=='separate')throw Error('분리된 마이크를 연결할 클립을 확인하세요.');}
+      else if(c.video||c.audio)throw Error('이미 미디어가 연결된 클립입니다.');
     };
     authorized();
     const controller=new AbortController();const abort=()=>controller.abort();
@@ -32,7 +33,7 @@ export function clipRecordingRoutes(app,{studio,clips,inspector,uploadTimeoutMs=
     req.clipSignal.addEventListener('abort',abort,{once:true});studio.on('state',onState);
     try{
       if(req.clipSignal.aborted)abort();
-      await inspector.inspect(req.body,{...metadata,kind},controller.signal);
+      await inspector.inspect(req.body,{...metadata,kind:kind==='voice'?'audio':kind},controller.signal);
       // No await between the final authorization and atomic file/metadata save.
       // Deletion, stop/restart, consent withdrawal and disconnected clients win.
       if(controller.signal.aborted)throw Error('클립 저장이 취소되었습니다.');

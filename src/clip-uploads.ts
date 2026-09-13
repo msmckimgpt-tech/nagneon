@@ -51,28 +51,28 @@ export class ClipUploads {
       const timer=setTimeout(done,ms);this.abort.signal.addEventListener('abort',done,{once:true});
     });
   }
-  private async upload(clip:Candidate,recording:ClipSegment){
+  private async upload(clip:Candidate,recording:ClipSegment,voice=false){
     const delays=this.options.retryDelays??[1000,3000];
     const path=`/api/clips/${encodeURIComponent(clip.id)}`;
-    const kind=recording.kind||'video';
-    const params=new URLSearchParams({startedAt:String(recording.startedAt),endedAt:String(recording.endedAt),hasAudio:String(recording.hasAudio)});
+    const kind=voice?'voice':recording.kind||'video';
+    const params=new URLSearchParams({startedAt:String(recording.startedAt),endedAt:String(recording.endedAt),hasAudio:String(recording.hasAudio),audioLayout:recording.audioLayout||'mixed'});
     let failure:unknown;
     for(let attempt=0;attempt<=delays.length;attempt++){
       if(!this.allowed()||!this.seen.has(clip.id))return;
       if(attempt){
         await this.wait(delays[attempt-1]);if(!this.allowed())return;
-        try{const saved=await this.call(path);if(saved.id===clip.id&&(saved.video||saved.audio))return;}catch{}
+        try{const saved=await this.call(path);if(saved.id===clip.id&&saved[kind])return;}catch{}
       }
       if(!this.allowed())return;
       if(this.now()-recording.endedAt>120_000)throw failure||new Error('클립 버퍼의 저장 시간이 지났습니다.');
       try{
-        const saved=await this.call(`${path}/${kind}?${params}`,{method:'POST',headers:{'Content-Type':kind+'/webm'},body:recording.blob});
+        const saved=await this.call(`${path}/${kind}?${params}`,{method:'POST',headers:{'Content-Type':(voice?'audio':kind)+'/webm'},body:recording.blob});
         if(saved.id!==clip.id||!saved[kind])throw new Error('핫클립 저장을 확인하지 못했습니다.');
         return;
       }catch(error){failure=error;if(error instanceof ClipRequestError&&!error.retryable)break;}
     }
     // The final POST may also have committed before its response was lost.
-    if(this.allowed())try{const saved=await this.call(path);if(saved.id===clip.id&&(saved.video||saved.audio))return;}catch{}
+    if(this.allowed())try{const saved=await this.call(path);if(saved.id===clip.id&&saved[kind])return;}catch{}
     throw failure;
   }
   private async pump(){
@@ -87,6 +87,7 @@ export class ClipUploads {
           if(!recording||recording.sessionId!==this.options.sessionId)continue;
           if(recording.kind==='audio'&&!clip.audioEligible)continue;
           await this.upload(clip,recording);
+          if(recording.voice){if(recording.voice.sessionId!==recording.sessionId)throw Error('마이크 클립의 방송이 다릅니다.');await this.upload(clip,recording.voice,true);}
         }catch(error){if(this.allowed())this.options.onError((error instanceof Error?error.message:'관객 클립 영상 연결 실패')+' · 관객의 장면 기록은 저장되어 있습니다.');}
       }
     }finally{this.working=false;}

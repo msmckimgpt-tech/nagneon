@@ -10,6 +10,8 @@
 
 import {conversationRhythm} from './conversation-rhythm.js';
 import {chatAttention} from './chat-attention.js';
+import {streamerExpression} from './streamer-expression.js';
+import {transcriptAnomaly} from './transcript-correction.js';
 
 const clamp=(v)=>Math.min(1,Math.max(0,v));
 const round=(v)=>Math.round(v*100)/100;
@@ -61,7 +63,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
   const microphoneWitnesses=journal?new Map(journal.data.entries.filter(e=>e.transcription?.source==='microphone').map(e=>[e.id,new Set(e.witnesses)])):null;
   for(const p of personas){
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
-    const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now&&(m.transcription?.source!=='microphone'||!microphoneWitnesses||microphoneWitnesses.get(m.id)?.has(p.id))):[];
+    const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now&&(m.transcription?.source!=='microphone'||(!transcriptAnomaly(m.text)&&(!microphoneWitnesses||microphoneWitnesses.get(m.id)?.has(p.id))))):[];
     packets[p.id]={
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       // recall already selects only this stable ID's witnesses. A new entry
@@ -70,6 +72,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[]).map(e=>({...e,experience:e.kind==='donation'?'witnessed-donation':e.speakerId===p.id?'own-words':'witnessed-words'}))}:{}),
       ...(clips?{clipMemories:clips.recall(p.id,speech,now),arrivalClipMemory:clips.recallArrival(member?.arrivalClip,now)}:{}),
       chatHistory:witnessed.slice(-35),
+      streamerExpression:streamerExpression(witnessed,{now}),
       chatAttention:chatAttention(witnessed,p,{now}),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
       watchTiming:{receivedAt:now,...(viewing?.timing[p.id]||{}),previousAnalysisAgeSeconds:Number.isFinite(joinedAt)&&previous?.at>=joinedAt&&previous.at<=now?Math.floor((now-previous.at)/1000):null},

@@ -92,6 +92,6 @@ export class Audience {
     m.memories.push(text);m.memories=m.memories.slice(-8);
     for(const p of settings.personas)if(p.id!==personaId&&text.includes(p.name))m.peers[p.id]=Math.min(20,(m.peers[p.id]||0)+1);
   }
-  post(post){this.data.posts.push(post);this.data.posts=this.data.posts.slice(-60);this.save(this.data);}
+  post(post){if(this.data.posts.length>=200)throw Error('게시판 글은 200개까지 보관합니다. 이전 글을 정리해주세요.');const next=structuredClone(this.data);next.posts.push(post);this.save(next);this.data=next;}
   lore(text,expiresAt){this.data.lore.push({text,expiresAt});this.data.lore=this.data.lore.slice(-30);this.save(this.data);}
 }

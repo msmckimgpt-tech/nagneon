@@ -119,7 +119,14 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/knowledge',(req,res)=>{const {name,text}=z.object({name:z.string().trim().min(1).max(120),text:z.string().trim().min(1).max(3000)}).parse(req.body);knowledge.teach(name,text);studio.publish();res.json(studio.state());});
   app.delete('/api/knowledge',(req,res)=>{const {name}=z.object({name:z.string().min(1).max(120)}).parse(req.body);knowledge.forget(name);studio.publish();res.json(studio.state());});
   app.post('/api/community/lore',(req,res)=>{const {text,days}=z.object({text:z.string().trim().min(1).max(300),days:z.number().int().min(1).max(90)}).parse(req.body);audience.lore(text,Date.now()+days*86400000);studio.publish();res.json({ok:true});});
-  app.post('/api/community/post',(req,res)=>{const {text}=z.object({text:z.string().trim().min(1).max(1000)}).parse(req.body);audience.post({id:randomUUID(),name:studio.settings.streamer,text,time:Date.now(),kind:'streamer'});studio.publish();res.json({ok:true});});
+  app.get('/api/community/posts',(_req,res)=>res.json(studio.community.list()));
+  app.post('/api/community/post',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),title:z.string().trim().min(1).max(100).optional(),category:z.enum(['자유','후기','질문','공지']).default('자유')}).parse(req.body);res.json(studio.community.post({...body,title:body.title||body.text.slice(0,70)}));});
+  app.get('/api/community/posts/:id',(req,res)=>res.json(studio.community.get(req.params.id)));
+  app.delete('/api/community/posts/:id',(req,res)=>{studio.community.remove(req.params.id);res.json({ok:true});});
+  app.post('/api/community/posts/:id/recommend',(req,res)=>res.json(studio.community.recommend(req.params.id,z.object({recommended:z.boolean()}).parse(req.body).recommended)));
+  app.post('/api/community/posts/:id/comments',(req,res)=>res.json(studio.community.comment(req.params.id,z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().default(null)}).parse(req.body))));
+  app.delete('/api/community/posts/:id/comments/:commentId',(req,res)=>{studio.community.removeComment(req.params.id,req.params.commentId);res.json({ok:true});});
+  app.post('/api/community/posts/:id/react',async(req,res)=>res.json(await studio.community.react(req.params.id,z.object({parentId:z.string().uuid().nullable().default(null)}).parse(req.body).parentId)));
   app.post('/api/community/reflect',async(_req,res)=>res.json(await studio.reflect()));
   app.post('/api/start',(_req,res)=>{if(probe.controller)throw new Error('연결 응답 확인을 마친 뒤 방송을 시작하세요.');studio.start();res.json(studio.state());});
   app.post('/api/training/start',(req,res)=>res.json(studio.startTraining(z.object({id:z.string().max(60)}).parse(req.body).id)));
@@ -146,9 +153,9 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.delete('/api/clips/:id',(req,res)=>{clips.remove(z.string().uuid().parse(req.params.id));studio.publish();res.json({ok:true});});
   app.get('/api/clips/:id/media/:kind',(req,res)=>{
     const c=clips.get(z.string().uuid().parse(req.params.id)),kind=req.params.kind;
-    const ext=(kind==='video'&&c.video)||(kind==='audio'&&c.audio)?'webm':kind==='thumbnail'?c.thumbnail:null;
+    const ext=(kind==='video'&&c.video)||(kind==='audio'&&c.audio)?'webm':kind==='voice'&&c.voice?'voice.webm':kind==='thumbnail'?c.thumbnail:null;
     if(!ext)throw new Error('클립 미디어가 없습니다.');
-    if(kind==='audio')res.type('audio/webm');
+    if(kind==='audio'||kind==='voice')res.type('audio/webm');
     res.sendFile(clips.file(c.id,ext));
   });
   clipRecordingRoutes(app,{studio,clips,inspector:clipInspector});

@@ -1,5 +1,17 @@
 import {mixClipAudio} from './clip-audio.ts';
 
+// Record the microphone independently when there is a picture or system sound.
+// Already mixed legacy recordings cannot be separated by a playback switch.
+export function createSeparatedClipSources(screen:MediaStream|null,mic:MediaStream|null,system:MediaStream|null,create=createClipSource){
+  const hasMic=!!mic?.getAudioTracks().some(t=>t.readyState==='live');
+  const other=!!screen?.getVideoTracks().some(t=>t.readyState==='live')||!!system?.getAudioTracks().some(t=>t.readyState==='live');
+  const base=create(screen,other?null:mic,system);if(!base)return null;
+  let voice:ReturnType<typeof createClipSource>=null;
+  try{if(other&&hasMic){voice=create(null,mic,null);if(!voice)throw Error('마이크 클립을 분리해 녹음할 수 없습니다.');}
+    return {base,voice,audioLayout:(voice?'separate':!other&&hasMic?'microphone-only':'separate') as 'separate'|'microphone-only',close:()=>{base.close();voice?.close();}};
+  }catch(error){base.close();voice?.close();throw error;}
+}
+
 // `screen` is the explicitly shared picture. A system-audio source can also
 // carry a video track, but that track is never consulted or cloned here.
 export function createClipSource(screen:MediaStream|null,mic:MediaStream|null,system:MediaStream|null,

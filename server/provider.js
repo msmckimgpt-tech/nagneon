@@ -5,14 +5,15 @@ import {individualityInstructions} from './audience-individuality.js';
 
 export const format = {
   type: 'json_schema', name: 'audience_reaction', strict: true,
-  schema: { type:'object', additionalProperties:false, required:['game','scene','confidence','excitement','messages','positiveMoment','arrival','viewerChanges','clipPicks','transcriptCorrections'], properties:{
+  schema: { type:'object', additionalProperties:false, required:['game','scene','confidence','excitement','messages','positiveMoment','arrival','viewerChanges','clipPicks','transcriptCorrections','communityVotes'], properties:{
+    communityVotes:{type:'array',maxItems:3,items:{type:'object',additionalProperties:false,required:['personaId','recommended'],properties:{personaId:{type:'string'},recommended:{type:'boolean'}}}},
     transcriptCorrections:{type:'array',items:{type:'object',additionalProperties:false,required:['messageId','text','confidence','reason'],properties:{messageId:{type:'string'},text:{type:'string'},confidence:{type:'number'},reason:{type:'string'}}}},
     arrival:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['name','personality','values','sociability','expertise'],properties:{name:{type:'string'},personality:{type:'string'},values:{type:'string'},sociability:{type:'number'},expertise:{type:'number'}}}]},
     viewerChanges:{type:'array',items:{type:'object',additionalProperties:false,required:['personaId','preference','nickname','reason','evidence','sociabilityDelta'],properties:{personaId:{type:'string'},preference:{type:'string'},nickname:{type:'string'},reason:{type:'string'},evidence:{type:'string'},sociabilityDelta:{type:'number'}}}},
     clipPicks:{type:'array',items:{type:'object',additionalProperties:false,required:['personaId','title','reason','signature','soundId','speechId'],properties:{speechId:{type:'string'},soundId:{type:'string'},personaId:{type:'string'},title:{type:'string'},reason:{type:'string'},signature:{type:'string'}}}},
     game:{type:'string'}, scene:{type:'string'}, confidence:{type:'number'}, excitement:{type:'number'},
     positiveMoment:{type:'object',additionalProperties:false,required:['positive','impact','reason','signature','supporters','donations'],properties:{positive:{type:'boolean'},impact:{type:'number'},reason:{type:'string'},signature:{type:'string'},supporters:{type:'array',items:{type:'string'}},donations:{type:'array',items:{type:'object',additionalProperties:false,required:['personaId','message','anonymous'],properties:{personaId:{type:'string'},message:{type:'string'},anonymous:{type:'boolean'}}}}}},
-    messages:{type:'array', items:{type:'object',additionalProperties:false,required:['personaId','text','kind','spoiler'],properties:{personaId:{type:'string'},text:{type:'string'},kind:{type:'string',enum:['chat','notice']},spoiler:{type:'boolean'}}}}
+    messages:{type:'array',maxItems:8, items:{type:'object',additionalProperties:false,required:['personaId','text','kind','spoiler'],properties:{personaId:{type:'string',minLength:1,maxLength:40},text:{type:'string',minLength:1,maxLength:240},kind:{type:'string',enum:['chat','notice']},spoiler:{type:'boolean'}}}}
   }}
 };
 export class OpenAIProvider {

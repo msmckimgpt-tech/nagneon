@@ -12,7 +12,7 @@ export class Clips {
   recall(viewerId,query='',now=this.now()){return recallClips(this.data,viewerId,query,now);}
   recallArrival(reading,now=this.now()){return recallArrivalClip(this.data,reading,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
-  file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
+  file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm','voice.webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
   writeMedia(id,extension,buffer){if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');const file=this.file(id,extension);mkdirSync(this.dir,{recursive:true});writeFileSync(file+'.tmp',buffer);renameSync(file+'.tmp',file);return file;}
   create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature,creator,audioEligible=false}){
     if(this.data.length>=100)throw new Error('핫클립 100개에 도달했습니다. 이전 클립을 정리하세요.');
@@ -25,12 +25,15 @@ export class Clips {
     try{return this.change(data=>{data.push(clip);return clip;});}catch(error){if(clip.thumbnail)try{unlinkSync(this.file(id,clip.thumbnail));}catch{}throw error;}
   }
   video(id,buffer,metadata){return this.recording(id,buffer,{...metadata,kind:'video'});}
-  recording(id,buffer,{startedAt,endedAt,hasAudio,kind='video'}){
-    const clip=this.get(id);if(clip.video)throw new Error('이미 영상이 연결된 클립입니다.');if(clip.audio)throw new Error('이미 음성이 연결된 클립입니다.');
-    if(!['video','audio'].includes(kind)||(kind==='audio'&&hasAudio!==true))throw new Error('음성 클립에는 소리 트랙이 필요합니다.');
+  recording(id,buffer,{startedAt,endedAt,hasAudio,kind='video',audioLayout='mixed'}){
+    const clip=this.get(id),voice=kind==='voice';
+    if(voice){if(clip.voice||!(clip.video||clip.audio)||clip.audioLayout!=='separate')throw Error('분리된 마이크를 연결할 클립을 확인하세요.');}
+    else{if(clip.video)throw new Error('이미 영상이 연결된 클립입니다.');if(clip.audio)throw new Error('이미 음성이 연결된 클립입니다.');}
+    if(!['video','audio','voice'].includes(kind)||((kind==='audio'||voice)&&hasAudio!==true)||!['mixed','separate','microphone-only'].includes(audioLayout))throw new Error('음성 클립에는 소리 트랙이 필요합니다.');
     if(!Buffer.isBuffer(buffer)||buffer.length<100||buffer.length>20*1024*1024||buffer.subarray(0,4).toString('hex')!=='1a45dfa3')throw new Error('20MB 이하 WebM 클립을 사용하세요.');
     if(!Number.isFinite(startedAt)||!Number.isFinite(endedAt)||endedAt<=startedAt||endedAt-startedAt>45000||Math.abs(this.now()-endedAt)>120000)throw new Error('최근 45초 이하의 클립만 연결할 수 있습니다.');
-    this.writeMedia(id,'webm',buffer);try{return this.change(data=>{const c=data.find(c=>c.id===id);c[kind]=true;c[kind+'StartedAt']=startedAt;c[kind+'EndedAt']=endedAt;c.hasAudio=!!hasAudio;c.updatedAt=this.now();return c;});}catch(error){try{unlinkSync(this.file(id,'webm'));}catch{}throw error;}
+    if(voice&&(!Number.isFinite(clip.observedAt)||startedAt>clip.observedAt||endedAt<clip.observedAt))throw Error('선택한 순간을 포함한 마이크 클립이 필요합니다.');
+    const ext=voice?'voice.webm':'webm';this.writeMedia(id,ext,buffer);try{return this.change(data=>{const c=data.find(c=>c.id===id);c[kind]=true;c[kind+'StartedAt']=startedAt;c[kind+'EndedAt']=endedAt;if(!voice){c.hasAudio=!!hasAudio;c.audioLayout=audioLayout;}c.updatedAt=this.now();return c;});}catch(error){try{unlinkSync(this.file(id,ext));}catch{}throw error;}
   }
   comment(id,{text,name,personaId='streamer',parentId=null,kind='streamer'}){
     if(!text.trim()||text.length>1000)throw new Error('댓글은 1~1,000자로 작성하세요.');
@@ -55,7 +58,7 @@ export class Clips {
     });
   }
   removeComment(id,commentId){return this.change(data=>{const c=data.find(c=>c.id===id);if(!c)throw new Error('핫클립을 찾을 수 없습니다.');const item=c.comments.find(x=>x.id===commentId);if(item){item.text='삭제된 댓글입니다.';item.deleted=true;c.updatedAt=this.now();}});}
-  remove(id){const c=this.get(id);this.change(data=>{data.splice(data.findIndex(c=>c.id===id),1);});for(const ext of [c.thumbnail,c.video||c.audio?'webm':null].filter(Boolean))try{unlinkSync(this.file(id,ext));}catch(error){if(error.code!=='ENOENT')console.error('클립 미디어 정리 실패:',id);}}
+  remove(id){const c=this.get(id);this.change(data=>{data.splice(data.findIndex(c=>c.id===id),1);});for(const ext of [c.thumbnail,c.video||c.audio?'webm':null,c.voice?'voice.webm':null].filter(Boolean))try{unlinkSync(this.file(id,ext));}catch(error){if(error.code!=='ENOENT')console.error('클립 미디어 정리 실패:',id);}}
 }
 
 export class ClipFeatures {

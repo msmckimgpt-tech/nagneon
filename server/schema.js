@@ -29,6 +29,7 @@ export const Settings = z.object({
   if (!s.personas.some(p=>p.id===s.managerId && p.enabled)) ctx.addIssue({code:'custom',message:'활성 관객 중 매니저를 선택하세요.'});
 });
 export const Observation = z.object({
+  communityVotes:z.array(z.object({personaId:short(40),recommended:z.boolean()})).max(3).default([]),
   transcriptCorrections:z.array(z.object({messageId:z.string().uuid(),text:short(3000),confidence:z.number().min(0).max(1),reason:short(240)})).max(4).default([]),
   arrival:z.object({name:short(30),personality:short(1200),values:short(1000),sociability:z.number().min(0).max(1),expertise:z.number().min(0).max(1)}).nullable().default(null),
   viewerChanges:z.array(z.object({personaId:short(40),preference:short(200),nickname:z.string().max(30),reason:short(200),evidence:short(300),sociabilityDelta:z.number().min(-.05).max(.05)})).max(2).default([]),

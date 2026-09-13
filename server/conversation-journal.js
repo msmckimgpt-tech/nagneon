@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {transcriptAnomaly} from './transcript-correction.js';
 
 export const JOURNAL_LIMIT=4000, PIN_LIMIT=100;
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
@@ -43,7 +44,8 @@ export class ConversationJournal {
   }
   recall(viewerId,query='',excludeIds=[]){
     const excluded=new Set(excludeIds);let topic=query;for(const name of new Set(this.data.entries.map(e=>e.name)))if(name)topic=topic.replaceAll(name,' ');const words=terms(topic);
-    const candidates=this.data.entries.filter(e=>e.witnesses.includes(viewerId)&&!excluded.has(e.id));
+    for(const word of [...words]){const root=word.replace(/(?:빌드|조합|전략|공략)$/,'');if(root!==word&&root.length>=2&&!words.includes(root))words.push(root);}
+    const candidates=this.data.entries.filter(e=>e.witnesses.includes(viewerId)&&!excluded.has(e.id)&&!(e.transcription?.source==='microphone'&&transcriptAnomaly(e.text)));
     const frequency=new Map();const scored=candidates.map((entry,index)=>{
       if(!this.normalized.has(entry.id))this.normalized.set(entry.id,normalize(memoryText(entry)));
       const text=this.normalized.get(entry.id),hits=words.flatMap(word=>{
@@ -56,6 +58,11 @@ export class ConversationJournal {
     });
     for(const row of scored)row.relevance=row.hits.reduce((n,h)=>n+h.match*Math.log(1+candidates.length/(1+frequency.get(h.word))),0);
     const selected=new Map();const take=(rows,max)=>{for(const row of rows.slice(0,max))selected.set(row.entry.id,row.entry);};
+    if(/누구|누가|어느\s*분/.test(query)&&/추천|한\s*표|골라|고르/.test(query)){
+      // Return the witnessed recommendation itself, before later commentary
+      // about the resulting build. This is still a quote, not a decision fact.
+      take(scored.filter(r=>!r.entry.fictional&&r.entry.personaId!=='streamer'&&/추천|한\s*표|저라면/.test(r.entry.text)&&r.hits.some(h=>!/(?:추천|누구|누가|주신|있었|골라|고르)/.test(h.word))).sort((a,b)=>b.relevance-a.relevance||a.index-b.index),2);
+    }
     take(scored.filter(r=>r.relevance>0&&r.entry.personaId===viewerId).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),2);
     // An old pinned promise must not outlive an explicit later cancellation.
     take(scored.filter(r=>r.entry.personaId==='streamer'&&/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(r.entry.text)).reverse(),2);
