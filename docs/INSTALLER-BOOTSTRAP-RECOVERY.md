@@ -17,7 +17,7 @@
 
 ## 검증
 
-작업 브랜치 `codex/installer-bootstrap-recovery`, 시작 커밋 `2a5085f6b0588ff765c85c97e00e4507668cd9c0`. 개발 경로는 `G:/dev/ai/00_game_backseat-worktrees/installer-bootstrap-recovery`이며 아래 증거 경로는 이 폴더 기준이다. 의존성은 이 worktree에서 `npm ci`로 설치했다. 별도의 기존 통합 worktree `live-capture-integration`에서 통합 후 필수 검사를 수행한다.
+작업 브랜치 `codex/installer-bootstrap-recovery`, 시작 커밋 `2a5085f6b0588ff765c85c97e00e4507668cd9c0`. 개발 경로는 `G:/dev/ai/00_game_backseat-worktrees/installer-bootstrap-recovery`이며 아래 증거 경로는 이 폴더 기준이다. 의존성은 이 worktree에서 `npm ci`로 설치했다. 별도의 기존 통합 worktree `live-capture-integration`에서 커밋 `78b19d47263592a9c025e3e40fea75c6eb453842`를 검증하고, 통합 잠금·main/원격/인덱스 확인 후 main에 fast-forward했다. 푸시는 하지 않았다.
 
 | 검사 | 결과와 증거 |
 | --- | --- |
@@ -27,6 +27,7 @@
 | 보존 검사 | 거부한 각 파일의 전후 SHA256 일치, 추가 메타데이터 없음, 빈 사용자 폴더와 junction 및 대상 보존 |
 | 배포 엔진 컴파일 | Windows x64/GUI subsystem 컴파일 코드0. 실행하지 않음. `artifacts/installer-bootstrap-engine/result.json`, `compiler-result.json`, `compiler.log` |
 | 앱 필수 검사 | `npm run check`: **276 통과/0 실패**, TypeScript/Vite 빌드 성공. `artifacts/installer-bootstrap-check-final.log` |
+| 최종 통합 검사 | 동일 커밋의 앱 **276개**와 빌드, 엔진 **140개** 통과. 통합 worktree의 `artifacts/installer-bootstrap-integration-final-check.log`, `installer-bootstrap-integration-final-unit.log`; 개발 worktree의 `artifacts/installer-bootstrap-integration-final-result.json` |
 
 엔진과 단위 검사 컴파일은 C# 원본 해시를 실행 전후 비교한다. 새 단위 검사는 실제 `Engine.EnsureOwnedOrClaimable`과 `StateStore`를 호출한다. 하위 프로세스는 자체 시험 바이너리 옆의 고정 fixture 경로에만 쓰며 `Engine.Install/Recover` 전체 흐름은 호출하지 않는다. HKCU·시작 메뉴·사용자 프로필·실제 장치는 변경하지 않았다.
 
@@ -35,6 +36,8 @@
 해당 시험은 HTTP 조기 응답/통신 실패를 즉시 관찰하고, 단계별 제한 시간과 실패 시 정리를 갖추도록 보완했다. 합성 통신 오류를 주입한 실행은 약 1.6초 안에 코드1과 정확한 `SYNTHETIC_LOCAL_AUDIO_TRANSPORT_FAILURE`로 종료했다(`speech-transport-failure-injection.log`). 실패를 재시도하거나 통과 처리하지 않는다. 이후 전체 검사가 통과했으며 음성 제품 코드 변경은 없다.
 
 첫 통합 검사에서는 별개의 대화 문맥 시험이 대상 관객의 무작위 이탈로 실패했다. `Studio.random`만 고정되고 `Audience.random`은 고정되지 않은 시험 구성의 문제였다. 전역 난수를 0으로 강제한 별도 시험 프로세스에서 동일 실패를 재현하고, 해당 문맥 시험에만 난수가 고정된 `Audience`를 주입했다. 제품의 참여/이탈 확률이나 검증 단언은 변경하지 않았다. `conversation-random-before-fix.log`와 `conversation-random-after-fix.log`, 통합 worktree의 `installer-bootstrap-integration-check.log`에 근거를 보존한다.
+
+검증된 소스와 컴파일 파일, 성공·실패 원본 기록은 `artifacts/installer-bootstrap-evidence/manifest.json`에 SHA256과 함께 별도 보존한다. 사용자 대화나 원본 장치 캡처는 이 증거 묶음에 포함하지 않는다. 현재 전체 앱 폴더 배포본은 그대로이며, 새 엔진을 담은 NSIS 배포본을 만들거나 실행하지 않았다.
 
 ## 남은 수용 기준
 
