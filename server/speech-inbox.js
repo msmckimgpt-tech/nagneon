@@ -10,12 +10,23 @@ export class SpeechInbox {
     if(this.pending.length>=40)throw new Error('아직 답하지 못한 말이 많이 밀렸어요. 잠시 후 다시 전달해주세요.');
     if(this.receipts.size>=20000)throw new Error('이번 방송의 발언 보관 한도에 도달했습니다. 방송을 마친 뒤 새로 시작해주세요.');
     const message=publish();
-    this.receipts.set(id,{fingerprint,messageId:message.id});this.pending.push({id,text,messageId:message.id,source,...(capture?{capture:{...capture},hearers:[...hearers]}:{})});
+    this.receipts.set(id,{fingerprint,messageId:message.id});this.pending.push({id,text,messageId:message.id,source,hearers:[...hearers],...(capture?{capture:{...capture}}:{})});
     return {messageId:message.id,duplicate:false};
   }
-  batch(){const items=[];let size=0;for(const item of this.pending){const next=item.text.length+(items.length?1:0);if(size+next>3000)break;size+=next;items.push(item);}return {text:items.map(e=>e.text).join('\n'),ids:items.map(e=>e.id)};}
+  batch(){
+    const items=[];let size=0,audience;
+    for(const item of this.pending){
+      const key=JSON.stringify([...item.hearers].sort()),next=item.text.length+(items.length?1:0);
+      // Keep arrival boundaries between utterances. A later question for a
+      // returnee must not be lost merely because an older question is pending.
+      if(size+next>3000||(items.length&&key!==audience))break;
+      audience=key;size+=next;items.push(item);
+    }
+    return {text:items.map(e=>e.text).join('\n'),ids:items.map(e=>e.id)};
+  }
   acknowledge(ids){const done=new Set(ids);this.pending=this.pending.filter(e=>!done.has(e.id));}
-  sources(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)).map(({messageId,text,source,capture,hearers})=>({messageId,text,source,...(capture?{capture:{...capture},hearers:[...hearers]}:{})}));}
+  sources(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)).map(({messageId,text,source,capture,hearers})=>({messageId,text,source,hearers:[...hearers],...(capture?{capture:{...capture}}:{})}));}
+  hearers(ids){const requested=new Set(ids),items=this.pending.filter(e=>requested.has(e.id));return items.length?items[0].hearers.filter(id=>items.every(e=>e.hearers.includes(id))):[];}
   candidates(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)&&e.source==='microphone'&&!e.corrected).slice(0,4).map(e=>({messageId:e.messageId,text:e.text}));}
   annotate(messageId,text){const entry=this.pending.find(e=>e.messageId===messageId);if(entry){entry.text=text;entry.corrected=true;}}
   forget(messageId){this.pending=this.pending.filter(e=>e.messageId!==messageId);}

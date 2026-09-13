@@ -23,6 +23,7 @@ import {ViewingContinuity,SCREEN_REACTION_TTL_MS} from './viewing-continuity.js'
 import {donationMessage} from './chat-attention.js';
 import {temporalVideo} from './temporal-video.js';
 import {VIDEO_REACTION_TTL_MS} from '../shared/temporal-policy.js';
+import {sameViewingVisit,retainPresentReactions} from './live-presence.js';
 
 export class Studio extends EventEmitter {
   constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
@@ -50,8 +51,8 @@ export class Studio extends EventEmitter {
   receiveSpeech({id,sessionId,text,source='keyboard',capture}){
     if(!this.running||sessionId!==this.sessionId)throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
     if(capture&&(source!=='microphone'||!Number.isFinite(capture.startedAt)||!Number.isFinite(capture.endedAt)||capture.startedAt<this.startedAt-2000||capture.endedAt>this.now()+2000||capture.endedAt<=capture.startedAt||capture.endedAt-capture.startedAt>15000))throw new Error('발언을 녹음한 시각을 확인하세요.');
-    const hearers=capture?this.presentWitnesses().filter(id=>this.audience.data.members[id]?.joinedAt<=capture.startedAt):[];
-    const result=this.speechInbox.receive(id,text,()=>this.publishMessage({...this.prepareMessage('streamer',text,'streamer'),...(source==='microphone'?{transcription:{source:'microphone'}}:{})}),source,capture,hearers);
+    const hearers=this.presentWitnesses().filter(id=>!capture||this.audience.data.members[id]?.joinedAt<=capture.startedAt);
+    const result=this.speechInbox.receive(id,text,()=>this.publishMessage({...this.prepareMessage('streamer',text,'streamer'),...(source==='microphone'?{transcription:{source:'microphone'}}:{})},{witnesses:hearers}),source,capture,hearers);
     if(!result.duplicate){
       this.queue=this.queue.filter(m=>m.origin!=='live');
       // A screen-only analysis should yield to the person speaking. The live
@@ -99,10 +100,10 @@ export class Studio extends EventEmitter {
     const p=this.settings.personas.find(p=>p.id===personaId);
     return {id:randomUUID(),personaId,name:p?.name || this.settings.streamer,color:p?.color || '#ffffff',text,kind,time:this.now(),...((this.director.active||this.seasons.active)?{fictional:true}:{})};
   }
-  publishMessage(msg){
+  publishMessage(msg,{witnesses=this.presentWitnesses()}={}){
     this.seasons.record(msg);this.messages.push(msg);
     const directed=this.director.context()||this.seasons.context();
-    if(this.running&&this.settings.mode==='live')try{this.journal.record(msg,{sessionId:this.sessionId,witnesses:this.presentWitnesses(),title:directed?.title||this.settings.title});}catch(error){this.log(`대화 기억 보관 실패: ${error.message}`);this.lastError='대화는 표시됐지만 기억에 보관하지 못했습니다. '+error.message;}
+    if(this.running&&this.settings.mode==='live')try{this.journal.record(msg,{sessionId:this.sessionId,witnesses,title:directed?.title||this.settings.title});}catch(error){this.log(`대화 기억 보관 실패: ${error.message}`);this.lastError='대화는 표시됐지만 기억에 보관하지 못했습니다. '+error.message;}
     if(this.settings.mode==='live')try{this.audience.message(msg.personaId,directed?`[가상 기획 방송: ${directed.title}] ${msg.text}`:msg.text,this.settings);}catch(error){this.log(`관객 기억 저장 실패: ${error.message}`);this.lastError=error.message;}
     this.director.record(msg);this.messages=this.messages.slice(-500);this.publish();return msg;
   }
@@ -115,8 +116,8 @@ export class Studio extends EventEmitter {
       const next={...this.settings,personas:this.settings.personas.map(p=>p.id===id?{...p,enabled:action==='unban'}:p)};
       this.persist(next);this.settings=next;this.queue=this.queue.filter(m=>m.personaId!==id);this.log(`${p.name} ${action==='ban'?'차단':'차단 해제'}`);
       if(this.running&&this.settings.mode==='live'){
-        if(action==='ban')this.audience.presence[id]='away';
-        else if(this.audience.data.members[id]?.joinedAt>=this.startedAt)this.audience.presence[id]='active';
+        if(action==='ban')this.audience.setPresence(id,'away',this.now());
+        else if(this.audience.data.members[id]?.joinedAt>=this.startedAt)this.audience.setPresence(id,'active',this.now());
         else if(this.autonomy)this.audience.presence[id]='away';
         else if(this.settings.discovery.enabled)this.audience.presence[id]='waiting';
         else this.log(this.audience.join(p,this.settings,this.now()));
@@ -124,7 +125,7 @@ export class Studio extends EventEmitter {
     }
     if(action==='clear'){this.journal.forget(this.messages.map(m=>m.id));this.speechInbox.clear();this.messages=[];this.queue=[];this.log('채팅 비우기');}this.publish();
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId}={}){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:{positive:obs.positiveMoment.positive,impact:obs.positiveMoment.impact},at:observedAt};
     let delay=0;
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
@@ -135,16 +136,16 @@ export class Studio extends EventEmitter {
       const duplicate=origin==='live'?repeatedChat(m,recent,this.now()):recent.some(x=>x.text===m.text);
       if(!p || blocked || duplicate || (m.spoiler&&this.settings.spoilerGuard)){if(p&&!duplicate)this.log(`매니저: ${p.name} 메시지 보류`);continue;}
       delay+=600+this.random()*1600;
-      this.queue.push({...m,origin,chatDriven,...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.queue.push({...m,origin,chatDriven,...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
-  tickAudience(){if(this.settings.mode!=='live')return;const events=this.audience.tick(this.settings,this.now(),this.observation?.excitement || 0);if(events.length){events.forEach(e=>this.log(e));this.publish();}try{this.autonomy?.tick();}catch(error){this.lastError=error.message;}}
+  tickAudience(){if(this.settings.mode!=='live')return;const before=this.audience.presenceRevision,events=this.audience.tick(this.settings,this.now(),this.observation?.excitement || 0);events.forEach(e=>this.log(e));if(events.length||before!==this.audience.presenceRevision)this.publish();try{this.autonomy?.tick();}catch(error){this.lastError=error.message;}}
   startTraining(id){if(this.running||this.busy)throw new Error('방송과 관객 응답을 종료한 뒤 연습하세요.');this.training.start(id,this.settings.personas.filter(p=>p.id!==this.settings.managerId));this.trainingMessages=[];this.pump();this.publish();return this.state().training;}
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
   pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
-    const count=this.queue.length;this.queue=this.queue.filter(m=>m.origin!=='live'||!Number.isFinite(m.expiresAt)||now<m.expiresAt);if(this.queue.length!==count)this.publish();
+    const count=this.queue.length;this.queue=this.queue.filter(m=>m.origin!=='live'||((!Number.isFinite(m.expiresAt)||now<m.expiresAt)&&(this.settings.mode!=='live'||sameViewingVisit(this.audience,m.personaId,m.viewingVisit))));if(this.queue.length!==count)this.publish();
     const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled))return;this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.chatDriven?{chatDriven:true}:{})});}catch(error){this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
@@ -157,6 +158,7 @@ export class Studio extends EventEmitter {
     if(!this.running)throw new Error('방송을 먼저 시작하세요.');if(this.busy)return {skipped:'busy'};
     if(this.autonomy?.waiting)return {skipped:'audience-arrival'};
     const speechBatch=speech?{text:speech,ids:[]}:this.speechInbox.batch();speech=speechBatch.text;
+    const speechHearers=speechBatch.ids.length?this.speechInbox.hearers(speechBatch.ids):null;
     if(this.now()<this.retryAt)return {skipped:'backoff'};
     if(this.now()-Math.max(this.lastRequest,this.viewing.checkedAt)<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
@@ -200,10 +202,11 @@ export class Studio extends EventEmitter {
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
         const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
-        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0);
+        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers});
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
-        const witnesses=this.presentWitnesses(),capturedAt=this.lastRequest;
+        const witnesses=this.presentWitnesses().filter(id=>!speechHearers||speechHearers.includes(id)),capturedAt=this.lastRequest;
+        const visits=new Map(eligiblePersonas.map(p=>[p.id,this.audience.data.members[p.id]?.joinedAt]));
         const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,screenTimeline?.sourceChanged?null:this.observation,{journal:this.journal,clips:this.clips,speech,sound:this.sound,now:capturedAt,viewing});
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
@@ -214,17 +217,18 @@ export class Studio extends EventEmitter {
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
         const visualExpiresAt=screenTimeline?screenTimeline.through+VIDEO_REACTION_TTL_MS:capturedAt+SCREEN_REACTION_TTL_MS;
         if(screenTimeline&&!operation.hasSpeech&&this.now()>=visualExpiresAt){this.viewing.acknowledge(viewing);this.observation=null;this.knowledge.lastSeen=null;return {skipped:'stale-screen'};}
+        const observation=directed?result.observation:retainPresentReactions(result.observation,visits,this.audience);
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
         const chatDriven=!speech.trim()&&!directed&&this.viewing.sameExternalInput(viewing);
-        this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',{chatDriven,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
-        const donations=this.economy.reward({observation:result.observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
+        this.accept({...observation,messages:observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',{chatDriven,visits,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
+        const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
         for(const d of donations)this.publishMessage(donationMessage(d));
         if(this.autonomy&&!directed){
           const clipSpeech=this.speechInbox.sources(speechBatch.ids);
-          try{this.autonomy.evolve(result.observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(result.observation,{image,speech:speechBatch.ids.length?clipSpeech.map(e=>e.text).join('\n'):speech,witnesses,capturedAt,liveSpeech:clipSpeech,heardByViewer:Object.fromEntries(Object.entries(personalContext.viewerContext).map(([id,p])=>[id,p.heardSounds]))});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
+          try{this.autonomy.evolve(observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(observation,{image,speech:speechBatch.ids.length?clipSpeech.map(e=>e.text).join('\n'):speech,witnesses,capturedAt,liveSpeech:clipSpeech,heardByViewer:Object.fromEntries(Object.entries(personalContext.viewerContext).map(([id,p])=>[id,p.heardSounds]))});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
         }
-        if(!this.autonomy&&!directed&&this.settings.autoHighlights&&result.observation.positiveMoment?.positive&&result.observation.positiveMoment.impact>=.8&&result.observation.confidence>=.75&&result.observation.excitement>=.8){
+        if(!this.autonomy&&!directed&&this.settings.autoHighlights&&observation.positiveMoment?.positive&&observation.positiveMoment.impact>=.8&&observation.confidence>=.75&&observation.excitement>=.8){
           try{this.clips.create({game:result.observation.game,scene:result.observation.scene,title:result.observation.positiveMoment.reason,participants:this.settings.personas.filter(p=>['active','lurking'].includes(this.audience.presence[p.id])).map(p=>({id:p.id,name:p.name})),messages:this.messages,image,sessionId:this.sessionId,source:'automatic-moment',startedAt:this.startedAt,signature:result.observation.positiveMoment.signature,observedAt:this.lastRequest});this.publish();}catch(error){this.log(`자동 핫클립 저장 보류: ${error.message}`);}
         }
         if(!directed&&this.settings.category!=='just-chatting'&&image&&result.observation.confidence>=0.7){this.knowledge.observe(game.id==='auto'?result.observation.game:game.name,result.observation.scene,capturedAt,game.popularity,witnesses);this.publish();}

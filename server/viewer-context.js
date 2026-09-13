@@ -56,9 +56,12 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Packets still share one model call; this is provenance, not secret isolation.
 export function liveViewerContext(audience,personas,history,previous,{journal,clips,speech='',sound,now=Date.now(),viewing}={}){
   const packets={};
+  // Recognition may finish after somebody returns. Its chat timestamp alone
+  // does not mean they heard that microphone segment while they were away.
+  const microphoneWitnesses=journal?new Map(journal.data.entries.filter(e=>e.transcription?.source==='microphone').map(e=>[e.id,new Set(e.witnesses)])):null;
   for(const p of personas){
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
-    const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now):[];
+    const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now&&(m.transcription?.source!=='microphone'||!microphoneWitnesses||microphoneWitnesses.get(m.id)?.has(p.id))):[];
     packets[p.id]={
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       // recall already selects only this stable ID's witnesses. A new entry

@@ -2,7 +2,18 @@ import profiles from '../shared/discovery.json' with {type:'json'};
 
 /** Research-inspired simulation. Probabilities are product choices, not measured conversion rates. */
 export class Audience {
-  constructor(data={members:{},lore:[],posts:[]},save=()=>{},random=Math.random){this.data=data;this.save=save;this.random=random;this.presence={};this.lastTick=0;this.lastPresence=0;this.nextArrival=0;this.lastStart=0;}
+  constructor(data={members:{},lore:[],posts:[]},save=()=>{},random=Math.random){this.data=data;this.save=save;this.random=random;this.presence={};this.presenceRevision=0;this.lastTick=0;this.lastPresence=0;this.nextArrival=0;this.lastStart=0;}
+  setPresence(id,next,now){
+    const before=this.presence[id];if(before===next)return;
+    const member=this.data.members[id];
+    if(member&&['active','lurking'].includes(next)&&!['active','lurking'].includes(before)){
+      // Returning within a broadcast starts a new observation interval, not a
+      // second broadcast visit. Known viewers can also arrive after its opening.
+      if(!(member.joinedAt>=this.lastStart))member.sessions++;
+      member.joinedAt=now;
+    }
+    this.presence[id]=next;this.presenceRevision++;
+  }
   chooseOrigin(settings,now){
     const entries=Object.entries(settings.discovery.mix).filter(([,w])=>w>0);
     let pick=this.random()*entries.reduce((sum,[,w])=>sum+w,0);
@@ -14,7 +25,7 @@ export class Audience {
     const m=this.data.members[p.id];const first=m.sessions===0;
     if(!m.origin)m.origin=first&&settings.discovery.enabled&&p.id!==settings.managerId?this.chooseOrigin(settings,now):{key:'direct',label:'직접 초대 · 기존 관객',firstSeenAt:now};
     m.sessions++;m.joinedAt=now;
-    this.presence[p.id]=p.id===settings.managerId?'active':this.random()<settings.lurkRatio?'lurking':'active';
+    this.setPresence(p.id,p.id===settings.managerId?'active':this.random()<settings.lurkRatio?'lurking':'active',now);
     return `${p.name} ${first?'첫 방문':'재방문'}${this.autonomous?'':` · ${m.origin.label}`}`;
   }
   start(settings,now){
@@ -46,13 +57,13 @@ export class Audience {
     const dt=Math.min(60,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;const events=[];
     const changePresence=now-this.lastPresence>=10000;if(changePresence)this.lastPresence=now;
     for(const p of settings.personas){
-      if(!p.enabled){this.presence[p.id]='away';continue;}const m=this.data.members[p.id];if(!m)continue;
+      if(!p.enabled){this.setPresence(p.id,'away',now);continue;}const m=this.data.members[p.id];if(!m)continue;
       const present=['active','lurking'].includes(this.presence[p.id]);if(present)m.seconds+=dt;
-      if(p.id===settings.managerId){this.presence[p.id]='active';continue;}
+      if(p.id===settings.managerId){this.setPresence(p.id,'active',now);continue;}
       if(this.presence[p.id]==='waiting')continue;
       if(changePresence){
-        if(excitement>0.75&&present&&this.random()<0.4)this.presence[p.id]='active';
-        else if(this.random()<0.08)this.presence[p.id]=this.random()<settings.lurkRatio?'lurking':this.random()<0.12?'away':'active';
+        if(excitement>0.75&&present&&this.random()<0.4)this.setPresence(p.id,'active',now);
+        else if(this.random()<0.08)this.setPresence(p.id,this.random()<settings.lurkRatio?'lurking':this.random()<0.12?'away':'active',now);
       }
     }
     if(!this.autonomous&&settings.discovery.enabled&&now>=this.nextArrival){
@@ -63,10 +74,11 @@ export class Audience {
     }
     return events;
   }
-  context(settings,speech='',excitement=0){
+  context(settings,speech='',excitement=0,{hearers=null}={}){
     const candidates=[];
     for(const p of settings.personas.filter(p=>p.enabled)){
-      const member=this.data.members[p.id];const named=speech.includes(p.name)&&this.presence[p.id]!=='waiting'&&member?.joinedAt>=this.lastStart;
+      if(hearers&&!hearers.includes(p.id))continue;
+      const member=this.data.members[p.id];const named=speech.includes(p.name)&&['active','lurking'].includes(this.presence[p.id])&&member?.joinedAt>=this.lastStart;
       if(named){this.presence[p.id]='active';member.recognized++;member.affinity=Math.min(1,member.affinity+0.025);}
       const interest=profiles[member?.origin?.key];
       if(this.presence[p.id]==='active')candidates.push({id:p.id,score:this.random()+(p.sociability??0.6)*0.4+(interest?.sociability??0.5)*0.15+(named?2:0)+(p.id===settings.managerId?-0.4:0)});
