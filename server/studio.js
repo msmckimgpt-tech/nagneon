@@ -22,6 +22,7 @@ import {admitTranscriptCorrection,transcriptAnomaly} from './transcript-correcti
 import {revisesLiveSituation} from './streamer-expression.js';
 import {Community} from './community.js';
 import {CommunityActivity} from './community-activity.js';
+import {ClipPerception} from './clip-perception.js';
 import {ViewingContinuity,SCREEN_REACTION_TTL_MS} from './viewing-continuity.js';
 import {donationMessage} from './chat-attention.js';
 import {temporalVideo} from './temporal-video.js';
@@ -29,7 +30,7 @@ import {VIDEO_REACTION_TTL_MS} from '../shared/temporal-policy.js';
 import {sameViewingVisit,retainPresentReactions} from './live-presence.js';
 
 export class Studio extends EventEmitter {
-  constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
+  constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,clipPerception,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
     super();this.provider=provider;this.settings=Settings.parse(settings);this.persist=persist;this.now=now;this.random=random;
     this.storageStatus=storageStatus;this.audience=audience;this.journal=journal;this.knowledge=knowledge;this.running=false;this.messages=[];this.events=[];this.queue=[];this.controller=new AbortController();this.epoch=0;
     this.economy=economy || new Economy(undefined,()=>{},now);this.economy.ensureWallets(this.settings.personas);this.special=new SpecialFeatures(this);
@@ -39,6 +40,7 @@ export class Studio extends EventEmitter {
     this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);this.community=new Community(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
     this.communityActivity=new CommunityActivity(this);
+    this.clipPerception=clipPerception||new ClipPerception();
   }
   resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   endVideo({sessionId,sourceId}){
@@ -100,7 +102,7 @@ export class Studio extends EventEmitter {
     try{this.director.finish('interrupted');}catch(error){this.log(`기획 방송 기록 저장 실패: ${error.message}`);this.director.active=null;this.director.serial++;}
     this.log('방송 종료 · 대기 반응 취소');this.publish();
   }
-  close(){this.communityActivity.close();this.stop();clearInterval(this.timer);}
+  close(){this.communityActivity.close();void this.clipPerception.close();this.stop();clearInterval(this.timer);}
   prepareMessage(personaId,text,kind='chat') {
     const p=this.settings.personas.find(p=>p.id===personaId);
     return {id:randomUUID(),personaId,name:p?.name || this.settings.streamer,color:p?.color || '#ffffff',text,kind,time:this.now(),...((this.director.active||this.seasons.active)?{fictional:true}:{})};

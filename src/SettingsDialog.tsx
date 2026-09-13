@@ -289,7 +289,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
             <input type="checkbox" checked={draft.communityActivityEnabled!==false} onChange={e=>update('communityActivityEnabled',e.target.checked)}/>
-            <span>관객의 커뮤니티 활동 허용<small>앱이 켜져 있을 때 클립 기록과 갤러리를 읽고 댓글·추천·방송 후기를 스스로 결정해요. 방송 응답을 우선하며 자동 방문은 시간당 최대 6회, 세션 호출 한도 안에서 진행해요. 꺼 두면 방문을 쉽니다.</small></span>
+            <span>관객의 커뮤니티 활동 허용<small>앱이 켜져 있을 때 클립을 감상하거나 갤러리를 읽고 댓글·추천·방송 후기를 스스로 결정해요. 방송 응답을 우선하며 자동 방문은 시간당 최대 6회, 세션 호출 한도 안에서 진행해요. 꺼 두면 방문을 쉽니다.</small></span>
           </label>
           <label className="set-check">
             <input type="checkbox" checked={draft.pointsEnabled}

@@ -43,7 +43,7 @@ export class Clips {
   // 여러 댓글을 하나의 change()/save로 원자적으로 커밋한다. 클립 부재·부모 삭제·깊이·상한을
   // 커밋 시점에 다시 검증하므로, 하나라도 거부되거나 저장에 실패하면 전부 롤백되어
   // 부분적으로 남은 모델 댓글 묶음이 생기지 않는다.
-  commentBatch(id,items,{reading,readers=[],votes=[],activityRead}={}){
+  commentBatch(id,items,{reading,readers=[],votes=[],activityRead,mediaReading}={}){
     if(!items.length&&!reading&&!votes.length&&!activityRead)return [];
     return this.change(data=>{
       const c=data.find(c=>c.id===id);if(!c)throw new Error('핫클립을 찾을 수 없습니다.');
@@ -54,7 +54,7 @@ export class Clips {
       }
       if(reading)assertClipSnapshot(c,reading);
       const at=this.now();const created=items.map(it=>{const item={id:randomUUID(),text:it.text.trim(),name:it.name,personaId:it.personaId,parentId:it.parentId||null,kind:it.kind||'ai',at};c.comments.push(item);return item;});
-      if(reading)recordClipReading(c,reading,created,at,readers);
+      if(reading)recordClipReading(c,reading,created,at,readers,mediaReading);
       if(activityRead)recordActivityRead(c,activityRead);
       for(const vote of votes){c.votes=(c.votes||[]).filter(id=>id!==vote.personaId);if(vote.recommended)c.votes.push(vote.personaId);}
       c.updatedAt=at;return created;

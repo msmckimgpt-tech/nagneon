@@ -102,3 +102,36 @@ test('a foreground reaction waits for cancellation to settle before acquiring th
  f.s.start();f.clip();const visit=f.visit();const foreground=f.s.react({speech:'다음 방송에는 뭐 할까요?'});assert.equal(backgroundSignal.aborted,true);assert.equal(liveCalls,0);
  release(output([reply('이미 취소된 댓글')]));await visit;await foreground;assert.equal(liveCalls,1);assert.equal(f.clips.data[0].comments.length,0);assert.equal(f.s.busy,false);
 });
+
+const turn=()=>new Promise(r=>setImmediate(r));
+function recorded(f){
+ const clip=f.clip(),raw=f.clips.data.find(c=>c.id===clip.id);Object.assign(raw,{video:true,hasAudio:true,audioLayout:'mixed',videoStartedAt:f.now-3000,videoEndedAt:f.now});
+ return {frames:[{image:'data:image/jpeg;base64,AA==',at:f.now-2000}],signature:'a'.repeat(64),context:{source:'stored-clip',sampled:true,frameTimes:[f.now-2000],audio:[]}};
+}
+test('autonomous media visits pass real frame context and commit private experience with comments and votes',async t=>{
+ const f=fixture(t,async()=>({...output([reply('빨간 상자 들어갔네 ㅋㅋ')],[{personaId:'momo',recommended:true}]),observation:{...output([reply('빨간 상자 들어갔네 ㅋㅋ')],[{personaId:'momo',recommended:true}]).observation,confidence:.9,scene:'빨간 상자가 오른쪽 문으로 들어갔다'}})),media=recorded(f);let checks=0;
+ f.s.clipPerception={read:async()=>media,assertCurrent:async()=>{checks++;},close:async()=>{}};
+ await f.visit();assert.equal(f.calls,1);assert.equal(checks,1);assert.deepEqual(f.last.frames,media.frames);assert.deepEqual(f.last.special.clipMedia,media.context);
+ const c=f.clips.data[0];assert.equal(c.comments.length,1);assert.deepEqual(c.votes,['momo']);assert.equal(c.readings[0].media.scene,'빨간 상자가 오른쪽 문으로 들어갔다');assert.equal(c.activityReads.length,1);
+ assert.equal(f.clips.recall('momo','빨간',f.now)[0].encounter,'clip-media-samples');assert.equal(f.clips.get(c.id).readings,undefined);
+});
+test('decoder failure consumes a retry attempt without spending a model call or granting a read',async t=>{
+ const f=fixture(t);recorded(f);f.s.clipPerception={read:async()=>{throw Error('synthetic decoder failure');},close:async()=>{}};
+ await f.visit();assert.equal(f.calls,0);assert.equal(f.s.calls,0);assert.equal(f.clips.data[0].readings,undefined);assert.equal(f.s.audience.data.communityActivity.attempts.length,1);assert.match(f.s.communityActivity.lastError,/decoder failure/);assert.equal(f.s.busy,false);
+});
+test('live input cancels file decoding and foreground waits for its exit without spending a background call',async t=>{
+ let finish,signal,foregroundCalls=0;const f=fixture(t,async()=>{foregroundCalls++;return {observation:{messages:[],game:'Just Chatting',scene:'새 발언',confidence:1,excitement:0}};});f.s.start();const media=recorded(f);
+ f.s.clipPerception={read:(_clips,_clip,s)=>{signal=s;return new Promise(r=>finish=r);},close:async()=>{}};
+ const visiting=f.visit(),foreground=f.s.react({speech:'지금은 방송 봐주세요'});assert.equal(signal.aborted,true);assert.equal(f.calls,0);await turn();assert.equal(foregroundCalls,0);
+ finish(media);await visiting;await foreground;assert.equal(foregroundCalls,1);assert.equal(f.s.calls,1);assert.equal(f.clips.data[0].readings,undefined);assert.equal(f.clips.data[0].comments.length,0);
+});
+test('file replacement, viewer removal and cancellation during final media verification discard every effect',async t=>{
+ for(const reason of ['file','viewer','cancel']){
+  const f=fixture(t,async()=>output([reply('늦은 댓글')],[{personaId:'momo',recommended:true}])),media=recorded(f);let finish;
+  f.s.clipPerception={read:async()=>media,assertCurrent:()=>new Promise((yes,no)=>finish=()=>reason==='file'?no(Error('synthetic changed file')):yes()),close:async()=>{}};
+  const visiting=f.visit();while(!finish)await turn();
+  if(reason==='viewer')f.s.settings.personas=f.s.settings.personas.filter(p=>p.id!=='momo');
+  if(reason==='cancel')f.s.communityActivity.interrupt();finish();await visiting;
+  const c=f.clips.data[0];assert.equal(f.calls,1);assert.equal(c.comments.length,0);assert.equal(c.votes,undefined);assert.equal(c.readings,undefined);assert.equal(c.activityReads,undefined);
+ }
+});

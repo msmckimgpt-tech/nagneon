@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {ArrivalClipReading} from './arrival-clip-memory.js';
+import {ClipMediaReading} from './clip-media-context.js';
 import {GalleryPost} from './community.js';
 import {ActivityReads,CommunityActivityData} from './community-activity-state.js';
 const number=z.number().finite().nonnegative(),time=number.max(8.64e15),id=z.string().min(1).max(100),text=z.string();
@@ -19,7 +20,7 @@ export const EconomyData=obj({version:z.literal(1),balance:number.int(),wallets:
 });
 const comment=obj({id,name:text,personaId:id,text,parentId:id.nullable(),at:time,kind:text,deleted:z.boolean().optional()});
 const clipSourceRef=z.object({id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
-const clipReading=z.object({viewerId:actor,readAt:time,metadataHash:z.string().regex(/^[a-f0-9]{64}$/),messages:z.array(clipSourceRef).max(25),comments:z.array(clipSourceRef).max(150)}).strict();
+const clipReading=z.object({media:ClipMediaReading.optional(),viewerId:actor,readAt:time,metadataHash:z.string().regex(/^[a-f0-9]{64}$/),messages:z.array(clipSourceRef).max(25),comments:z.array(clipSourceRef).max(150)}).strict();
 export const ClipsData=z.array(obj({activityReads:ActivityReads.optional(),votes:z.array(actor).max(150).refine(v=>new Set(v).size===v.length).optional(),id:z.string().uuid(),title:text,game:text,day:text,participants:z.array(obj({id,name:text})),sessionId:id,createdAt:time,updatedAt:time,scene:text,source:text,comments:z.array(comment),messages:z.array(message),readings:z.array(clipReading).max(150).optional(),video:z.boolean(),audio:z.boolean().optional().default(false),audioEligible:z.boolean().optional().default(false),audioStartedAt:time.optional(),audioEndedAt:time.optional(),thumbnail:z.enum(['png','jpg']).nullable()})).superRefine((clips,ctx)=>{
   if(new Set(clips.map(c=>c.id)).size!==clips.length)ctx.addIssue({code:'custom',message:'중복된 핫클립 ID입니다.'});
   for(const c of clips){

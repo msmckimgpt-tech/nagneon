@@ -30,7 +30,7 @@ test('complete weights missing the discovery marker are repaired; linked targets
 });
 test('packaged microphone uses the accurate model while system sound retains small',async t=>{
   const {root}=await fixture(t);
-  for(const file of ['codex/bin/codex.exe','speech/python/python.exe','speech/speech_worker.py','speech/clip_inspector.py','speech/model/model.bin','sound/sound_worker.py','sound/model/yamnet.onnx']){await mkdir(join(root,file,'..'),{recursive:true});await writeFile(join(root,file),'fixture');}
+  for(const file of ['codex/bin/codex.exe','speech/python/python.exe','speech/speech_worker.py','speech/clip_inspector.py','speech/clip_perception.py','speech/model/model.bin','sound/sound_worker.py','sound/model/yamnet.onnx']){await mkdir(join(root,file,'..'),{recursive:true});await writeFile(join(root,file),'fixture');}
   let runtime=packagedRuntime(root);assert.equal(runtime.speech.model,join(root,'speech/model'));assert.equal(runtime.speech.modelName,'small');
   const accurate=join(root,'speech/microphone-model');await mkdir(accurate);await writeFile(join(accurate,'manifest.json'),'{}');
   assert.throws(()=>packagedRuntime(root),/실행 파일/);

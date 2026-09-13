@@ -13,7 +13,7 @@ export function communityRevision(kind,raw,viewerId,cache=new Map()){
   if(!entry){
     const value=kind==='clip'?clipTextSnapshot(raw):publicPost(raw);
     const {votes,updatedAt,comments=[],...content}=value;
-    entry={content:hash({...content,...(kind==='clip'?{video:raw.video,audio:raw.audio,voice:raw.voice}: {})}),comments:comments.filter(c=>!c.deleted).map(c=>({personaId:c.personaId,hash:hash(c)}))};cache.set(raw,entry);
+    entry={content:hash({...content,...(kind==='clip'?{video:raw.video,audio:raw.audio,voice:raw.voice,...(raw.video||raw.audio?{perceptionVersion:1}: {})}: {})}),comments:comments.filter(c=>!c.deleted).map(c=>({personaId:c.personaId,hash:hash(c)}))};cache.set(raw,entry);
   }
   return hash({content:entry.content,comments:entry.comments.filter(c=>c.personaId!==viewerId).map(c=>c.hash)});
 }
@@ -72,16 +72,21 @@ export class CommunityActivity {
     const now=s.now();
     // Save before spending; interruption consumes the attempt but creates no read.
     this.change(data=>{data.clock=Math.max(data.clock,now);data.nextAt=now+240000+s.random()*240000;data.attempts=data.attempts.filter(a=>now-a.at<604800000).slice(-299);data.attempts.push({kind,id,viewerId:viewer.id,revision,at:now});});
-    s.reserveCall();s.busy=true;this.lastError='';s.publish();
+    s.busy=true;this.lastError='';s.publish();
     const raw=structuredClone(target.raw),post=kind==='gallery'?publicPost(raw):null,reading=kind==='clip'?clipTextSnapshot(raw):null;
+    const media=kind==='clip'&&(raw.video||raw.audio)?await s.clipPerception.read(s.clips,raw,signal):null;
+    if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;
+    s.reserveCall();
     const comments=reading?.comments||post?.comments?.filter(c=>!c.deleted)||[];
     const member=s.audience.data.members[viewer.id];
     const history=kind==='review'?raw.map(e=>clipMessage({...e,time:e.at})):reading?.messages||[];
     const special={kind:kind==='clip'?'clip-comment':kind==='gallery'?'gallery-comment':'community-review',automatic:true,post,clip:reading,
       instruction:'관객이 스스로 들른 가상 커뮤니티다. 내용을 읽고 본인 취향에 따라 아무것도 쓰지 않거나 짧은 댓글 하나만 쓴다. 침묵도 정상이며 억지 칭찬이나 질문으로 끝내지 않는다. communityVotes는 글/클립 추천 여부이며 댓글과 독립적으로 판단한다. 답글이면 messages의 replyTo에 제공된 댓글 id를 지정하고 새 댓글/후기는 null이다. 읽지 않은 댓글이나 과거 방송을 안다고 지어내지 않는다. 후기는 history에 실제 목격한 대화만 있으며 분석 보고서 대신 한국어 갤러리의 편한 말투로 쓴다. 클립은 현재 제공된 캡션과 채팅 기록을 읽으며 영상이나 소리를 재생했다고 주장하지 않는다. 외부 웹사이트에 글을 썼다고 말하지 않는다.'};
-    const result=await s.provider.react({settings:{...s.settings,personas:[viewer],chatPace:1,webSearch:false},history:history.map(({at,...m})=>({...m,time:at})),previous:reading?{game:reading.game,scene:reading.scene}:null,speech:'',offStream:true,special,audience:{members:[{...member,id:viewer.id,name:viewer.name,attended:!!raw.participants?.some(p=>p.id===viewer.id)}]}},signal);
+    if(media){special.clipMedia=media.context;special.instruction=special.instruction.replace('클립은 현재 제공된 캡션과 채팅 기록을 읽으며 영상이나 소리를 재생했다고 주장하지 않는다.','클립은 clipMedia에 담긴 실제 시간순 장면과 소리 인식 결과를 참고해 감상한다.');}
+    const result=await s.provider.react({settings:{...s.settings,personas:[viewer],chatPace:1,webSearch:false},history:history.map(({at,...m})=>({...m,time:at})),previous:reading?{game:reading.game,scene:reading.scene}:null,frames:media?.frames||[],speech:'',offStream:true,special,audience:{members:[{...member,id:viewer.id,name:viewer.name,attended:kind==='review'||!!raw.participants?.some(p=>p.id===viewer.id)}]}},signal);
     if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;
     s.tokens+=Number(result.usage?.total_tokens)||0;
+    if(media){await s.clipPerception.assertCurrent(s.clips,id,media,signal);if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;}
     const current=s.settings.personas.find(p=>p.id===viewer.id&&p.enabled&&!p.system);if(!current||!s.audience.data.members[viewer.id]?.sessions)return;
     let m=result.observation.messages.find(m=>m.personaId===viewer.id&&validText(s,m));
     let parentId=m?.replyTo||null;
@@ -90,7 +95,7 @@ export class CommunityActivity {
     const vote=result.observation.communityVotes?.find(v=>v.personaId===viewer.id);
     const read={viewerId:viewer.id,revision,at:s.now()};
     if(kind==='clip'){
-      this.s.clips.commentBatch(id,m?[{text:m.text,name:current.name,personaId:viewer.id,parentId,kind:'ai'}]:[],{reading,readers:[viewer.id],activityRead:read,votes:vote?[vote]:[]});
+      this.s.clips.commentBatch(id,m?[{text:m.text,name:current.name,personaId:viewer.id,parentId,kind:'ai'}]:[],{reading,readers:[viewer.id],activityRead:read,votes:vote?[vote]:[],mediaReading:media?{version:1,signature:media.signature,readAt:s.now(),frameTimes:media.context.frameTimes,audio:media.context.audio,scene:result.observation.confidence>=.5?result.observation.scene:''}:undefined});
     }else if(kind==='gallery'){
       s.community.addComments(id,m?[{text:m.text,name:current.name,personaId:viewer.id,parentId,kind:'ai'}]:[],JSON.stringify(post),vote?[vote]:[],read);
     }else{

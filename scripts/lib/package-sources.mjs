@@ -5,7 +5,7 @@ import {extractFile,listPackage} from '@electron/asar';
 import {defaultSanitizePackageJson} from '@electron/packager';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const roots={desktop:/\.cjs$/,server:/\.js$/,shared:/\.(js|json)$/,dist:/\.(html|js|css|svg|png|woff2?)$/};
-const workers={'scripts/speech_worker.py':'speech/speech_worker.py','scripts/sound_worker.py':'sound/sound_worker.py','scripts/clip_inspector.py':'speech/clip_inspector.py'};
+const workers={'scripts/clip_perception.py':'speech/clip_perception.py','scripts/speech_worker.py':'speech/speech_worker.py','scripts/sound_worker.py':'sound/sound_worker.py','scripts/clip_inspector.py':'speech/clip_inspector.py'};
 
 export async function packageSources(root){
   const files=[],buildInputs=[];

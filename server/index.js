@@ -10,6 +10,7 @@ import { LocalSpeech } from './local-speech.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
 import { Clips } from './clips.js';
+import {ClipPerception} from './clip-perception.js';
 import {ClipInspector} from './clip-inspector.js';
 import {clipRecordingRoutes} from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
@@ -67,7 +68,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const economy=new Economy(world.data.economy,value=>world.part('economy',value));
   const clips=new Clips({data:clipsStore.data,dir:persist?resolve(dataDir,'clip-media'):undefined,save:clipsStore.save});
   const storageStatus=()=>({warnings:stores.flatMap(s=>s.warnings).slice(-6),recovered:stores.filter(s=>s.recoveredFrom).map(s=>s.recoveredFrom)});
-  const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
+  const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,clipPerception:new ClipPerception(runtime),directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status()});
   app.disable('x-powered-by');
@@ -205,7 +206,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close(),activityClosed=studio.communityActivity.yield();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,activityClosed,new Promise(r=>server.close(r))]);}};
+  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close(),activityClosed=studio.communityActivity.yield(),perceptionClosed=studio.clipPerception.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,activityClosed,perceptionClosed,new Promise(r=>server.close(r))]);}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);

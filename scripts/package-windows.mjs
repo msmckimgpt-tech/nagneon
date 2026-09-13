@@ -82,6 +82,7 @@ for(const dir of ['python','model'])for(const file of await files(join(speechPat
 await writeFile(join(speechTarget,'manifest.json'),JSON.stringify(speechManifest,null,2));
 await cp(join(root,'scripts/speech_worker.py'),join(resources,'speech/speech_worker.py'));
 await cp(join(root,'scripts/clip_inspector.py'),join(resources,'speech/clip_inspector.py'));
+await cp(join(root,'scripts/clip_perception.py'),join(resources,'speech/clip_perception.py'));
 await cp(join(root,'third-party/whisper'),join(speechTarget,'licenses/whisper'),{recursive:true});
 const accurateModel=join(root,'.models/microphone');
 const accurateStat=await lstat(accurateModel).catch(error=>{if(error.code==='ENOENT')return null;throw error;});

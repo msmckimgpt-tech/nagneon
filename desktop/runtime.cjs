@@ -9,9 +9,10 @@ function packagedRuntime(resources){
     codexBin:join(resources,'codex','bin','codex.exe'),
     speech:{python:join(speech,'python','python.exe'),worker:join(speech,'speech_worker.py'),model:accurate?microphone:join(speech,'model'),modelName:accurate?'medium':'small'},
     clips:{python:join(speech,'python','python.exe'),worker:join(speech,'clip_inspector.py')},
+    clipPerception:{worker:join(speech,'clip_perception.py')},
     sound:{python:join(speech,'python','python.exe'),worker:join(resources,'sound','sound_worker.py'),model:join(resources,'sound','model'),speechModel:join(speech,'model')}
   };
-  for(const file of [runtime.codexBin,runtime.speech.python,runtime.speech.worker,runtime.clips.worker,join(runtime.speech.model,'model.bin'),runtime.sound.worker,join(runtime.sound.model,'yamnet.onnx')]){
+  for(const file of [runtime.codexBin,runtime.speech.python,runtime.speech.worker,runtime.clips.worker,runtime.clipPerception.worker,join(runtime.speech.model,'model.bin'),runtime.sound.worker,join(runtime.sound.model,'yamnet.onnx')]){
     if(!existsSync(file))throw new Error('앱의 실행 파일 일부가 없습니다. 설치 파일의 무결성을 확인하거나 다시 설치하세요.');
   }
   return runtime;

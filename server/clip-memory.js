@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
+import {ClipMediaReading} from './clip-media-context.js';
 
-// Text-only encounters. Neither a clip URL nor its media flags prove that this
-// viewer watched/heard its recording. Keep versions, not duplicate quote stores.
+// A URL or media flag never grants experience. Text versions and optional
+// decoded-media receipts belong only to the viewers who actually received them.
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stamp=row=>({id:row.id,hash:digest(row)});
 const identified=row=>typeof row.id==='string'&&row.id.length>0;
@@ -31,13 +32,15 @@ export function assertClipSnapshot(clip,snapshot){
 // Runs inside the same Clips.change as accepted comments. Only successfully
 // published speakers and autonomous silent readers gain a receipt; peer replies from this batch were
 // not in the input, so each speaker remembers only their own new reply.
-export function recordClipReading(clip,snapshot,created,at,readers=[]){
+export function recordClipReading(clip,snapshot,created,at,readers=[],mediaReading){
   clip.readings ||= [];
   const merge=(old,rows)=>[...new Map([...old,...rows.filter(identified).map(stamp)].map(r=>[r.id,r])).values()];
   for(const viewerId of new Set([...readers,...created.filter(c=>c.kind==='ai').map(c=>c.personaId)])){
     const own=created.filter(c=>c.personaId===viewerId).map(clipComment);
     let receipt=clip.readings.find(r=>r.viewerId===viewerId);
     if(!receipt){receipt={viewerId,readAt:at,metadataHash:digest(metadata(snapshot)),messages:[],comments:[]};clip.readings.push(receipt);}
+    if(mediaReading)receipt.media=ClipMediaReading.parse(mediaReading);
+    else if(receipt.metadataHash!==digest(metadata(snapshot)))delete receipt.media;
     receipt.readAt=at;receipt.metadataHash=digest(metadata(snapshot));
     receipt.messages=merge(receipt.messages,snapshot.messages).slice(-25);
     receipt.comments=merge(receipt.comments,[...snapshot.comments,...own]).slice(-150);
@@ -96,14 +99,15 @@ export function recallClips(clips,viewerId,query='',now=Date.now()){
       return [{...row.value,_normalized:row.normalized,experience:own?'own-clip-comment':'read-clip-comment'}];
     });
     if(!knownMetadata&&!messages.length&&!comments.length)continue;
-    const all=[...messages,...comments],rank=score((knownMetadata?header.normalized:'')+all.map(m=>m._normalized).join(''),parts);
+    const media=knownMetadata&&receipt?.media?.readAt<=now?receipt.media:null;
+    const all=[...messages,...comments],rank=score((knownMetadata?header.normalized:'')+norm(media?.scene||'')+(media?.audio||[]).map(a=>norm(a.transcript)).join('')+all.map(m=>m._normalized).join(''),parts);
     // Reserve room for a recently read streamer reply/correction as well as a
     // relevant earlier quote; chronology and authorship remain explicit.
     const picked=new Map();const add=m=>{if(m)picked.set(m.id,m);};
     for(const m of comments.filter(m=>m.personaId==='streamer').slice(-2))add(m);
     for(const {row} of all.map(row=>({row,score:score(row._normalized,parts)})).sort((a,b)=>b.score-a.score||b.row.at-a.row.at)){if(picked.size>=4)break;add(row);}
     candidates.push({clipId:c.id,fictional:metadata(c).fictional,...(knownMetadata?{title:excerpt(c.title,100),game:excerpt(c.game,100),scene:excerpt(c.scene,240),sceneExcerpt:c.scene.length>240}:{}),
-      encounter:'clip-text',lastReadAt:receipt?.readAt??null,rank,latest:receipt?.readAt??Math.max(...comments.map(m=>m.at)),
+      encounter:media?'clip-media-samples':'clip-text',...(media?{media:{readAt:media.readAt,frameTimes:[...media.frameTimes],scene:excerpt(media.scene,240),sceneSource:'model-description',audio:media.audio.map(a=>({...a,transcript:excerpt(a.transcript,220),transcriptSource:'local-asr',excerpt:a.transcript.length>220,classes:a.classes.slice(0,3).map(c=>({...c}))}))}}:{}),lastReadAt:receipt?.readAt??null,rank,latest:receipt?.readAt??Math.max(...comments.map(m=>m.at)),
       items:[...picked.values()].sort((a,b)=>a.at-b.at).map(({_normalized,...m})=>({...m,name:excerpt(m.name,100),kind:excerpt(m.kind,30),text:excerpt(m.text,220),excerpt:m.text.length>220,...(m.donation?{donation:{...m.donation}}:{}),...(m.transcriptionCorrection?{transcriptionCorrection:{...m.transcriptionCorrection,text:excerpt(m.transcriptionCorrection.text,220)}}:{})}))});
   }
   return candidates.sort((a,b)=>b.rank-a.rank||b.latest-a.latest).slice(0,2).map(({rank,latest,...c})=>c);
