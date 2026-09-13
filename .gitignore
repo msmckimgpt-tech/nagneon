@@ -1,6 +1,16 @@
 node_modules/
 dist/
 .env
+.env.*
+!.env.example
+# Credentials and local security/audit state must not enter public history.
+auth.json
+.npmrc
+*.key
+*.pem
+*.p12
+*.pfx
+.gstack/
 data/
 artifacts/
 *.log

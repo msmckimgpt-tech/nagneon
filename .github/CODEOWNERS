@@ -1,0 +1,4 @@
+# Route changes to the repository maintainer. Branch rules govern enforcement.
+/.github/ @msmckimgpt-tech
+/SECURITY.md @msmckimgpt-tech
+/.gitignore @msmckimgpt-tech
