@@ -28,9 +28,14 @@ for(const option of [FuseV1Options.EnableEmbeddedAsarIntegrityValidation,FuseV1O
 const result={passed:!failures.length,checkedAt:new Date().toISOString(),folder,files:spec.files.length,matchingSources:sourceFiles.length+2,bytes:spec.files.reduce((s,f)=>s+f.bytes,0),failures};
 const runtimeReport=process.argv.find(a=>a.startsWith('--runtime-report='))?.slice(17)||'artifacts/packaged-runtime-test.json';
 const prior=JSON.parse(await readFile(runtimeReport,'utf8'));
+if(prior.passed!==true||typeof prior.folder!=='string'){
+  result.passed=false;failures.push('Runtime evidence is missing a successful result');
+}else if(prior.folder===folder&&prior.archiveSha256!==spec.files.find(f=>f.path==='resources/app.asar')?.sha256){
+  result.passed=false;failures.push('Runtime evidence does not identify the delivered ASAR');
+}
 if(prior.passed&&prior.folder!==folder){
   const priorManifest=JSON.parse(await readFile(resolve(prior.folder,'../../manifest.json'),'utf8'));
-  const relevant=f=>/^resources\/(codex|speech)\//.test(f.path)&&!/^resources\/speech\/(manifest|payload-manifest)\.json$/.test(f.path);
+  const relevant=f=>/^resources\/(codex|speech|sound)\//.test(f.path)&&!/^resources\/speech\/(manifest|payload-manifest)\.json$/.test(f.path);
   const before=new Map(priorManifest.files.filter(relevant).map(f=>[f.path,f.sha256]));
   const after=spec.files.filter(relevant);const changed=[],metadataOnly=[];
   for(const file of after.filter(f=>before.get(f.path)!==f.sha256)){
@@ -46,11 +51,11 @@ if(prior.passed&&prior.folder!==folder){
     if(harmless)metadataOnly.push(file.path);else changed.push(file.path);
   }
   if(after.length!==before.size)changed.push('runtime file set differs');
-  const adapters=['server/provider.js','server/codex-provider.js','server/local-speech.js','desktop/runtime.cjs','server/connection-probe.js','desktop/account-login.cjs'];
+  const adapters=['server/provider.js','server/codex-provider.js','server/local-speech.js','server/local-sound.js','server/schema.js','server/conversation-rhythm.js','shared/defaults.js','shared/model-call-limits.json','desktop/runtime.cjs','server/connection-probe.js','desktop/account-login.cjs'];
   for(const file of adapters){
     if(digest(extractFile(join(prior.folder,'resources/app.asar'),file))!==digest(extractFile(join(folder,'resources/app.asar'),file)))changed.push(file);
   }
-  result.runtimeContinuity={sourceTest:'artifacts/packaged-runtime-test.json',sourceFolder:prior.folder,comparedFiles:after.length+adapters.length,changed,metadataOnly,metadataExplanation:'Runtime code, libraries, model and adapters are identical when changed is empty. Only omitted launcher hashes in RECORD may differ; build provenance manifests are excluded from continuity comparison.'};
+  result.runtimeContinuity={sourceTest:runtimeReport,sourceFolder:prior.folder,comparedFiles:after.length+adapters.length,changed,metadataOnly,metadataExplanation:'Runtime code, libraries, model and adapters are identical when changed is empty. Only omitted launcher hashes in RECORD may differ; build provenance manifests are excluded from continuity comparison.'};
   try{const native=JSON.parse(await readFile('artifacts/onboarding-native-test.json','utf8'));if(native.passed&&native.actualModel&&native.folder===prior.folder&&!changed.length)result.runtimeContinuity.nativeModelEvidence={source:'artifacts/onboarding-native-test.json',folder:native.folder,latencySeconds:native.latencySeconds,caveat:'Actual native model call was on the prior package; listed model/runtime adapters are identical. New package startup is verified separately.'};}catch{}
   if(changed.length){result.passed=false;failures.push('Prior runtime evidence cannot be reused for changed runtime files');}
 }
