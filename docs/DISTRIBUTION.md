@@ -2,6 +2,12 @@
 
 2026-09-13. 현재 산출물은 서명하지 않은 개발 배포본이다. 설치 프로그램·Steam 제출 완료본은 아니다.
 
+## 최근 통합 소스 배포 · 2026-09-13
+
+`G:/dev/ai/00_game_backseat-worktrees/release-runtime-verification/release/2026-09-13T14-07-38-998Z/app/BACKSEAT-win32-x64`에 연속 장면 인식·관객 기억/개성·한국어 medium 모델·마이크 복구를 포함한 새 전체 폴더를 만들었다. **2,451개 파일 / 3,130,142,563바이트 / 미서명**이다. 사용자 실행본을 교체하거나 시작하지 않았다. 아래 기존 배포 이력의 경로는 이 새 산출물과 구분한다.
+
+495개 Node 검사와 TypeScript/Vite 빌드, 실제 ASAR와 소스67개 비교, 전체 파일 SHA-256/fuses, 포함된 Whisper/YAMNet과 Astra low 2회가 통과했다. 소유 Whisper를 인식 중 종료한 뒤 같은 방송에서 재준비하고 짧은 한국어 4개를 다시 전사/전달했다. 이번 검증은 합성 파일과 배포본에서 추출한 Node 모듈이며 새 네이티브 창·물리 장치·설치 수용을 뜻하지 않는다. 원본·실패 이력·지연·범위는 [최근 배포 런타임 검증](RELEASE-RUNTIME-ACCEPTANCE.md)에 있다. 긴 전사와 모델 응답 지연도 남은 과제로 기록했다.
+
 ## 최신 시스템 소리 배포 · 2026-09-13
 
 `release/2026-09-12T23-41-52-732Z/app/BACKSEAT-win32-x64/BACKSEAT.exe`: 전체 1,599,409,614바이트/2,444파일/미서명. Windows 출력 loopback, YAMNet 음향 분류, 별도 게임 대사 전사, 관객별 청취 문맥, 소리 전용 잡담과 마이크/시스템 소리 혼합 핫클립을 포함한다. [SYSTEM-SOUND.md](SYSTEM-SOUND.md).

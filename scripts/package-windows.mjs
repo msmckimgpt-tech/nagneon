@@ -8,12 +8,14 @@ import {packager} from '@electron/packager';
 import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
+import {packageSources,verifyPackageSources} from './lib/package-sources.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
 if(process.platform!=='win32'||process.arch!=='x64')throw new Error('Windows x64 빌드 환경이 필요합니다.');
 if(!speech)throw new Error('--speech=<검증된 음성 런타임 폴더>를 지정하세요.');
 const speechPath=resolve(speech);
+const sourceManifest=await packageSources(root);
 const id=new Date().toISOString().replace(/[:.]/g,'-');
 const build=join(root,'release',id),stage=join(build,'stage'),resources=join(build,'runtime');
 await mkdir(join(root,'release'),{recursive:true});await mkdir(build,{recursive:false});await mkdir(stage);await mkdir(resources);
@@ -36,6 +38,7 @@ async function run(bin,args,cwd=root){
 // development environments and credentials regardless of .gitignore contents.
 for(const [dir,extension] of [['desktop',/\.cjs$/],['server',/\.js$/],['shared',/\.(js|json)$/],['dist',/\.(html|js|css|svg|png|woff2?)$/]]){
   for(const name of await files(join(root,dir))){
+    if(dir==='shared'&&name.endsWith('.d.ts'))continue; // Tracked build input, not runtime JavaScript.
     if(!extension.test(name))throw new Error('검토되지 않은 배포 소스 파일: '+dir+'/'+name);
     const target=join(stage,dir,name);await mkdir(dirname(target),{recursive:true});await cp(join(root,dir,name),target);
   }
@@ -116,9 +119,11 @@ for(const path of archiveFiles){
   if(/^\/(data|artifacts|\.env|\.venv|\.models|release)(\/|$)/.test(path)||/\/(auth\.json|\.env)$/.test(path))throw new Error('개인 파일이 배포본에 포함되었습니다: '+path);
 }
 const inventory=[];
+const sourceCheck=await verifyPackageSources(root,folder,sourceManifest);
+if(!sourceCheck.passed)throw Error(sourceCheck.failures.join('\n'));
 for(const name of await files(folder))inventory.push({path:name,bytes:(await lstat(join(folder,name))).size,sha256:await hash(join(folder,name))});
 const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,acceptance:'not yet verified',electron:electronVersion,codex:codexPkg.version,
-  speech:speechManifest.pythonVersion||speechManifest.python,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory};
+  speech:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory};
 await writeFile(join(build,'manifest.json'),JSON.stringify(report,null,2));
 await writeFile(join(build,'asar-files.json'),JSON.stringify(archiveFiles,null,2));
 await writeFile(join(root,'artifacts/latest-package.json'),JSON.stringify({folder,manifest:join(build,'manifest.json'),build},null,2));

@@ -74,4 +74,4 @@ try{
   }
   report.passed=true;
 }catch(error){report.passed=false;report.error=error.message;process.exitCode=1;}
-finally{speech.close();sound.close();await writeFile(reportPath,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));}
+finally{try{await speech.close();}catch(error){report.passed=false;report.shutdownError=error.message;process.exitCode=1;}sound.close();await writeFile(reportPath,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));}
