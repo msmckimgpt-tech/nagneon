@@ -1,4 +1,4 @@
-export type ClipSegment={blob:Blob;startedAt:number;endedAt:number;hasAudio:boolean;sessionId:string};
+export type ClipSegment={blob:Blob;startedAt:number;endedAt:number;hasAudio:boolean;sessionId:string;kind:'video'|'audio'};
 type Timer=ReturnType<typeof setTimeout>;
 type Clock={now:()=>number;set:typeof setTimeout;clear:typeof clearTimeout};
 const clock:Clock={now:Date.now,set:setTimeout,clear:clearTimeout};
@@ -16,7 +16,7 @@ export class ClipBuffer {
   private rotation:Timer|undefined;
   private watchdog:Timer|undefined;
   private closed=false;
-  private options:{sessionId:string;hasAudio:boolean;create:()=>MediaRecorder;onFailure:()=>void;clock?:Clock};
+  private options:{sessionId:string;hasAudio:boolean;kind?:'video'|'audio';create:()=>MediaRecorder;onFailure:()=>void;clock?:Clock};
   private clock:Clock;
 
   constructor(options:ClipBuffer['options']){this.options=options;this.clock=options.clock||clock;}
@@ -45,8 +45,9 @@ export class ClipBuffer {
         // A delayed stop callback does not mean we captured its intervening gap.
         const endedAt=this.stoppedAt??this.clock.now();
         if(parts.length&&endedAt-began>=1000&&endedAt-began<=45_000){
-          this.segments.push({blob:new Blob(parts,{type:'video/webm'}),startedAt:began,endedAt,
-            hasAudio:this.options.hasAudio,sessionId:this.options.sessionId});
+          const kind=this.options.kind||'video';
+          this.segments.push({blob:new Blob(parts,{type:kind+'/webm'}),startedAt:began,endedAt,
+            hasAudio:this.options.hasAudio,sessionId:this.options.sessionId,kind});
         }
         parts=[];this.active=null;this.prune();
         for(const p of this.pending){this.clock.clear(p.timer);p.resolve(this.find(p.at));}

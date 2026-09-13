@@ -1,16 +1,21 @@
 // Pure capture/queue policy, shared by the renderer and deterministic tests.
 export const VOICE_MAX_MS=6000,VOICE_SILENCE_MS=450;
+export type SpeechCapture={startedAt:number;endedAt:number};
 export class VoiceBoundary {
-  startedAt:number;lastAt:number;lastVoiceAt:number;voicedMs=0;
+  startedAt:number;lastAt:number;lastVoiceAt:number;voicedMs=0;firstVoiceAt:number|null=null;
   constructor(at:number){this.startedAt=at;this.lastAt=at;this.lastVoiceAt=at;}
   sample(rms:number,at:number):'speech-end'|'limit'|'idle'|null{
     const dt=Math.min(200,Math.max(0,at-this.lastAt));this.lastAt=at;
-    if(Number.isFinite(rms)&&rms>0.012){this.voicedMs+=dt;this.lastVoiceAt=at;}
+    if(Number.isFinite(rms)&&rms>0.012){this.firstVoiceAt??=at-dt;this.voicedMs+=dt;this.lastVoiceAt=at;}
     const elapsed=at-this.startedAt;
     if(elapsed>=VOICE_MAX_MS)return 'limit';
     if(this.voicedMs>=200&&elapsed>=700&&at-this.lastVoiceAt>=VOICE_SILENCE_MS)return 'speech-end';
     if(this.voicedMs<200&&elapsed>=3000)return 'idle';
     return null;
+  }
+  capture(wallStartedAt:number):SpeechCapture|undefined{
+    if(!this.hasSpeech||this.firstVoiceAt===null||this.lastVoiceAt-this.firstVoiceAt>15000)return;
+    return {startedAt:wallStartedAt+Math.max(0,this.firstVoiceAt-this.startedAt),endedAt:wallStartedAt+this.lastVoiceAt-this.startedAt};
   }
   get hasSpeech(){return this.voicedMs>=200;}
 }
@@ -44,13 +49,13 @@ export class SpeechMailbox {
   clear(){this.items=[];}
 }
 
-type DeliveryItem={id:string;sessionId:string;text:string;source:'keyboard'|'microphone'};
+type DeliveryItem={id:string;sessionId:string;text:string;source:'keyboard'|'microphone';capture?:SpeechCapture};
 // Delivery runs independently of the AI request. An uncertain HTTP result
 // retains the exact event ID so a retry cannot print the same speech twice.
 export class SpeechOutbox {
   items:DeliveryItem[]=[];running=false;generation=0;controller:AbortController|null=null;idFactory:()=>string;
   constructor(idFactory:()=>string=()=>crypto.randomUUID()){this.idFactory=idFactory;}
-  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard'){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source})));return true;}
+  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source,...(source==='microphone'&&capture?{capture:{...capture}}:{})})));return true;}
   clear(){this.generation++;this.items=[];this.controller?.abort();}
   async flush(send:(item:DeliveryItem,signal:AbortSignal)=>Promise<unknown>){
     if(this.running)return;this.running=true;const generation=this.generation;

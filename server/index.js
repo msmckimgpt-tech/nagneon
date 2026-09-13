@@ -140,8 +140,19 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/clips',viewerClipOnly);
   app.get('/api/clips/:id',(req,res)=>res.json(clips.get(z.string().uuid().parse(req.params.id))));
   app.delete('/api/clips/:id',(req,res)=>{clips.remove(z.string().uuid().parse(req.params.id));studio.publish();res.json({ok:true});});
-  app.get('/api/clips/:id/media/:kind',(req,res)=>{const c=clips.get(z.string().uuid().parse(req.params.id));const ext=req.params.kind==='video'&&c.video?'webm':req.params.kind==='thumbnail'?c.thumbnail:null;if(!ext)throw new Error('클립 미디어가 없습니다.');res.sendFile(clips.file(c.id,ext));});
-  app.post('/api/clips/:id/video',express.raw({type:'video/webm',limit:'20mb'}),(req,res)=>{const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);const candidate=clips.get(z.string().uuid().parse(req.params.id));if(!studio.running||!studio.settings.clipBufferEnabled||!studio.settings.autoHighlights||!candidate.creator||candidate.sessionId!==studio.sessionId||metadata.startedAt>candidate.observedAt||metadata.endedAt<candidate.observedAt)throw new Error('관객이 선택한 순간이 허용된 영상 버퍼 안에 있어야 합니다.');const clip=clips.video(candidate.id,req.body,metadata);studio.publish();res.json(clip);});
+  app.get('/api/clips/:id/media/:kind',(req,res)=>{
+    const c=clips.get(z.string().uuid().parse(req.params.id)),kind=req.params.kind;
+    const ext=(kind==='video'&&c.video)||(kind==='audio'&&c.audio)?'webm':kind==='thumbnail'?c.thumbnail:null;
+    if(!ext)throw new Error('클립 미디어가 없습니다.');
+    if(kind==='audio')res.type('audio/webm');
+    res.sendFile(clips.file(c.id,ext));
+  });
+  for(const kind of ['video','audio'])app.post(`/api/clips/:id/${kind}`,express.raw({type:kind+'/webm',limit:'20mb'}),(req,res)=>{
+    const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);
+    const candidate=clips.get(z.string().uuid().parse(req.params.id));
+    if(!studio.running||!studio.settings.clipBufferEnabled||!studio.settings.autoHighlights||!candidate.creator||candidate.source!=='spectator'||(kind==='audio'&&!candidate.audioEligible)||candidate.sessionId!==studio.sessionId||metadata.startedAt>candidate.observedAt||metadata.endedAt<candidate.observedAt)throw new Error('관객이 선택한 순간이 허용된 클립 버퍼 안에 있어야 합니다.');
+    const clip=clips.recording(candidate.id,req.body,{...metadata,kind});studio.publish();res.json(clip);
+  });
   app.post('/api/clips/:id/comments',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().optional()}).parse(req.body);const comment=clips.comment(z.string().uuid().parse(req.params.id),{...body,name:studio.settings.streamer});studio.publish();res.json(comment);});
   app.delete('/api/clips/:id/comments/:commentId',(req,res)=>{clips.removeComment(z.string().uuid().parse(req.params.id),z.string().uuid().parse(req.params.commentId));studio.publish();res.json({ok:true});});
   app.post('/api/clips/:id/react',async(req,res)=>{const body=z.object({targets:z.array(z.string().max(40)).min(1).max(4),parentId:z.string().uuid().nullable().optional()}).parse(req.body);res.json(await studio.clipFeatures.comments({id:z.string().uuid().parse(req.params.id),...body}));});
@@ -156,7 +167,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/special/bid',(req,res)=>{studio.special.ready();const {id,amount}=z.object({id:z.string().uuid(),amount:z.number().int().min(1).max(10000)}).parse(req.body);economy.bid(id,amount);studio.publish();res.json({ok:true});});
   app.post('/api/special/cancel',(req,res)=>{const {id}=z.object({id:z.string().uuid()}).parse(req.body);economy.cancel(id);studio.publish();res.json({ok:true});});
   app.post('/api/stop',(_req,res)=>{if(probe.controller)probe.cancel();else studio.stop();res.json(studio.state());});
-  app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard')}).strict().parse(req.body))));
+  app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard'),capture:z.object({startedAt:z.number().finite().nonnegative(),endedAt:z.number().finite().nonnegative()}).strict().optional()}).strict().parse(req.body))));
   app.post('/api/chat/display',(req,res)=>res.json(studio.setChatDisplay(z.object({showStreamerMessages:z.boolean()}).strict().parse(req.body).showStreamerMessages)));
   app.post('/api/react',async(req,res)=>res.json(await studio.react(Frame.parse(req.body))));
   soundRoutes(app,studio,sound);

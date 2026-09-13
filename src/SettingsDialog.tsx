@@ -274,8 +274,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <label className="set-check">
             <input type="checkbox" checked={draft.clipBufferEnabled}
               onChange={e=>update('clipBufferEnabled',e.target.checked)}/>
-            <span>방송 중 짧은 영상 버퍼 사용
-              <small>켜면 관객이 만든 클립이 공유 중인 화면·시스템 소리·켜져 있는 마이크 버퍼를 이 PC에 함께 저장할 수 있어요.</small>
+            <span>방송 중 영상·음성 클립 버퍼 사용
+              <small>켜면 공유한 화면과 연결된 소리·마이크를 잠시 보관해요. 화면 없이 소리만 연결해도 관객이 고른 순간을 음성 클립으로 이 PC에 저장할 수 있어요.</small>
             </span>
           </label>
           <label className="set-check">
@@ -285,7 +285,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
               <small>관객이 좋아한 순간을 화면 이미지와 대화로 남겨요. 조용한 잡담이나 웃긴 실패처럼, 꼭 멋진 순간이 아니어도 기록될 수 있어요.</small>
             </span>
           </label>
-          <p className="field-note">직접 선택해 공유 중인 화면만 기록합니다. 저장된 파일은 이 PC에만 남아요.</p>
+          <p className="field-note">직접 공유한 화면과 켜 둔 마이크·연결된 소리만 기록합니다. 버퍼를 끄거나 연결을 끊으면 해당 임시 구간을 비우고, 이미 저장된 클립은 핫클립에서 삭제할 수 있어요.</p>
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
             <input type="checkbox" checked={draft.pointsEnabled}

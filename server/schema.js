@@ -31,7 +31,7 @@ export const Observation = z.object({
   transcriptCorrections:z.array(z.object({messageId:z.string().uuid(),text:short(3000),confidence:z.number().min(0).max(1),reason:short(240)})).max(4).default([]),
   arrival:z.object({name:short(30),personality:short(1200),values:short(1000),sociability:z.number().min(0).max(1),expertise:z.number().min(0).max(1)}).nullable().default(null),
   viewerChanges:z.array(z.object({personaId:short(40),preference:short(200),nickname:z.string().max(30),reason:short(200),evidence:short(300),sociabilityDelta:z.number().min(-.05).max(.05)})).max(2).default([]),
-  clipPicks:z.array(z.object({personaId:short(40),title:short(100),reason:short(240),signature:short(160)})).max(2).default([]),
+  clipPicks:z.array(z.object({personaId:short(40),title:short(100),reason:short(240),signature:short(160),soundId:z.string().trim().max(80).default(''),speechId:z.string().trim().max(100).default('')})).max(2).default([]),
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8)}).default({positive:false,impact:0,reason:'',signature:'',supporters:[]}),

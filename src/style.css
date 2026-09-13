@@ -16,3 +16,5 @@ html:has(.overlay-shell),body:has(.overlay-shell){background:transparent;}
 .source-options{padding:14px 0 20px;max-width:680px}
 .source-options p,.source-options small{font-size:12px;line-height:1.7;color:var(--muted,#9896a8)}
 .stage-controls>div{flex-wrap:wrap}
+
+.clip-detail>audio{display:block;width:100%;margin:12px 0;color-scheme:dark}

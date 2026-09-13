@@ -35,9 +35,11 @@ export class Studio extends EventEmitter {
   resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
-  receiveSpeech({id,sessionId,text,source='keyboard'}){
+  receiveSpeech({id,sessionId,text,source='keyboard',capture}){
     if(!this.running||sessionId!==this.sessionId)throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
-    const result=this.speechInbox.receive(id,text,()=>this.publishMessage({...this.prepareMessage('streamer',text,'streamer'),...(source==='microphone'?{transcription:{source:'microphone'}}:{})}),source);
+    if(capture&&(source!=='microphone'||!Number.isFinite(capture.startedAt)||!Number.isFinite(capture.endedAt)||capture.startedAt<this.startedAt-2000||capture.endedAt>this.now()+2000||capture.endedAt<=capture.startedAt||capture.endedAt-capture.startedAt>15000))throw new Error('발언을 녹음한 시각을 확인하세요.');
+    const hearers=capture?this.presentWitnesses().filter(id=>this.audience.data.members[id]?.joinedAt<=capture.startedAt):[];
+    const result=this.speechInbox.receive(id,text,()=>this.publishMessage({...this.prepareMessage('streamer',text,'streamer'),...(source==='microphone'?{transcription:{source:'microphone'}}:{})}),source,capture,hearers);
     if(!result.duplicate){
       this.queue=this.queue.filter(m=>m.origin!=='live');
       // A screen-only analysis should yield to the person speaking. The live
@@ -187,7 +189,8 @@ export class Studio extends EventEmitter {
         const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,speech,sound:this.sound,now:capturedAt,viewing});
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
-        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,transcriptCandidates,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        const liveSpeech=this.speechInbox.sources(speechBatch.ids);
+        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         if(epoch!==this.epoch||!this.running)return {skipped:'stopped'};
         this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded)return {skipped:'superseded'};
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
@@ -197,7 +200,8 @@ export class Studio extends EventEmitter {
         const donations=this.economy.reward({observation:result.observation,settings:this.settings,audience:this.audience,hasInput:!!image||!!speech,paid:!!directed});
         for(const d of donations)this.log(`${d.name}의 가상 후원 ${d.amount}P · ${d.reason}`);if(donations.length)this.publish();
         if(this.autonomy&&!directed){
-          try{this.autonomy.evolve(result.observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(result.observation,{image,speech,witnesses,capturedAt});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
+          const clipSpeech=this.speechInbox.sources(speechBatch.ids);
+          try{this.autonomy.evolve(result.observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(result.observation,{image,speech:speechBatch.ids.length?clipSpeech.map(e=>e.text).join('\n'):speech,witnesses,capturedAt,liveSpeech:clipSpeech,heardByViewer:Object.fromEntries(Object.entries(personalContext.viewerContext).map(([id,p])=>[id,p.heardSounds]))});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
         }
         if(!this.autonomy&&!directed&&this.settings.autoHighlights&&result.observation.positiveMoment?.positive&&result.observation.positiveMoment.impact>=.8&&result.observation.confidence>=.75&&result.observation.excitement>=.8){
           try{this.clips.create({game:result.observation.game,scene:result.observation.scene,title:result.observation.positiveMoment.reason,participants:this.settings.personas.filter(p=>['active','lurking'].includes(this.audience.presence[p.id])).map(p=>({id:p.id,name:p.name})),messages:this.messages,image,sessionId:this.sessionId,source:'automatic-moment',startedAt:this.startedAt,signature:result.observation.positiveMoment.signature,observedAt:this.lastRequest});this.publish();}catch(error){this.log(`자동 핫클립 저장 보류: ${error.message}`);}
