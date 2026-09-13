@@ -48,3 +48,7 @@
 영상 직접 입력이나 모든 프레임을 보는 시스템은 아니다. 500ms보다 짧은 동작, 선택되지 않은 장면, 긴 응답/관찰 간격, 작은 HUD 글자, 카메라 이동·편집·가림은 여전히 놓치거나 오해할 수 있다. 의미 기반 핵심 장면 선택, 더 긴 문맥을 위한 별도 인식 계층, 실제 게임 FPS/지연과 장기 채팅 자연스러움은 추가 검증 대상이다. 모델을 바꾸거나 추가 과금 서비스를 도입한 것으로 간주하지 않는다.
 
 네이티브 Electron·Steam 게임·화면/마이크/출력 장치·사용자 앱 재실행 검증은 수행하지 않았다. Computer Use 중단 지침은 그대로다. main 코드 통합과 사용자가 이미 켜 둔 실행본에 반영되는 것은 다르며, 새 패키지/실행본 교체를 했다고 보고하지 않는다. Steam 판매 준비 목표는 미완료 상태다.
+
+## 통합 기록
+
+제품 커밋 `696ac74129dcdd49650e5ecae7eb60c00affa8c3`을 깨끗한 통합 worktree에서 검증했다. 통합된 코드도 425개 테스트와 TypeScript/Vite 빌드가 통과했다. 원본은 개발 및 통합 worktree의 `artifacts/temporal-integration-check.log`, 작업 결과는 개발 worktree의 `artifacts/temporal-integration-result.json`이다. main은 이 코드와 본 기록만 fast-forward한다. 푸시와 사용자 실행본 교체는 하지 않았다. 원본 프로젝트의 `Start-Backseat.cmd`는 다음 수동 실행에서 소스를 다시 빌드한다.
