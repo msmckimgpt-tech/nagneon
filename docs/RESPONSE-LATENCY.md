@@ -35,3 +35,5 @@
 - 첫 UI 실행은 PowerShell이 GUI 실행 직후 반환하여 로그 파이프가 끊긴 `EPIPE` 오류였다. Computer Use로 실제 오류 창을 확인했다 (`artifacts/ui-launcher-error.txt`, `ui-launcher-error-repeat.txt`). watchdog 실패를 성공으로 처리하지 않았다. 소유 PID·생성 시각·실행 경로를 확인해 실패한 검증 프로세스만 종료하고, 파일 핸들을 유지하는 Node 실행기로 재검증했다 (`artifacts/run-ui.mjs`, `ui-stable.log`). 제품 코드를 바꿔 검사를 우회하지 않았다.
 
 별도 통합 worktree의 `npm ci`, 필수 검사, main 및 작업 브랜치 push·원격 일치·CI는 `artifacts/response-latency-release-result.json`으로 연결한다. 사용자 실행본/설치 패키지를 교체하지 않았다. 다음 단계는 갱신된 패키지의 실제 게임·음성 응답 검증과 모델 처리 구간의 추가 개선이며 Steam 판매 수용 기준은 계속 남아 있다.
+
+후속 [Windows 실행본 실게임 검증](RELEASE-LATENCY-ACCEPTANCE.md)에서 Slay the Spire 2 방송의 모델 완료 후 첫 전달 대기 56~59ms를 확인했다. 함께 발견한 자연스러운 카드 선택 요청 누락, 게임 배경 음소거와 원본 세이브 보존 결과도 해당 문서에 기록했다.

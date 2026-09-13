@@ -54,6 +54,36 @@ test('one admitted hint across viewers, next screen cannot add advice, fresh req
   assert.equal(calls[2].advicePolicy.allowed,true);assert.equal(s.queue.filter(m=>m.advice).length,1);
 });
 
+test('natural Korean choices admit the requested scope without requiring the word hint',()=>{
+  for(const text of ['뭉칫, 이번엔 셋 중에 뭐 골라볼까? 한 장만 같이 골라줘. 이유는 짧게 ㅋㅋ','한 장만 추천해 주세요','카드 딱 한 장 선택해 줄래?']){
+    assert.deepEqual(liveAdvicePolicy(text),{allowed:true,scope:'current-speech',maxMessages:1},text);
+    assert.equal(liveAdvicePolicy(text,'never').allowed,false,text);
+    assert.equal(liveAdvicePolicy('','always',[{kind:'streamer',text}]).allowed,false,text);
+  }
+  for(const text of ['뭐 고를까?','어느 거 골라 볼까?','같이 골라줘 ㅋㅋ','추천해 줄 수 있어?'])assert.equal(liveAdvicePolicy(text).allowed,true,text);
+});
+
+test('choice refusals, quotations, recollection and narration never renew advice',()=>{
+  for(const text of ['골라주지 마','추천하지 마','선택해 주지 말아줘','골라주지는 말고 같이 봐','추천은 필요 없어','한 장 골라줘. 아니 추천은 그만']){
+    assert.equal(adviceIntent(text).refused,true,text);
+    assert.equal(liveAdvicePolicy(text,'always').allowed,false,text);
+  }
+  for(const text of ['"한 장만 골라줘"라고 했던 거 기억나?','한 장만 골라달라고 했었지','추천해줘라고 말했던 거야','골라줘서 고마워','네가 골라주는 카드도 재미있네','뭐 고를지 고민 중이야','카드를 골라봤어','아까 뭐 고를까라고 했잖아','뭐 고를까 생각 중이야'])assert.equal(liveAdvicePolicy(text).allowed,false,text);
+  assert.equal(liveAdvicePolicy('골라주지 마. 대신 한 장만 추천해줘').maxMessages,1);
+});
+
+test('a natural one-card request reaches the provider and permits only one delivered hint',async t=>{
+  const calls=[];
+  const {s,send,advance}=setup(t,async args=>{calls.push(args);return {observation:observation([chat('왼쪽 공격 카드에 한 표요',true),chat('가운데 취약 카드도 괜찮아요',true,'pop')])};});
+  send('뭉칫, 이번엔 셋 중에 뭐 골라볼까? 한 장만 같이 골라줘. 이유는 짧게 ㅋㅋ');
+  await s.react({image:'synthetic-card-reward'});
+  assert.equal(calls[0].adviceRequested,true);assert.equal(calls[0].advicePolicy.maxMessages,1);
+  assert.equal(s.queue.filter(m=>m.advice).length,1);
+  advance();s.pump();assert.equal(s.messages.filter(m=>m.advice).length,1);
+  advance();await s.react({image:'same-reward-next-frame'});
+  assert.equal(calls[1].advicePolicy.allowed,false);assert.equal(s.queue.length,0);
+});
+
 test('moderated hints do not spend the limit, explanations and reactions stay possible',async t=>{
   const {s,send,advance}=setup(t,async args=>({observation:observation(args.speech.includes('왜')?
     [chat('한 장의 방어도가 5라서 6보다 작았거든요.'),chat('이번에는 공격 카드부터 써요',true,'pop')]:
