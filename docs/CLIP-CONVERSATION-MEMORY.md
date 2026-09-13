@@ -59,3 +59,11 @@
 기능 검사 **12개**, 전체 **412개 검사 및 TypeScript/Vite 빌드**가 통과했다. 최종 원본은 `artifacts/clip-memory-tests-optimized.log`, `artifacts/check-verified.log`다. 변경 전·중간 단계의 검사와 모델 결과도 보존했으며, 통합과 이전 후원 회귀 결과는 이어 기록한다.
 
 기존 후원 회상 스크립트도 최종 코드로 실제 호출했다. `artifacts/donation-memory-astra-8AoVrX/result.json`의 **3사례 모두 통과**, 8.266~11.921초였다. 두 목격자 질문에는 실제 24P를 답하고, 신규 관객은 금액을 모른다고 했다. 과거 후원이나 일반 채팅의 지급 약속으로 새 보상을 만들지 않았다. 이번 최종 코드의 실제 호출은 이를 합쳐 16개다.
+
+## 통합
+
+제품 커밋 **`6178c7faeece761c7ee82bbf109b09843dfd58eb`**, 지정한 10개 파일을 별도 통합 트리 `live-capture-integration`에 적용했다. **412개 검사와 TypeScript/Vite 빌드가 그 환경에서도 통과**했다. 새 클립 기억의 HTTP/재시작 검사는 이 전체 검사에 포함된다. 추가로 기존 후원 HTTP 흐름 6개도 두 번의 재시작을 포함해 통과했으며, 이 검사는 가짜 모델을 사용하므로 위 실제 Astra 검증과 구분한다.
+
+통합 트리의 `artifacts/clip-memory-integration-check.log`, `artifacts/clip-memory-integration-flow.log`, `artifacts/clip-memory-integration-flow/result.json`과 개발 트리의 `artifacts/clip-memory-integration-result.json`에 결과를 보관했다. main·개발·통합의 HEAD/인덱스/미커밋 상태, 원격 main `07421b3`를 재확인한 뒤 소유권을 기록한 잠금 안에서 main을 fast-forward했다. 잠금은 해제했으며 원격 push와 사용자 앱 재시작은 하지 않았다.
+
+문서 정리 후 최종 커밋·상태는 `artifacts/clip-memory-final-state.json`, 원본의 경로·크기·SHA-256은 `artifacts/clip-memory-evidence/manifest.json`으로 확인한다. 이 단계는 판매 가능 또는 네이티브 배포 완료 선언이 아니다. 위 남은 범위와 [판매 준비 기준](RELEASE-GATES.md)을 유지한다.
