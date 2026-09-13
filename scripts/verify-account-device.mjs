@@ -1,15 +1,18 @@
 // Start/cancel a real official device-code login in an EMPTY, isolated Codex
 // home. Never logs in, opens a browser, reads credentials or modifies the user's
 // existing Codex account. Device codes and raw CLI output are never recorded.
-import {mkdtemp,writeFile} from 'node:fs/promises';
+import {mkdtemp,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import assert from 'node:assert/strict';
 import {AccountLogin} from '../desktop/account-login.cjs';
 import {CodexProvider} from '../server/codex-provider.js';
+await mkdir('artifacts',{recursive:true});
 const home=await mkdtemp(resolve('artifacts/isolated-login-'));
 await writeFile(join(home,'config.toml'),'cli_auth_credentials_store = "file"\n');
-const bin=resolve('node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe');
-const env={...process.env,CODEX_HOME:home};const provider=new CodexProvider({...env,CODEX_BIN:bin});
+const env={...process.env,CODEX_HOME:home,CODEX_BIN:''};
+// Exercise the real automatic selection, including the Windows npm .cmd case.
+for(const key of Object.keys(env))if(key.toLowerCase()==='path')env[key]=resolve('node_modules/.bin');
+const provider=new CodexProvider(env);const bin=provider.bin;
 const statuses=[];let resolveState;const changed=()=>new Promise(r=>resolveState=r);
 const account=new AccountLogin({bin,env,check:()=>provider.check(),onChange:value=>{statuses.push(value.status);resolveState?.(value);resolveState=null;},openExternal:()=>{throw new Error('This test never opens a browser');},timeoutMs:45000});
 const report={checkedAt:new Date().toISOString(),isolatedHome:home,officialBinary:bin,loginCompleted:false,existingAccountModified:false,statuses};

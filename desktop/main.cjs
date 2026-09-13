@@ -28,7 +28,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     main=new BrowserWindow({width:1440,height:980,minWidth:850,minHeight:650,title:'BACKSEAT Studio',backgroundColor:'#101216',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);
     const provider=service.studio.provider;
     const checkAccount=async()=>{if(provider.check)await provider.check();service.studio.publish();return provider.status();};
-    account=new AccountLogin({bin:provider.bin,check:checkAccount,openExternal:url=>shell.openExternal(url),onChange:value=>{if(main&&!main.isDestroyed())main.webContents.send('account:state',value);}});
+    account=new AccountLogin({bin:provider.bin,env:provider.env,check:checkAccount,openExternal:url=>shell.openExternal(url),onChange:value=>{if(main&&!main.isDestroyed())main.webContents.send('account:state',value);}});
     ipcMain.handle('account:status',event=>{trusted(event,true);return account.snapshot();});
     ipcMain.handle('account:start',(event,method)=>{trusted(event,true);if(service.studio.running||service.studio.busy||service.studio.training.active)throw new Error('방송과 연습을 마친 뒤 계정을 연결하세요.');if(provider.status().kind!=='codex')throw new Error('현재 제공처는 ChatGPT 구독 연결을 지원하지 않습니다.');return account.start(method);});
     ipcMain.handle('account:cancel',event=>{trusted(event,true);return account.stop();});

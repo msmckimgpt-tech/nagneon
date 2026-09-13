@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {join,resolve} from 'node:path';
+import {tmpdir} from 'node:os';
 import {AccountLogin,readPrompt,loginUrl} from '../desktop/account-login.cjs';
-import {CodexProvider,codexFailure} from '../server/codex-provider.js';
+import {CodexProvider,codexFailure,resolveCodexBin} from '../server/codex-provider.js';
 
 const browser='https://auth.openai.com/oauth/authorize?client_id=test&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=ephemeral';
 const device='https://auth.openai.com/codex/device';
@@ -52,4 +55,36 @@ test('official login status distinguishes subscription, API key, logged out and 
 });
 test('model failure reasons map to fixed user-facing categories',()=>{
   for(const [message,kind] of [['You have hit your usage limit','usage'],['The gpt-6-astra model is not supported','model'],['Token expired, HTTP 401','auth'],['WebSocket stream disconnected','network'],['Unhandled failure','unknown']])assert.equal(codexFailure(message),kind);
+});
+
+test('installed Windows CLI is usable without a global codex executable on PATH', {skip:process.platform!=='win32'}, async()=>{
+  const home=await mkdtemp(join(tmpdir(),'backseat-login-path-'));
+  try{
+    await writeFile(join(home,'config.toml'),'cli_auth_credentials_store = "file"\n');
+    const env={...process.env,CODEX_BIN:'',CODEX_HOME:home};
+    for(const key of Object.keys(env))if(key.toLowerCase()==='path')env[key]=resolve('node_modules/.bin');
+    const provider=new CodexProvider(env);
+    const status=await provider.check();
+    assert.equal(status.authState,'signed-out');
+    assert.match(provider.bin,/codex\.exe$/i);
+    assert.equal(status.configured,false);
+    // Login and inference must share the resolved native executable.
+    const account=new AccountLogin({bin:provider.bin,env:provider.env,check:()=>provider.check(),spawner:(bin,args,opts)=>{
+      assert.equal(bin,provider.bin);assert.equal(opts.env.CODEX_HOME,home);assert.equal(opts.shell,undefined);
+      const c=child();setImmediate(()=>c.emit('close',1));return c;
+    }});
+    await account.start('device');await flush();account.dispose();
+  }finally{await rm(home,{recursive:true,force:true});}
+});
+
+test('CLI resolution preserves explicit paths and selects matching native packages',()=>{
+  const root=resolve('test fixtures','Codex & runtime');
+  const options={platform:'win32',arch:'arm64',resolvePackage:name=>{
+    assert.equal(name,'@openai/codex-win32-arm64/package.json');return join(root,'package.json');
+  },exists:bin=>bin===join(root,'vendor','aarch64-pc-windows-msvc','bin','codex.exe')};
+  assert.equal(resolveCodexBin({},options),join(root,'vendor','aarch64-pc-windows-msvc','bin','codex.exe'));
+  assert.equal(resolveCodexBin({CODEX_BIN:'explicit missing.exe'},{resolvePackage:()=>{throw new Error('must not search');}}),'explicit missing.exe');
+  assert.equal(resolveCodexBin({}, {...options,exists:()=>false,resolvePackage:()=>{throw Object.assign(new Error('missing'),{code:'MODULE_NOT_FOUND'});}}),'codex');
+  assert.equal(resolveCodexBin({}, {platform:'unsupported',arch:'x64',resolvePackage:()=>{throw new Error('must not search');}}),'codex');
+  assert.equal(resolveCodexBin({}, {platform:'linux',arch:'x64',resolvePackage:()=>join(root,'package.json'),exists:bin=>bin===join(root,'vendor','x86_64-unknown-linux-musl','codex','codex')}),join(root,'vendor','x86_64-unknown-linux-musl','codex','codex'));
 });

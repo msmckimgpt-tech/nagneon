@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { OpenAIProvider, format } from './provider.js';
 import { Observation } from './schema.js';
 
@@ -14,9 +16,32 @@ export function codexFailure(text=''){
 }
 const failureMessages={usage:'ChatGPT 사용량 한도에 도달했습니다. 한도 회복 후 다시 시도하거나 리허설로 이어가세요.',model:'이 계정에서 gpt-6-astra 모델을 사용할 수 없습니다. 계정의 모델 접근 권한을 확인해주세요.',auth:'ChatGPT 인증을 확인하지 못했습니다. 방송 설정에서 계정을 다시 연결해주세요.',network:'모델 서버 연결이 끊겼습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.',unknown:'관객 응답을 완료하지 못했습니다. 계정 연결과 모델 접근 상태를 확인해주세요.'};
 
+const require=createRequire(import.meta.url);
+export function resolveCodexBin(env=process.env,{platform=process.platform,arch=process.arch,resolvePackage=name=>require.resolve(name),exists=existsSync}={}){
+  // Packaged resources and an explicit user override take precedence. Do not
+  // silently switch executables if that installation is broken.
+  if(env.CODEX_BIN)return env.CODEX_BIN;
+  const cpu={x64:'x86_64',arm64:'aarch64'}[arch];
+  const suffix={win32:'pc-windows-msvc',linux:'unknown-linux-musl',darwin:'apple-darwin'}[platform];
+  if(cpu&&suffix){
+    const target=`${cpu}-${suffix}`,executable=platform==='win32'?'codex.exe':'codex';
+    for(const name of [`@openai/codex-${platform}-${arch}/package.json`,'@openai/codex/package.json']){
+      try{
+        const vendor=join(dirname(resolvePackage(name)),'vendor',target);
+        // Native npm binaries work without a global PATH entry or a shell.
+        // Current and earlier official npm layouts use bin/ and codex/.
+        for(const folder of ['bin','codex']){
+          const bin=join(vendor,folder,executable);if(exists(bin))return bin;
+        }
+      }catch(error){if(error.code!=='MODULE_NOT_FOUND'&&error.code!=='ERR_PACKAGE_PATH_NOT_EXPORTED')throw error;}
+    }
+  }
+  return 'codex';
+}
+
 // Official CLI owns and refreshes the login. This app never reads auth.json.
 export class CodexProvider extends OpenAIProvider {
-  constructor(env=process.env,spawner=spawn){super(env);this.spawn=spawner;this.bin=env.CODEX_BIN || 'codex';this.env={...process.env,...env};this.compactInstructions=env.BACKSEAT_COMPACT_INSTRUCTIONS!=='0';this.minimalSkillContext=env.BACKSEAT_MINIMAL_SKILL_CONTEXT!=='0';this.available=false;this.authState='checking';this.authMessage='로그인 상태 확인 중';}
+  constructor(env=process.env,spawner=spawn){super(env);this.spawn=spawner;this.bin=resolveCodexBin(env);this.env={...process.env,...env};this.compactInstructions=env.BACKSEAT_COMPACT_INSTRUCTIONS!=='0';this.minimalSkillContext=env.BACKSEAT_MINIMAL_SKILL_CONTEXT!=='0';this.available=false;this.authState='checking';this.authMessage='로그인 상태 확인 중';}
   async check(){
     const result=await new Promise(resolve=>{
       const child=this.spawn(this.bin,['login','status'],{windowsHide:true,timeout:10000,env:this.env});let text='';
