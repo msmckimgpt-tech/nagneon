@@ -1,0 +1,153 @@
+/* Tabbed broadcast-settings dialog. The AccessibleDialog wrapper already gives
+   us `.modal` (fixed width, max-height, flex column). Here we lay out the tab
+   strip, a single scrolling panel, and an always-visible error + footer so the
+   dialog fits from ~380px up through desktop and 200% zoom without the whole
+   page growing — only the active panel scrolls. */
+
+.modal.settings-dialog{width:820px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:0;min-height:0;overflow:hidden}
+.settings-dialog>.modal-title,.settings-dialog>.settings-tabs,.settings-dialog>.modal-footer,.settings-dialog>.settings-error{flex-shrink:0}
+.settings-dialog .modal-footer{flex-wrap:wrap;gap:10px;margin:0}
+.settings-dialog input,.settings-dialog select,.settings-dialog textarea{min-width:0;max-width:100%;box-sizing:border-box}
+/* Tab strip — wraps instead of overflowing on narrow widths. */
+.settings-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:12px 20px;
+  border-bottom:1px solid #343943;
+}
+.settings-tabs [role=tab]{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:8px 12px;
+  border-radius:8px;
+  font-size:11px;
+  font-weight:500;
+  white-space:nowrap;
+  color:#98a0ad;
+  background:#191c22;
+  border:1px solid #2c3039;
+}
+.settings-tabs [role=tab] svg{flex-shrink:0;color:#828b99}
+.settings-tabs [role=tab][aria-selected=true]{
+  background:#272d23;
+  color:#c0ee89;
+  border-color:#3b4a2c;
+}
+.settings-tabs [role=tab][aria-selected=true] svg{color:#bce988}
+
+/* Body holds every panel; only the visible one participates in layout and it
+   scrolls internally (min-width:0 guards against horizontal overflow). */
+.settings-body{
+  flex:1;
+  min-height:0;
+  display:flex;
+}
+.settings-panel{
+  flex:1;
+  min-width:0;
+  overflow:auto;
+  padding:16px 24px 22px;
+}
+.settings-panel[hidden]{display:none}
+
+.settings-panel h3{
+  margin:22px 0 14px;
+  color:#c8d5bb;
+  font-size:15px;
+}
+.settings-panel h3:first-child{margin-top:4px}
+
+.settings-panel .set-field{
+  display:block;
+  font-size:11px;
+  color:#a8b0bd;
+  margin:0 0 14px;
+  line-height:1.6;
+}
+.settings-panel .set-field>input,
+.settings-panel .set-field>textarea,
+.settings-panel .set-field>select{margin-top:7px}
+
+/* Two-up rows collapse to a single column on narrow widths. minmax(0,1fr)
+   keeps long values from pushing the grid wider than the panel. */
+.settings-panel .set-row{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+  margin:0 0 14px;
+}
+.settings-panel .set-row .set-field{margin-bottom:0}
+
+.settings-panel .set-check{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:14px 0;
+  font-size:11px;
+  line-height:1.6;
+  color:#c2c8d2;
+}
+.settings-panel .set-check>span{flex:1;min-width:0}
+.settings-panel .set-check input{
+  width:16px;
+  height:16px;
+  flex-shrink:0;
+  margin:1px 0 0;
+  accent-color:#b9e887;
+}
+.settings-panel .set-check small{
+  display:block;
+  margin-top:5px;
+  font-size:10px;
+  line-height:1.7;
+  color:#828f9e;
+}
+
+.settings-panel .guide-link{
+  display:inline-flex;
+  margin:0 0 16px;
+  padding:9px 13px;
+  border-radius:8px;
+  font-size:11px;
+  color:#a0ac99;
+  background:#20261c;
+  border:1px solid #33402a;
+}
+
+/* Error stays pinned between the scrolling body and the footer so it is always
+   visible regardless of which panel is open or how far it is scrolled. */
+.settings-error{
+  margin:0;
+  padding:12px 24px;
+  font-size:11px;
+  line-height:1.6;
+  color:#eac5b5;
+  background:#3b2923;
+  border-top:1px solid #5f4034;
+}
+
+.settings-dialog .footer-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+@media(max-width:620px){
+  .settings-tabs{padding-left:18px;padding-right:18px}
+  .settings-panel{padding-left:18px;padding-right:18px}
+  .settings-panel .set-row{grid-template-columns:1fr}
+  .settings-error{padding-left:18px;padding-right:18px}
+}
+@media(max-height:600px){
+  .settings-dialog>.modal-title{padding:10px 16px}
+  .settings-dialog>.modal-title h2{font-size:17px}
+  .settings-dialog>.modal-title p{font-size:10px;margin:4px 0;line-height:1.4}
+  .settings-dialog .settings-tabs{padding:8px 16px;gap:4px}
+  .settings-dialog .settings-tabs [role=tab]{padding:6px 8px}
+  .settings-dialog>.modal-footer{padding:10px 16px}
+  .settings-dialog>.modal-footer>span{display:none}
+  .settings-dialog>.settings-error{padding:8px 16px}
+  .settings-dialog .settings-panel{padding-top:12px}
+}

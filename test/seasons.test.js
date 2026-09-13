@@ -1,3 +1,4 @@
+import {seedMetAudience} from './helpers/met-audience.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,readdirSync} from 'node:fs';
@@ -92,14 +93,14 @@ test('failed automatic generation persists its attempted session and respects qu
 
 test('public API persists/resumes a season across servers and exports complete history',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'backseat-seasons-'));const provider=()=>({status:()=>({configured:true}),react:async()=>result()});let service=await startServer({port:0,dataDir:dir,localSpeech:false,provider:provider()});let id;
-  try{const s=service.studio;s.configure({...s.settings,mode:'live',lurkRatio:0});s.start();id=create(s).id;s.seasons.resume({id});await s.seasons.advance({text:'첫 회차'});for(let i=0;i<20;i++)s.addMessage('momo','대화 '+i);}finally{await service.close();}
+  try{const s=service.studio;seedMetAudience(s);s.configure({...s.settings,mode:'live',lurkRatio:0});s.start();id=create(s).id;s.seasons.resume({id});await s.seasons.advance({text:'첫 회차'});for(let i=0;i<20;i++)s.addMessage('momo','대화 '+i);}finally{await service.close();}
   service=await startServer({port:0,dataDir:dir,localSpeech:false,provider:provider()});try{
     const s=service.studio;assert.equal(s.running,false);assert.equal(s.seasons.active,null);assert.equal(s.seasons.get(id).chapters[0].stage,0);
     const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};
     const record=await (await fetch(service.url+'/api/seasons/'+id,{headers})).json();assert.equal(record.chapters[0].messages.length,22);
     const exported=await (await fetch(service.url+'/api/export',{headers})).json();assert.equal(exported.seasonsArchive.seasons[0].chapters[0].messages.length,22);
     assert.equal((await fetch(service.url+'/api/seasons/choose',{method:'POST',headers,body:JSON.stringify({id,choiceId:'radio'})})).status,409);
-    s.start();s.seasons.resume({id});await s.seasons.advance({text:'두 번째 장면'});assert.equal(s.seasons.get(id).chapters[0].stage,1);assert.equal(JSON.parse(readFileSync(join(dir,'seasons.json'),'utf8')).seasons[0].chapters[0].stage,1);
+    s.audience.random=()=>0;s.start();s.seasons.resume({id});await s.seasons.advance({text:'두 번째 장면'});assert.equal(s.seasons.get(id).chapters[0].stage,1);assert.equal(JSON.parse(readFileSync(join(dir,'seasons.json'),'utf8')).seasons[0].chapters[0].stage,1);
   }finally{await service.close();}
 });
 

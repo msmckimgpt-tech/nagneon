@@ -24,7 +24,7 @@ export function SpecialStudio({state,focusMessage,onError}:{state:State;focusMes
   const chat=(focusMessage?.personaId===target?focusMessage:null) || state.messages.filter(m=>m.kind==='chat'&&m.personaId===target).at(-1);
   async function send(path:string,body:unknown){setPending(true);onError('');try{const reply=await api<Receipt>(path,body);if(reply.result)setResult(reply.result);return reply;}catch(error){onError(error instanceof Error?error.message:'기능 실행 실패');}finally{setPending(false);}}
   const allowed=state.settings.pointsEnabled&&state.settings.mode==='live';
-  const completed=e.purchases.filter(p=>p.status==='completed'&&p.result).slice().reverse();
+  const completed=e.purchases.filter(p=>p.kind!=='arrival'&&p.status==='completed'&&p.result).slice().reverse();
   return <div className="special-studio"><section className="points-hero panel"><div><span className="eyebrow">YOUR AUDIENCE, A LITTLE CLOSER</span><h2>채팅 너머의 마음을 만나보세요.</h2><p>멋진 순간에 받은 가상 후원으로, 관객을 더 깊이 알아가는 시간.</p></div><div className="point-balance"><Coins size={24}/><strong>{e.balance.toLocaleString()}<small>P</small></strong><span>현금 가치 · 구매 · 환전 없음</span></div></section>
     {!allowed&&<p className="alert">실제 AI 관객 모드와 가상 포인트 기능을 켜면 이용할 수 있습니다.</p>}
     <div className="special-columns"><div><section className="panel feature-body"><label>알아보고 싶은 관객<select value={target} onChange={ev=>setTarget(ev.target.value)}>{state.settings.personas.map(p=><option key={p.id} value={p.id}>{p.name}{state.audience.members[p.id]?.sessions?'':' · 아직 만나지 않음'}</option>)}</select></label><div className="wallet-strip"><b>{person?.name}의 지갑</b><span>{wallet?.balance || 0} / {wallet?.cap || 200}P</span></div><p className="field-note">관객 지갑은 현실 시간 1분마다 1P 충전됩니다. 앱이 꺼져 있던 시간도 반영하며 최대 200P입니다.</p>

@@ -64,8 +64,8 @@ app.whenReady().then(async()=>{
 
     // ================= SETTINGS DIALOG =================
     await focusClick('.sidebar .sidebar-bottom button');// the "방송 설정" trigger
-    await until(`!!document.querySelector('.settings-modal[role="dialog"]')`);
-    const sem=await js(`(()=>{const d=document.querySelector('.settings-modal');const t=document.getElementById(d.getAttribute('aria-labelledby'));const de=document.getElementById(d.getAttribute('aria-describedby'));return{role:d.getAttribute('role'),modal:d.getAttribute('aria-modal'),titleText:t&&t.textContent,descText:de&&de.textContent,portaled:d.closest('#root')===null,closeName:(d.querySelector('.modal-title button.icon')||{}).getAttribute&&d.querySelector('.modal-title button.icon').getAttribute('aria-label')};})()`);
+    await until(`!!document.querySelector('.settings-dialog[role="dialog"]')`);
+    const sem=await js(`(()=>{const d=document.querySelector('.settings-dialog');const t=document.getElementById(d.getAttribute('aria-labelledby'));const de=document.getElementById(d.getAttribute('aria-describedby'));return{role:d.getAttribute('role'),modal:d.getAttribute('aria-modal'),titleText:t&&t.textContent,descText:de&&de.textContent,portaled:d.closest('#root')===null,closeName:(d.querySelector('.modal-title button.icon')||{}).getAttribute&&d.querySelector('.modal-title button.icon').getAttribute('aria-label')};})()`);
     assert.equal(sem.role,'dialog');assert.equal(sem.modal,'true');
     assert.ok(sem.titleText&&sem.titleText.includes('나의 방송 설정'),'title connected via aria-labelledby');
     assert.ok(sem.descText&&sem.descText.length>0,'description connected via aria-describedby');
@@ -73,9 +73,9 @@ app.whenReady().then(async()=>{
     assert.equal(sem.closeName,'방송 설정 창 닫기');
     checks.push('settings dialog exposes role/aria-modal, linked title+description, named close button, portaled outside #root');
 
-    await until(`document.activeElement===document.querySelector('.settings-modal[role="dialog"]')`);
+    await until(`document.activeElement.id==='settings-tab-broadcast'`);
     const initial=await active();
-    assert.equal(initial.isDialog,true,'initial focus lands on the dialog container');
+    assert.equal(initial.inDialog,true,'initial focus lands on the selected settings tab');
     checks.push('open moves focus into the dialog (container with linked name)');
 
     // Background is inert + hidden from assistive tech while the dialog is open.
@@ -87,12 +87,12 @@ app.whenReady().then(async()=>{
     checks.push('background is inert+aria-hidden and refuses focus while the dialog is open');
 
     // Every settings control carries a real label (wrapping <label>, for/id, or aria-label).
-    const unlabeled=await js(`Array.from(document.querySelectorAll('.settings-modal input,.settings-modal select,.settings-modal textarea')).filter(el=>!el.getAttribute('aria-label')&&!el.getAttribute('aria-labelledby')&&!el.closest('label')&&!(el.id&&document.querySelector('label[for="'+el.id+'"]'))).map(el=>(el.tagName+':'+(el.type||'')))`);
+    const unlabeled=await js(`Array.from(document.querySelectorAll('.settings-dialog input,.settings-dialog select,.settings-dialog textarea')).filter(el=>!el.getAttribute('aria-label')&&!el.getAttribute('aria-labelledby')&&!el.closest('label')&&!(el.id&&document.querySelector('label[for="'+el.id+'"]'))).map(el=>(el.tagName+':'+(el.type||'')))`);
     assert.deepEqual(unlabeled,[],'all settings controls are labelled');
     checks.push('every settings input/select/textarea has an associated accessible label');
 
-    // Tab from the container reaches the first tabbable (the close button).
-    await key('Tab');
+    // Shift+Tab from the selected settings tab reaches the close button.
+    await key('Tab',true);
     const firstTab=await active();
     assert.equal(firstTab.inDialog,true);
     assert.equal(firstTab.label,'방송 설정 창 닫기','first Tab stop is the named close button');
@@ -116,11 +116,11 @@ app.whenReady().then(async()=>{
     checks.push('Tab/Shift+Tab wrap at both boundaries without leaving the dialog');
 
     // ---- Save error keeps the dialog open with the edited draft intact. ----
-    await js(`(()=>{const l=Array.from(document.querySelectorAll('.settings-modal label')).find(l=>l.textContent.includes('방송 제목'));const el=l.querySelector('input');const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(el,'접근성 저장 테스트 제목');el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await js(`(()=>{const l=Array.from(document.querySelectorAll('.settings-dialog label')).find(l=>l.textContent.includes('방송 제목'));const el=l.querySelector('input');const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(el,'접근성 저장 테스트 제목');el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await js(`(()=>{window.__origFetch=window.fetch;window.fetch=function(u,o){if(typeof u==='string'&&u.includes('/api/settings')&&o&&o.method==='PUT'){return Promise.resolve(new Response(JSON.stringify({error:'합성 저장 실패'}),{status:500,headers:{'Content-Type':'application/json'}}));}return window.__origFetch.apply(this,arguments);};})()`);
     await clickText('설정 저장');
     await pause(300);
-    const afterError=await js(`(()=>{const d=document.querySelector('.settings-modal[role="dialog"]');const l=d&&Array.from(d.querySelectorAll('label')).find(l=>l.textContent.includes('방송 제목'));return{open:!!d,title:l&&l.querySelector('input').value};})()`);
+    const afterError=await js(`(()=>{const d=document.querySelector('.settings-dialog[role="dialog"]');const l=d&&Array.from(d.querySelectorAll('label')).find(l=>l.textContent.includes('방송 제목'));return{open:!!d,title:l&&l.querySelector('input').value};})()`);
     assert.equal(afterError.open,true,'dialog stays open after a failed save');
     assert.equal(afterError.title,'접근성 저장 테스트 제목','edited draft is retained after a failed save');
     checks.push('a failed save keeps the dialog open and preserves the edited draft');
@@ -128,7 +128,7 @@ app.whenReady().then(async()=>{
     // Restore fetch and confirm a successful save closes the dialog.
     await js(`(()=>{window.fetch=window.__origFetch;})()`);
     await clickText('설정 저장');
-    await until(`!document.querySelector('.settings-modal[role="dialog"]')`);
+    await until(`!document.querySelector('.settings-dialog[role="dialog"]')`);
     assert.equal(service.studio.settings.title,'접근성 저장 테스트 제목','successful save persisted the edited title');
     const restored=await active();
     assert.ok(restored.label&&restored.label.includes('방송 설정'),'focus returns to the settings trigger after close');
@@ -138,11 +138,11 @@ app.whenReady().then(async()=>{
 
     // Re-open + Escape close, confirming state survives reopen and Escape works.
     await focusClick('.sidebar .sidebar-bottom button');
-    await until(`!!document.querySelector('.settings-modal[role="dialog"]')`);
-    const reopened=await js(`(()=>{const l=Array.from(document.querySelectorAll('.settings-modal label')).find(l=>l.textContent.includes('방송 제목'));return l&&l.querySelector('input').value;})()`);
+    await until(`!!document.querySelector('.settings-dialog[role="dialog"]')`);
+    const reopened=await js(`(()=>{const l=Array.from(document.querySelectorAll('.settings-dialog label')).find(l=>l.textContent.includes('방송 제목'));return l&&l.querySelector('input').value;})()`);
     assert.equal(reopened,'접근성 저장 테스트 제목','reopened dialog shows the saved settings');
     await key('Escape');
-    await until(`!document.querySelector('.settings-modal[role="dialog"]')`);
+    await until(`!document.querySelector('.settings-dialog[role="dialog"]')`);
     assert.ok((await active()).label.includes('방송 설정'),'Escape returns focus to the settings trigger');
     checks.push('reopen shows saved state; Escape closes and restores focus to the trigger');
     writeFileSync(join(folder,'settings-dialog.png'),(await win.webContents.capturePage()).toPNG());

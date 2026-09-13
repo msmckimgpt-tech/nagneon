@@ -1,6 +1,6 @@
 import { z } from 'zod';
 const short = (n) => z.string().trim().min(1).max(n);
-export const Persona = z.object({ id: short(40).regex(/^[a-zA-Z0-9_-]+$/), name: short(30), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), role: z.enum(['viewer','manager']), personality: short(1200), enabled: z.boolean(), sociability:z.number().min(0).max(1).default(0.6), expertise:z.number().min(0).max(1).default(0.5), values:z.string().max(1000).default('즐거운 공동 시청과 스트리머 존중') });
+export const Persona = z.object({ id: short(40).regex(/^[a-zA-Z0-9_-]+$/), name: short(30), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), role: z.enum(['viewer','manager']), personality: short(1200), enabled: z.boolean(), system:z.boolean().default(false), sociability:z.number().min(0).max(1).default(0.6), expertise:z.number().min(0).max(1).default(0.5), values:z.string().max(1000).default('즐거운 공동 시청과 스트리머 존중') });
 export const Game = z.object({ id: short(40), name: short(80), genre: short(40), context: short(3000), popularity: z.number().min(0).max(1).default(0.5) });
 const weight=z.number().min(0).max(100);
 export const Discovery=z.object({enabled:z.boolean().default(false),arrivalSeconds:z.number().int().min(10).max(600).default(45),mix:z.object({clip:weight.default(30),guide:weight.default(25),fan:weight.default(20),discussion:weight.default(10),browse:weight.default(15)}).prefault({})}).prefault({}).refine(d=>!d.enabled||Object.values(d.mix).some(w=>w>0),{message:'유입 비중을 하나 이상 0보다 크게 설정하세요.'});
@@ -25,6 +25,9 @@ export const Settings = z.object({
   if (!s.personas.some(p=>p.id===s.managerId && p.enabled)) ctx.addIssue({code:'custom',message:'활성 관객 중 매니저를 선택하세요.'});
 });
 export const Observation = z.object({
+  arrival:z.object({name:short(30),personality:short(1200),values:short(1000),sociability:z.number().min(0).max(1),expertise:z.number().min(0).max(1)}).nullable().default(null),
+  viewerChanges:z.array(z.object({personaId:short(40),preference:short(200),nickname:z.string().max(30),reason:short(200),evidence:short(300),sociabilityDelta:z.number().min(-.05).max(.05)})).max(2).default([]),
+  clipPicks:z.array(z.object({personaId:short(40),title:short(100),reason:short(240),signature:short(160)})).max(2).default([]),
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8)}).default({positive:false,impact:0,reason:'',signature:'',supporters:[]}),

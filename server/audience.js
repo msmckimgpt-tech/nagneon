@@ -15,9 +15,20 @@ export class Audience {
     if(!m.origin)m.origin=first&&settings.discovery.enabled&&p.id!==settings.managerId?this.chooseOrigin(settings,now):{key:'direct',label:'직접 초대 · 기존 관객',firstSeenAt:now};
     m.sessions++;m.joinedAt=now;
     this.presence[p.id]=p.id===settings.managerId?'active':this.random()<settings.lurkRatio?'lurking':'active';
-    return `${p.name} ${first?'첫 방문':'재방문'} · ${m.origin.label}`;
+    return `${p.name} ${first?'첫 방문':'재방문'}${this.autonomous?'':` · ${m.origin.label}`}`;
   }
   start(settings,now){
+    if(this.autonomous){
+      const before=structuredClone(this.data);this.presence={};this.lastTick=now;this.lastPresence=now;this.lastStart=now;const events=[];
+      try{for(const p of settings.personas){
+        const m=this.data.members[p.id];
+        if(p.system){this.data.members[p.id] ||= {sessions:0,seconds:0,recognized:0,affinity:0,peers:{},memories:[]};events.push(this.join(p,settings,now));continue;}
+        if(!p.enabled||!m?.sessions){this.presence[p.id]='away';continue;}
+        if(p.id===settings.managerId||this.random()<Math.min(.95,.5+m.affinity*.35+Math.min(.1,m.seconds/7200)))events.push(this.join(p,settings,now));
+        else this.presence[p.id]='away';
+      }this.save(this.data);return events;
+      }catch(error){this.data=before;this.presence={};throw error;}
+    }
     this.presence={};this.lastTick=now;this.lastPresence=now;this.lastStart=now;this.nextArrival=now+settings.discovery.arrivalSeconds*1000;const events=[];let openingViewer=false;
     for(const p of settings.personas){
       const m=this.data.members[p.id] ||= {sessions:0,seconds:0,recognized:0,affinity:0.15,peers:{},memories:[]};
@@ -44,7 +55,7 @@ export class Audience {
         else if(this.random()<0.08)this.presence[p.id]=this.random()<settings.lurkRatio?'lurking':this.random()<0.12?'away':'active';
       }
     }
-    if(settings.discovery.enabled&&now>=this.nextArrival){
+    if(!this.autonomous&&settings.discovery.enabled&&now>=this.nextArrival){
       const waiting=settings.personas.filter(p=>p.enabled&&this.presence[p.id]==='waiting');
       if(waiting.length){const p=waiting[Math.min(waiting.length-1,Math.floor(this.random()*waiting.length))];events.push(this.join(p,settings,now));this.save(this.data);}
       // Avoid catch-up floods after system suspend or a slow request.

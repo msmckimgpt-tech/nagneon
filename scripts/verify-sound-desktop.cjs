@@ -7,15 +7,15 @@ const {mkdirSync,writeFileSync}=require('node:fs');
 const {spawn}=require('node:child_process');
 const assert=require('node:assert/strict');
 const native=process.argv.includes('--loopback'),folder=resolve('artifacts/sound-ui-'+Date.now());mkdirSync(folder,{recursive:true});app.setPath('userData',join(folder,'profile'));
-let service,win,fixture,emitter;const requests=[],inputs=[],checks=[],errors=[];let passed=false;
+let service,win,fixture,emitter;const requests=[],inputs=[],checks=[],errors=[];let passed=false,clipRequested=false;
 setTimeout(()=>{console.error('Sound UI watchdog');app.exit(2);},150000).unref();
 app.whenReady().then(async()=>{
   const until=async(fn,limit=30000)=>{const at=Date.now();while(Date.now()-at<limit){if(await fn())return;await new Promise(r=>setTimeout(r,75));}throw Error('Sound UI condition timed out');};
   try{
     const {LocalSound}=await import(pathToFileURL(resolve('server/local-sound.js')).href),{startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
     const worker=new LocalSound(),analyze=worker.analyze.bind(worker);worker.analyze=async(buffer,signal)=>{const at=Date.now(),result=await analyze(buffer,signal);requests.push({at,ms:Date.now()-at,result});return result;};
-    service=await startServer({port:0,dataDir:join(folder,'data'),localSpeech:false,soundWorker:worker,provider:{localSpeech:true,status:()=>({configured:true,model:'Sound UI synthetic audience',effort:'low'}),react:async args=>{inputs.push({at:Date.now(),speech:args.speech,viewerContext:args.viewerContext,hasImage:!!args.image});return {observation:{game:'Just Chatting',scene:'소리를 함께 듣는 시험',confidence:.4,excitement:0,messages:[{personaId:'momo',text:'소리가 들리네요 '+inputs.length,kind:'chat',spoiler:false}]},usage:{total_tokens:1}};},transcribe:async()=>({text:'마이크 시험 발언',cues:{}})}});
-    const s=service.studio;s.configure({...s.settings,mode:'live',category:'just-chatting',lurkRatio:0,clipBufferEnabled:true,intervalSeconds:5,maxCalls:30});
+    service=await startServer({port:0,dataDir:join(folder,'data'),localSpeech:false,soundWorker:worker,provider:{localSpeech:true,status:()=>({configured:true,model:'Sound UI synthetic audience',effort:'low'}),react:async args=>{inputs.push({at:Date.now(),speech:args.speech,viewerContext:args.viewerContext,hasImage:!!args.image});return {observation:{game:'Just Chatting',scene:'소리를 함께 듣는 시험',confidence:.8,excitement:0,clipPicks:clipRequested?(clipRequested=false,[{personaId:'momo',title:'관객이 들은 소리',reason:'이 소리를 함께 듣던 순간이 좋아서',signature:'sound-fixture-first'}]):[],messages:[{personaId:'momo',text:'소리가 들리네요 '+inputs.length,kind:'chat',spoiler:false}]},usage:{total_tokens:1}};},transcribe:async()=>({text:'마이크 시험 발언',cues:{}})}});
+    const {seedMetAudience}=await import(pathToFileURL(resolve('test/helpers/met-audience.js')));const s=service.studio;seedMetAudience(s);s.configure({...s.settings,mode:'live',category:'just-chatting',lurkRatio:0,clipBufferEnabled:true,autoHighlights:true,intervalSeconds:5,maxCalls:30});
     const studioSession=createStudioSession(session,service);
     win=new BrowserWindow({width:1440,height:980,show:true,webPreferences:{session:studioSession,preload:resolve('desktop/preload.cjs'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
     win.webContents.on('console-message',event=>{if(event.level==='error')errors.push(event.message);});
@@ -43,12 +43,11 @@ app.whenReady().then(async()=>{
     await button('방송 시작');await until(()=>js(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='방송 종료')`));await js(`document.querySelector('[title="마이크"]').click()`);await until(()=>js(`document.body.textContent.includes('마이크 켜짐')`));await until(()=>requests.some(r=>!r.result.silent),45000);
     await until(()=>inputs.some(i=>Object.values(i.viewerContext||{}).some(p=>p.heardSounds?.length)));
     assert.ok(requests.some(r=>r.result.volumeDb>-55));assert.ok(inputs.every(i=>!i.speech||i.speech==='마이크 시험 발언'));checks.push(native?'real Windows loopback via production capture policy reaches the real local sound model':'real MediaRecorder Opus decoding, local model and per-viewer sound context');
-    await until(()=>js(`document.body.textContent.includes('영상 버퍼 켜짐')||document.body.textContent.includes('버퍼 준비')||!!document.querySelector('[title="핫클립 저장"]')`),1000).catch(()=>{});
-    await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('핫클립 저장')).click()`);
+    assert.ok(s.presentWitnesses().includes('momo'),'synthetic clip author is actually present at capture');clipRequested=true;
     await until(()=>s.clips.data.some(c=>c.video));const clip=s.clips.data.find(c=>c.video);assert.equal(clip.hasAudio,true);checks.push('hotclip stores a single mixed system + microphone audio track');
-    await until(()=>js(`!Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('핫클립 저장'))`));await js(`document.querySelector('nav button').click()`);await until(()=>js(`!!document.querySelector('[title="시스템 출력 소리"]')`));await js(`document.querySelector('[title="시스템 출력 소리"]').click()`);await until(()=>!s.sound.active);assert.equal(s.sound.events.length,0);checks.push('system sound off clears listening evidence while screen remains');
+await until(()=>js(`!!document.querySelector('[title="시스템 출력 소리"]')`));await js(`document.querySelector('[title="시스템 출력 소리"]').click()`);await until(()=>!s.sound.active);assert.equal(s.sound.events.length,0);checks.push('system sound off clears listening evidence while screen remains');
     await choose(true);await until(()=>s.sound.active);await until(()=>requests.length>=2);const oldCount=inputs.length;await until(()=>inputs.length>oldCount);assert.equal(inputs.at(-1).hasImage,false);
-    await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('핫클립 저장')).click()`);await until(()=>s.clips.data.length>=2);assert.equal(s.clips.data.at(-1).video,false);assert.equal(s.clips.data.at(-1).thumbnail,null);checks.push('Just Chatting sound-only mode sends no frame and saves no stale video');
+    assert.equal(s.clips.data.filter(c=>c.video).length,1);checks.push('Just Chatting sound-only mode sends no frame; previously consented clip remains unchanged');
     win.show();win.focus();await new Promise(r=>setTimeout(r,300));writeFileSync(join(folder,'page.png'),(await win.webContents.capturePage(undefined,{stayHidden:true,stayAwake:true})).toPNG());
     s.stop();await until(()=>!s.sound.active);await js('testCtx.close();if(window.paint)clearInterval(paint);');assert.deepEqual(errors,[]);passed=true;
     writeFileSync(join(folder,'clip-test.json'),JSON.stringify({file:s.clips.file(clip.id,'webm'),hasAudio:clip.hasAudio},null,2));

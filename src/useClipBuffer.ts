@@ -25,5 +25,11 @@ export function useClipBuffer(screen:MediaStream|null,mic:MediaStream|null,enabl
     if(active.current?.state==='recording'&&Date.now()-started.current>=1000)return new Promise(resolve=>{const done=(value:Segment|null)=>{clearTimeout(timeout);if(resolveTake.current===done)resolveTake.current=null;resolve(value);};const timeout=setTimeout(()=>done(null),4000);resolveTake.current=done;try{active.current!.stop();}catch{done(null);}});
     return latest.current?.sessionId===sessionId&&Date.now()-latest.current.endedAt<120000?latest.current:null;
   }
-  return {buffering,take};
+  async function takeAt(at:number){
+    const contains=(s:Segment|null)=>!!s&&s.sessionId===sessionId&&s.startedAt<=at&&s.endedAt>=at;
+    if(contains(latest.current))return latest.current;
+    if(started.current>at)return null;
+    const value=await take();return contains(value)?value:null;
+  }
+  return {buffering,take,takeAt};
 }

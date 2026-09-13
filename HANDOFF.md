@@ -6,6 +6,36 @@
 
 ### 진행 중 확장 · 2026-09-13
 
+**현재 최신: 관객 자율성 전환과 설정 6개 탭 구현·새 전체 배포본 검증 완료. 판매 목표는 계속 활성.** 이 절이 아래 화면 선택창 단계의 ‘미구현/다음 구현’ 기록보다 우선한다. 상세 기준은 `docs/AUDIENCE-AUTONOMY.md`, 원본과 실패 증거를 포함한 보존 목록은 `artifacts/audience-autonomy-evidence.json`이다. 사용자 실행 중 앱과 실제 `data/`를 재시작·초기화하지 않았다.
+
+`server/world.js`가 settings/audience/economy/autonomy를 단일 저장 단위로 관리한다. 신규 관객 후보 없음, 기존 만난 ID/기록 보존·미만남 후보 보관, API/SSE/export 비공개 투영, 유입 hold/commit/refund/재시작 영수증과 영구 해금이 구현됐다. `audience-autonomy.js`는 실제 유입 시 Astra 생성, 시간·클립·50P 유입, 대화 근거 진화·닉네임/별명 이력·개인 메모·제거를 담당한다. 메모는 모델 입력에서 제외한다. 저장 실패에도 방송을 중단하고, 실패한 첫 시작과 생성/해금 중 제거된 관객의 늦은 응답을 취소·환불한다.
+
+`ambient.js`와 `NaturalExperiences.tsx`로 일반 방송 중 축하·라디오·취향·도전·회상 등을 대화에 연결했다. 기존 기획/시즌 새 시작·단계 전환/수동 클립 API를 닫고 옛 기록·선택적 대응 연습을 보존한다. `clips.js`의 개인적 클립 선택은 후원 임계값과 독립적이며 실제 목격자만 가능하다. `useClipBuffer.ts`/`useMedia.ts`는 당시 버퍼가 남은 관객 클립에만 허용된 영상·출력 소리·마이크를 붙인다. `SettingsDialog.tsx`/CSS는 6탭·초안/오류·키보드·좁은 창/200% 확대, `AudiencePanel.tsx`는 해금/메모/별명/제거 UI를 제공한다.
+
+전체 **234 Node + TypeScript/Vite 통과**(`autonomy-release-final-check.log`), 신규 자율성15개에는 별도 자식 프로세스 강제 종료 후 동일 디스크의 hold/commit 복구가 포함된다. Electron7흐름/24레이아웃(`audience-autonomy-ui.json`, 최종 폴더 `autonomy-ui-1789266516126`), 기존 dialog13(`autonomy-dialog-regression-retry.log`) 통과. 실제 Astra low가 연필옆여백을15.534초에 생성하고11.332초에 취향을 유지한 잡담에 응답했다(`audience-autonomy-astra.json`, 합성 스트리머 발언, 실제2호출). 실제 Windows loopback5흐름과 관객 선택 영상의 단일 트랙440/880Hz검출(`sound-ui-1789266669343`, `autonomy-loopback-retry.log`, `autonomy-loopback-mix.log`) 통과. 최초 loopback은 합성 관객 난수0 때문에 전원 이탈한 시험 조건을 고쳤다. 확대38px 패널은 실제 스크린샷에서 발견해120px이상으로 고쳤다. 실패 원본과 WGC/DXGI 경고를 보존한다.
+
+최종 전체 폴더 **`release/2026-09-13T02-40-02-757Z/app/BACKSEAT-win32-x64`**, 1,599,426,489바이트/2444파일/미서명. `autonomy-package-final.log` 실제 종료0. 전체 파일hash/핵심36원본/fuses일치(`autonomy-package-integrity.json`), 새 배포 ASAR에서 추출한 모듈과 전달된Python·Whisper·YAMNet·Codex를 개발PATH 없이 실행한 실제한국어/STT/소리/Astra2호출(`autonomy-packaged-runtime.json/.log`) 통과, session14700도 실제 종료0 수집. 초기 중간02-35 패키지는 최신이 아니다. 이번 세대 NSIS 재압축/설치 시험은 하지 않았으며 이전 TEST 설치 수용과 구분한다.
+
+새 원본 ASAR의 native 첫 실행/안내 건너뛰기/0관객/설정6탭·분위기 전환/Escape/관객 화면을 확인하고 Alt+F4로 정상 종료했다. 격리 프로필 `autonomy-native-20260913-114345`, PID29744, 창4721096, 정확한 최종 패키지 exe만 대상이었다. `autonomy-native-result.json`, `autonomy-native-{studio,settings,audience}.jpg/.txt`, `autonomy-native-mood.txt`, `autonomy-native-processes-after.json`(0개), stderr Stats경고를 보존한다. 원래 개발 앱 창9767352는 건드리지 않았다. native UI에서는 화면/마이크/소리/실제 모델 호출을 켜지 않았고, 이 증거와 위 별도 실제 모델·loopback 시험을 구분한다.
+
+WSL Claude는 설정 두 파일만 구현 후 실제 종료0(session `0692ec77-37e7-4ab2-82be-4a05791e7274`, 16턴, permission_denials 없음), `claude-settings-tabs-*`와 실행 스크립트에 원본을 보존했다. 부모가 연결·레이아웃·복구·문구를 수정하고 검증했다. 추가 Claude/테스트/모델/패키징 프로세스는 모두 종료했다. 개인 메모리 수정 없음.
+
+**다음 행동:** 자연 유입/장기 관계·닉네임·클립 공유·포인트 균형을 실제 방송에서 평가하고, 화면·게임 소리·물리 한국어 음성의 혼합 상황과 Steam 게임의 실제 플레이 수용을 이어간다. 일반 대화의 단서 기반 자연 진행은 구현됐지만 장기 사건·관계 시뮬레이션 전체가 완성된 것은 아니다. 설치의 최초 저널 전 중단/늦은 제거 실패·새 Windows·서명·상용 연동 조건·Steam 판매 심사도 남는다. 목표 완료/차단으로 표시하지 않는다. 아래는 이전 단계의 시점별 기록이다.
+
+**최신: 화면 선택창 개선 완료, 관객 자율성 전환 요청 수용. 판매 목표 계속 활성.** `docs/CAPTURE-PICKER.md`가 새 배포/검증, `docs/AUDIENCE-AUTONOMY.md`가 이번 사용자 요청과 다음 구현 기준이다. 새 요구는 직접 관객 추가/성향 편집과 수동 클립을 없애고 시간·핫클립·포인트 유입 시 새 관객 생성, 대화 기반 성향/닉네임 변화와 메모, 포인트 기반 성향 해금, 일반 방송 중 자연스러운 상황, 설정 탭이다. 기존 데이터를 보존한다. 아직 자율성 전환 코드는 구현되지 않았으므로 완료로 표현하지 않는다.
+
+`src/CapturePicker.tsx`, `capture-picker.css`, App 연결, `desktop/capture.cjs`/preload/types: 목록부터 열고 thumbnailSize0 이름 조회, 화면/창별 비동기 미리보기, 진행 중 native 요청 병합, 지연된 이전 응답과 이름이 바뀐 ID 무시. 4초 뒤 이름 선택 안내, 검색/새로고침/오류 복구, 공유 설명 카드/구성 요약, minmax 격자/긴 제목/작은 창/확대. 오디오 동의/메인 프레임/단일 선택 경로는 유지한다. WGC 자체의 5초 경고를 제거한 것은 아니며 UI를 먼저 사용하도록 했다.
+
+전체219 Node/TS/Vite, capture 정책6, 새 Electron8흐름/여섯 viewport(200% 포함), 기존 dialog13 통과. `capture-picker-check.log`, `capture-picker-test.json`, `capture-picker-renderer-final.log`, `capture-picker-dialog-current.log`. 실제 Windows 메타데이터711ms/미리보기 중 재조회670ms, 화면636ms/창1111ms(`capture-native-test.json`). 실제 loopback5흐름 + 녹화의 단일 트랙 440/880Hz 확인(`capture-picker-loopback.log`, `capture-picker-loopback-mix.log`, `sound-ui-1789263905810`). 실패 원본과 검사 도구 수정은 CAPTURE-PICKER 문서 참조.
+
+새 전체 폴더 `release/2026-09-13T01-45-11-001Z/app/BACKSEAT-win32-x64`, 1,599,419,543바이트/2444파일/미서명. package session31181 종료0. 전체 hash/핵심28원본/fuses(`capture-picker-package-integrity.json`), 새 번들의 실제 한국어 STT/소리 분석/Astra low 두 호출(`capture-picker-packaged-runtime.json`, session72374 종료0). 마이크 준비6.429초/전사2.506초, 소리 준비2.200초/분석5.923초, 모델14.834/10.840초. native 빈프로필 `picker-native-20260913-104803`, PID27028 정상종료/패키지 프로세스0개. 개선 선택창 실제 관찰 `capture-picker-native-dialog.jpg/.txt`, `native-result.json`의 전체 이름은 capture-picker 접두사. WGC/Stats 경고 보존. 이 패키지로 NSIS를 다시 압축/설치한 것은 아니며 앞 단계 installer 수용은 당시 앱에 대한 증거다.
+
+사용자 앱은 작업 중 별도로 재실행된 것을 발견했다. 현재 관찰된 PID31080, 2026-09-13T10:44:09.925313+09:00, 정확한 node_modules/electron/dist/electron.exe . 이다. 이전 PID26576을 살아 있다고 가정하지 않는다. 이번 선택창 작업에서 사용자 프로필/앱을 종료하거나 재시작하지 않았다. 현재 추가 테스트/모델/컴파일 프로세스는 모두 종료했다.
+
+WSL Claude 읽기 전용 검토 session4129 실제 종료0, 29턴/약358초, permission_denials 없음, 추가 Claude 작업 없음. 원본 `claude-audience-autonomy-output.json`, 추출 본문 `.md`(파일명 끝은 -review.md), 프롬프트/스크립트/exit/error 보존. 부모가 실제 source 핵심을 확인했으며 권고 전체를 채택하지 않는다: 두 파일 저장을 economy.change로 감싼다고 원자적이지 않음, point 유입 성향 사전 선택 금지, 보장 자동 첫관객 대신 첫 체험 포인트 유입 우선, positiveMoment만 클립 조건으로 쓰지 않음, 은퇴 관객의 역사 삭제 금지, 별도 모드를 자동으로 켜는 것만으로 자연스러움 대체 금지. 상세 `docs/AUDIENCE-AUTONOMY.md`.
+
+**다음 행동:** 새 사용자 방향을 우선 구현한다. 서버 소유 관객/내적 성향의 공개 투영과 마이그레이션, 유입/포인트 정산의 단일 커밋을 먼저 설계·구현하고 API/SSE/export 누출과 실패/취소/재시작을 실제 검증한다. 그 다음 진화/별명/메모/해금, 관객 주도 클립, 자연 발생 상황, 설정 탭을 연결한다. 기존 설치의 최초 저널 전 중단/늦은 제거 실패, 실제 Steam/장기 물리 음성·관객 개성/새 Windows·서명·상용 연동·Steam 심사도 계속 남는다. 목표를 완료/차단으로 표시하지 않는다. 아래는 이전 단계 기록이다.
+
 **최신: 저장 상태·소유권 보완 및 전체 1.6 GB 앱의 실제 TEST 설치/실행/제거까지 통과. 판매 목표 계속 활성.** 이 절이 아래 이전 단계의 최신 표기보다 우선한다. `docs/INSTALLER.md`, `installer/engine/README.md`를 갱신했다. production 활성화는 여전히 거부하며 일반 배포/Steam 판매 합격은 아니다.
 
 현재 원본14개 C#에 `StoredValidation.cs` 추가: 고정 식별자/정규 경로/버전·파일 목록/트랜잭션 관계 검증, 공유 잠금 코드5, 알 수 없는 백업 선검사, 고유 메타데이터 임시 파일. 매니페스트 파일만 지우는 staging 정리로 재귀 삭제 제거/알 수 없는 메모 보존. 게시 전에 HKCU와 시작 메뉴의 앱/루트 소유권 확인/사용자 바로가기 인수 보존. 제거는 상태/백업 잠금과 읽기 전용도 payload 삭제 전에 확인. 실행기는 mutex 뒤 상태 읽기. `Models.cs`와 JS 생성기에 파일/디렉터리 별칭 거부, 버전/경로 구문 강화. 오래된 저장 버전에 최신 소리 필수 목록을 소급하지 않는다.

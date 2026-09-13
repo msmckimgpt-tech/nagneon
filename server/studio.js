@@ -13,9 +13,11 @@ import { Director } from './director.js';
 import { StorySeasons } from './seasons.js';
 import {SoundScene} from './sound-scene.js';
 import { ConversationJournal } from './conversation-journal.js';
+import {AudienceAutonomy} from './audience-autonomy.js';
+import {Ambient} from './ambient.js';
 
 export class Studio extends EventEmitter {
-  constructor({provider,settings=defaults,persist=()=>{},now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
+  constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
     super();this.provider=provider;this.settings=Settings.parse(settings);this.persist=persist;this.now=now;this.random=random;
     this.storageStatus=storageStatus;this.audience=audience;this.journal=journal;this.knowledge=knowledge;this.running=false;this.messages=[];this.events=[];this.queue=[];this.controller=new AbortController();this.epoch=0;
     this.economy=economy || new Economy(undefined,()=>{},now);this.economy.ensureWallets(this.settings.personas);this.special=new SpecialFeatures(this);
@@ -23,15 +25,28 @@ export class Studio extends EventEmitter {
     this.training=new TrainingRun({now});this.trainingMessages=[];this.director=new Director(this,{data:directorData,save:saveDirector});
     this.seasons=new StorySeasons(this,{data:seasonsData,save:saveSeasons});
     this.sound=new SoundScene(this);this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
+    this.world=world;this.ambient=new Ambient(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
   }
-  resetCounters(){this.sound?.stop();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
-  state(){return {sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.settings,training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
+  resetCounters(){this.ambient?.reset();this.sound?.stop();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
+  state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
   log(text){this.events.push({id:randomUUID(),time:this.now(),text});this.events=this.events.slice(-60);}
-  configure(settings){if(this.running||this.training.active||this.busy)throw new Error('방송·연습·관객 응답을 종료한 뒤 설정을 변경하세요.');const next=Settings.parse(settings);this.economy.ensureWallets(next.personas);this.persist(next);this.settings=next;this.publish();}
+  configure(settings){if(this.running||this.training.active||this.busy)throw new Error('방송·연습·관객 응답을 종료한 뒤 설정을 변경하세요.');const next=Settings.parse(this.autonomy?this.autonomy.configure(settings):settings);this.economy.ensureWallets(next.personas);this.persist(next);this.settings=next;this.publish();}
   start(){if(this.training.active)throw new Error('상황 연습을 마친 뒤 방송을 시작하세요.');if(this.running)return;if(this.settings.mode==='live'&&!this.provider.status().configured)throw new Error('방송 설정에서 ChatGPT 계정 또는 선택한 AI 제공처의 연결을 확인하세요.');
-    this.controller.abort();this.controller=new AbortController();this.epoch++;this.queue=[];this.messages=[];this.events=[];this.resetCounters();this.running=true;this.sessionId=randomUUID();this.startedAt=this.now();if(this.settings.mode==='live')this.audience.start(this.settings,this.now()).forEach(e=>this.log(e));this.log(this.settings.mode==='live'?'AI 방송 시작':'리허설 시작 · 예시 반응, API 사용 없음');this.publish();}
-  stop(){this.sound.stop();this.seasons.pause();this.running=false;this.audience.stop();this.knowledge.lastSeen=null;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];if(this.training.active)this.training.stop();try{this.director.finish('interrupted');}catch(error){this.log(`기획 방송 기록 저장 실패: ${error.message}`);this.director.active=null;this.director.serial++;}this.log('방송 종료 · 대기 반응 취소');this.publish();}
+    this.controller.abort();this.controller=new AbortController();this.epoch++;this.queue=[];this.messages=[];this.events=[];this.resetCounters();this.running=true;this.sessionId=randomUUID();this.startedAt=this.now();
+    try{if(this.settings.mode==='live'){this.audience.start(this.settings,this.now()).forEach(e=>this.log(e));this.autonomy?.start();}}
+    catch(error){this.running=false;this.sessionId=null;this.startedAt=null;this.controller.abort();this.lastError=error.message;this.publish();throw error;}
+    this.log(this.settings.mode==='live'?'AI 방송 시작':'리허설 시작 · 예시 반응, API 사용 없음');this.publish();}
+  stop(){
+    this.sound.stop();this.running=false;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];this.knowledge.lastSeen=null;this.ambient?.reset();
+    // Storage failure must never keep the live session or its pending model alive.
+    for(const [label,save] of [['시즌',()=>this.seasons.pause()],['관객',()=>this.audience.stop()],['시청 시간',()=>this.autonomy?.stop()]]){
+      try{save();}catch(error){this.lastError=`${label} 종료 기록 저장 실패: ${error.message}`;this.log(this.lastError);}
+    }
+    if(this.training.active)this.training.stop();
+    try{this.director.finish('interrupted');}catch(error){this.log(`기획 방송 기록 저장 실패: ${error.message}`);this.director.active=null;this.director.serial++;}
+    this.log('방송 종료 · 대기 반응 취소');this.publish();
+  }
   close(){this.stop();clearInterval(this.timer);}
   prepareMessage(personaId,text,kind='chat') {
     const p=this.settings.personas.find(p=>p.id===personaId);
@@ -55,6 +70,7 @@ export class Studio extends EventEmitter {
       if(this.running&&this.settings.mode==='live'){
         if(action==='ban')this.audience.presence[id]='away';
         else if(this.audience.data.members[id]?.joinedAt>=this.startedAt)this.audience.presence[id]='active';
+        else if(this.autonomy)this.audience.presence[id]='away';
         else if(this.settings.discovery.enabled)this.audience.presence[id]='waiting';
         else this.log(this.audience.join(p,this.settings,this.now()));
       }
@@ -62,7 +78,7 @@ export class Studio extends EventEmitter {
     if(action==='clear'){this.journal.forget(this.messages.map(m=>m.id));this.messages=[];this.queue=[];this.log('채팅 비우기');}this.publish();
   }
   accept(observation,observedAt=this.now(),fictional=false){
-    const obs=Observation.parse(observation);if(!fictional)this.observation={...obs,messages:undefined,at:observedAt};
+    const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:obs.positiveMoment,at:observedAt};
     let delay=0;
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
       const p=this.settings.personas.find(p=>p.id===m.personaId && p.enabled);
@@ -74,11 +90,11 @@ export class Studio extends EventEmitter {
     }
     this.publish();
   }
-  tickAudience(){if(this.settings.mode!=='live')return;const events=this.audience.tick(this.settings,this.now(),this.observation?.excitement || 0);if(events.length){events.forEach(e=>this.log(e));this.publish();}}
+  tickAudience(){if(this.settings.mode!=='live')return;const events=this.audience.tick(this.settings,this.now(),this.observation?.excitement || 0);if(events.length){events.forEach(e=>this.log(e));this.publish();}try{this.autonomy?.tick();}catch(error){this.lastError=error.message;}}
   startTraining(id){if(this.running||this.busy)throw new Error('방송과 관객 응답을 종료한 뒤 연습하세요.');this.training.start(id,this.settings.personas.filter(p=>p.id!==this.settings.managerId));this.trainingMessages=[];this.pump();this.publish();return this.state().training;}
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
-  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();this.seasons.maybePropose();const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
+  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled))return;this.lastSpeaker.set(m.personaId,now);try{this.addMessage(m.personaId,m.text,m.kind);}catch(error){this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
   reserveCall(){if(this.calls>=this.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다. 방송을 종료하고 한도를 확인하세요.');this.calls++;}
@@ -107,13 +123,16 @@ export class Studio extends EventEmitter {
         const witnesses=this.presentWitnesses(),capturedAt=this.lastRequest;
         const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,speech,sound:this.sound});
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
-        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,directed,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},this.controller.signal);
+        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},this.controller.signal);
         if(epoch!==this.epoch||!this.running)return {skipped:'stopped'};
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
         this.tokens+=Number(result.usage?.total_tokens)||0;this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed);
         const donations=this.economy.reward({observation:result.observation,settings:this.settings,audience:this.audience,hasInput:!!image||!!speech,paid:!!directed});
         for(const d of donations)this.log(`${d.name}의 가상 후원 ${d.amount}P · ${d.reason}`);if(donations.length)this.publish();
-        if(!directed&&this.settings.autoHighlights&&result.observation.positiveMoment?.positive&&result.observation.positiveMoment.impact>=.8&&result.observation.confidence>=.75&&result.observation.excitement>=.8){
+        if(this.autonomy&&!directed){
+          try{this.autonomy.evolve(result.observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(result.observation,{image,speech,witnesses,capturedAt});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
+        }
+        if(!this.autonomy&&!directed&&this.settings.autoHighlights&&result.observation.positiveMoment?.positive&&result.observation.positiveMoment.impact>=.8&&result.observation.confidence>=.75&&result.observation.excitement>=.8){
           try{this.clips.create({game:result.observation.game,scene:result.observation.scene,title:result.observation.positiveMoment.reason,participants:this.settings.personas.filter(p=>['active','lurking'].includes(this.audience.presence[p.id])).map(p=>({id:p.id,name:p.name})),messages:this.messages,image,sessionId:this.sessionId,source:'automatic-moment',startedAt:this.startedAt,signature:result.observation.positiveMoment.signature,observedAt:this.lastRequest});this.publish();}catch(error){this.log(`자동 핫클립 저장 보류: ${error.message}`);}
         }
         if(!directed&&this.settings.category!=='just-chatting'&&image&&result.observation.confidence>=0.7){this.knowledge.observe(game.id==='auto'?result.observation.game:game.name,result.observation.scene,capturedAt,game.popularity,witnesses);this.publish();}

@@ -34,7 +34,7 @@ test('authenticated sound HTTP flow never adds game dialogue as streamer speech 
   const service=await startServer({port:0,persist:false,localSpeech:false,soundWorker:worker,provider});t.after(()=>service.close());
   const headers={'X-Backseat-Client':'studio','Authorization':'Bearer '+service.accessToken,'Content-Type':'application/json'};
   const call=(path,body,method='POST')=>fetch(service.url+'/api/'+path,{method,headers,body:body?JSON.stringify(body):undefined});
-  const s=service.studio;s.configure({...defaults,mode:'live'});s.start();
+  const s=service.studio;s.configure({...s.settings,mode:'live'});s.start();
   const id=randomUUID();assert.equal((await call('sound/connect',{id})).status,200);
   const now=Date.now(),params=new URLSearchParams({segmentId:randomUUID(),startedAt:String(now-1000),endedAt:String(now)});
   const req=fetch(service.url+'/api/sound/'+id+'?'+params,{method:'POST',headers:{...headers,'Content-Type':'audio/webm'},body:Buffer.from('fixture')});

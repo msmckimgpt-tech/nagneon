@@ -35,12 +35,21 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   }
   function frame(){const v=captureVideo.current;if(!pictureRef.current||!screenStream.current||!v?.videoWidth)return undefined;const canvas=document.createElement('canvas');canvas.width=Math.min(1280,v.videoWidth);canvas.height=Math.round(v.videoHeight*canvas.width/v.videoWidth);canvas.getContext('2d')!.drawImage(v,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',0.65);}
   function say(text:string){if(!pendingSpeech.current.add(text)){errorRef.current('전달할 말이 많이 밀렸어요. 관객 응답 후 마지막 말을 다시 입력해주세요.');return;}wake.current();}
-  async function saveClip(title?:string){
-    try{const recording=await clips.take();const clip=await api<{id:string}>('clips',{title,image:frame()});
-      if(recording){const params=new URLSearchParams({startedAt:String(recording.startedAt),endedAt:String(recording.endedAt),hasAudio:String(recording.hasAudio)});const response=await fetch(`/api/clips/${clip.id}/video?${params}`,{method:'POST',headers:{'Content-Type':'video/webm','X-Backseat-Client':'studio'},body:recording.blob});if(!response.ok)throw new Error((await response.json()).error+' · 장면 기록은 저장되었습니다.');}
-      return clip;
-    }catch(error){errorRef.current(error instanceof Error?error.message:'핫클립 저장 실패');}
-  }
+  const attachedClips=useRef(new Set<string>());
+  useEffect(()=>{
+    if(!state?.running||!state.settings.autoHighlights||!state.settings.clipBufferEnabled)return;
+    for(const clip of state.clips){
+      if(clip.source!=='spectator'||clip.sessionId!==state.sessionId||clip.video||attachedClips.current.has(clip.id)||Date.now()-clip.createdAt>120000)continue;
+      attachedClips.current.add(clip.id);
+      void (async()=>{try{
+        const recording=await clips.takeAt(clip.observedAt||clip.createdAt);
+        if(!recording||!screenStream.current||!stateRef.current?.running||stateRef.current.sessionId!==recording.sessionId||!stateRef.current.settings.clipBufferEnabled)return;
+        const params=new URLSearchParams({startedAt:String(recording.startedAt),endedAt:String(recording.endedAt),hasAudio:String(recording.hasAudio)});
+        const response=await fetch(`/api/clips/${clip.id}/video?${params}`,{method:'POST',headers:{'Content-Type':'video/webm','X-Backseat-Client':'studio'},body:recording.blob});
+        if(!response.ok)throw new Error((await response.json()).error+' · 관객의 장면 기록은 저장되어 있습니다.');
+      }catch(error){errorRef.current(error instanceof Error?error.message:'관객 클립 영상 연결 실패');}})();
+    }
+  },[state?.clips,state?.running,state?.settings.autoHighlights,state?.settings.clipBufferEnabled]);
   async function startMic(){
     if(acquiringMic.current||micStream.current)return;
     if(!stateRef.current?.running||stateRef.current.settings.mode!=='live'){errorRef.current('실제 AI 방송을 시작한 뒤 마이크를 켜주세요.');return;}
@@ -84,5 +93,5 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   },[state?.running,state?.sessionId]);
   useEffect(()=>{if(state){if(wasRunning.current&&!state.running)stopAll();wasRunning.current=state.running;}},[state?.running]);
   useEffect(()=>()=>{epoch.current++;speechQueue.current?.reset();captureEpoch.current++;screenStream.current?.getTracks().forEach(t=>t.stop());recording.current=false;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
-  return {video,sharing,soundSharing:!!outputStream,soundStatus:sound.status,soundLevel:sound.level,stopSound,mic,level,transcript,delivery,share,stopScreen,startMic,stopMic,stopAll,say,saveClip,clipBuffering:clips.buffering};
+  return {video,sharing,soundSharing:!!outputStream,soundStatus:sound.status,soundLevel:sound.level,stopSound,mic,level,transcript,delivery,share,stopScreen,startMic,stopMic,stopAll,say,clipBuffering:clips.buffering};
 }

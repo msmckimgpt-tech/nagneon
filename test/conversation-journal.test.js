@@ -1,3 +1,4 @@
+import {seedMetAudience} from './helpers/met-audience.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -53,7 +54,7 @@ test('memory write failure remains visible and cannot pretend to have saved a pu
 test('real server restart, source export, pin persistence, private isolation and delete contract',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'backseat-journal-'));let service;
   try{
-    service=await startServer({port:0,dataDir:dir,provider:fake(),localSpeech:false});service.studio.configure({...service.studio.settings,mode:'live',discovery:{...defaults.discovery,enabled:false}});service.studio.start();const m=service.studio.addMessage('streamer','기억할 구호는 별빛은 함께 모인다');service.studio.journal.pin(m.id,true);const witnesses=service.studio.journal.data.entries[0].witnesses;service.studio.stop();await service.close();
+    service=await startServer({port:0,dataDir:dir,provider:fake(),localSpeech:false});seedMetAudience(service.studio);service.studio.configure({...service.studio.settings,mode:'live',discovery:{...defaults.discovery,enabled:false}});service.studio.start();const m=service.studio.addMessage('streamer','기억할 구호는 별빛은 함께 모인다');service.studio.journal.pin(m.id,true);const witnesses=service.studio.journal.data.entries[0].witnesses;service.studio.stop();await service.close();
     service=await startServer({port:0,dataDir:dir,provider:fake(),localSpeech:false});const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};assert.equal((await fetch(service.url+'/api/journal')).status,401);let response=await fetch(service.url+'/api/journal?viewerId=momo&pinned=true',{headers});const page=await response.json();assert.equal(page.total,1);assert.deepEqual(page.entries[0].witnesses,witnesses);assert.equal((await fetch(service.url+'/api/journal?limit=10000',{headers})).status,400);assert.equal((await (await fetch(service.url+'/api/export',{headers})).json()).conversationJournal.entries[0].id,m.id);
     service.studio.busy=true;response=await fetch(service.url+'/api/journal/'+m.id,{method:'DELETE',headers});assert.equal(response.ok,false);assert.equal(service.studio.journal.summary().count,1);service.studio.busy=false;response=await fetch(service.url+'/api/journal/'+m.id,{method:'DELETE',headers});assert.equal(response.ok,true);assert.equal(new JournalStore(dir).load().entries.length,0);
   }finally{await service?.close();await rm(dir,{recursive:true,force:true});}

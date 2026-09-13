@@ -24,6 +24,7 @@ import {ConnectionProbe} from './connection-probe.js';
 import {SeasonsData,emptySeasons} from './seasons-schema.js';
 import {ConversationJournal,emptyJournal} from './conversation-journal.js';
 import {JournalStore} from './journal-store.js';
+import {World,WorldData,migrateWorld} from './world.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
@@ -39,12 +40,14 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     const store=new JsonStore(resolve(dataDir,name+'.json'),{validate:value=>schema.parse(value),initial,backupCount:3});
     const data=store.load();stores.push(store);return {data,save:value=>store.save(value)};
   };
-  const hasPreviousSettings=persist&&existsSync(resolve(dataDir,'settings.json'));
-  const settingsStore=useStore('settings',Settings,()=>structuredClone(defaults));
+  const hasWorld=persist&&['world.json','world.json.bak.1','world.json.bak.2','world.json.bak.3'].some(n=>existsSync(resolve(dataDir,n)));
+  const hasPreviousSettings=hasWorld||(persist&&['settings.json','settings.json.bak.1','settings.json.bak.2','settings.json.bak.3'].some(n=>existsSync(resolve(dataDir,n))));
+  const settingsStore=hasWorld?null:useStore('settings',Settings,()=>structuredClone(defaults));
   const onboardingStore=useStore('onboarding',OnboardingData,()=>initialOnboarding(hasPreviousSettings));
   const knowledgeStore=useStore('knowledge',KnowledgeData,()=>({}));
-  const audienceStore=useStore('audience',AudienceData,()=>new Audience().data);
-  const economyStore=useStore('economy',EconomyData,()=>new Economy().data);
+  const audienceStore=hasWorld?null:useStore('audience',AudienceData,()=>new Audience().data);
+  const economyStore=hasWorld?null:useStore('economy',EconomyData,()=>new Economy().data);
+  const worldStore=useStore('world',WorldData,()=>migrateWorld(settingsStore.data,audienceStore.data,economyStore.data,{fresh:!hasPreviousSettings}));
   const clipsStore=useStore('clips',ClipsData,()=>[]);
   const episodesStore=useStore('episodes',EpisodesData,()=>[]);
   const seasonsStore=useStore('seasons',SeasonsData,emptySeasons);
@@ -53,13 +56,15 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   // Validate every existing store before writing anything. Then record the
   // first-run identity so a partial completion cannot become a legacy profile.
   if(persist&&!existsSync(resolve(dataDir,'onboarding.json')))onboardingStore.save(onboardingStore.data);
+  if(!hasWorld)worldStore.save(worldStore.data);
+  const world=new World(worldStore.data,worldStore.save);world.recover();
   const knowledge=new Knowledge(knowledgeStore.data,knowledgeStore.save);
-  const audience=new Audience(audienceStore.data,audienceStore.save);
+  const audience=new Audience(world.data.audience,value=>world.part('audience',value));
   const journal=new ConversationJournal(journalStore.data,journalStore.save);
-  const economy=new Economy(economyStore.data,economyStore.save);
+  const economy=new Economy(world.data.economy,value=>world.part('economy',value));
   const clips=new Clips({data:clipsStore.data,dir:persist?resolve(dataDir,'clip-media'):undefined,save:clipsStore.save});
   const storageStatus=()=>({warnings:stores.flatMap(s=>s.warnings).slice(-6),recovered:stores.filter(s=>s.recoveredFrom).map(s=>s.recoveredFrom)});
-  const studio=new Studio({provider,settings:settingsStore.data,persist:settingsStore.save,knowledge,audience,journal,economy,clips,directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
+  const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status()});
   app.disable('x-powered-by');
@@ -79,6 +84,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   }
   app.use((req,res,next)=>access.authenticated(req)?next():res.status(401).json({error:'앱 연결 인증이 필요합니다. BACKSEAT 창에서 다시 연결하세요.'}));
   app.use(express.json({limit:'3mb'}));
+  app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
   app.get('/api/events',(req,res)=>{
@@ -87,6 +93,12 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     const timer=setInterval(()=>res.write(': heartbeat\n\n'),15000);req.on('close',()=>{clearInterval(timer);studio.off('state',send);});
   });
   app.put('/api/settings',(req,res)=>{studio.configure(req.body);res.json(studio.state());});
+  app.post('/api/audience/arrive',async(req,res)=>{
+    const {requestId}=z.object({requestId:z.string().uuid()}).strict().parse(req.body);
+    const {source,...receipt}=await studio.autonomy.arrive(requestId);res.json(receipt);
+  });
+  app.put('/api/audience/:id/note',(req,res)=>res.json(studio.autonomy.note(z.string().max(40).parse(req.params.id),z.object({text:z.string().max(2000)}).strict().parse(req.body).text)));
+  app.delete('/api/audience/:id',(req,res)=>res.json(studio.autonomy.remove(z.string().max(40).parse(req.params.id))));
   app.post('/api/onboarding',(req,res)=>res.json(finishOnboarding(studio,onboardingStore,req.body)));
   app.post('/api/connection',(req,res)=>{
     if(studio.running)throw new Error('방송을 종료한 뒤 연결 설정을 변경하세요.');
@@ -111,7 +123,8 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/director/start',(req,res)=>res.json(studio.director.start(z.object({episodeId:z.string().max(60),premise:z.string().trim().max(1200).default(''),targets:z.array(z.string().max(40)).min(1).max(8).optional()}).parse(req.body))));
   app.post('/api/director/advance',async(req,res)=>res.json(await studio.director.advance(z.object({text:z.string().trim().max(1200).default('')}).parse(req.body))));
   app.post('/api/director/finish',(req,res)=>res.json(studio.director.finish(z.object({status:z.enum(['completed','interrupted'])}).parse(req.body).status)));
-  app.post('/api/director/clip',(req,res)=>res.json(studio.director.clip(z.object({id:z.string().uuid()}).parse(req.body).id)));
+  const viewerClipOnly=(_req,res)=>res.status(409).json({error:'핫클립은 관객이 마음에 든 순간을 직접 골라 만듭니다.'});
+  app.post('/api/director/clip',viewerClipOnly);
   app.post('/api/seasons', (req,res)=>res.json(studio.seasons.create(z.object({templateId:z.string().max(60),title:z.string().max(100).default(''),premise:z.string().max(1200).default('')}).parse(req.body))));
   app.get('/api/seasons/:id',(req,res)=>res.json(studio.seasons.get(z.string().uuid().parse(req.params.id))));
   app.delete('/api/seasons/:id',(req,res)=>{studio.seasons.remove(z.string().uuid().parse(req.params.id));res.json({ok:true});});
@@ -119,15 +132,15 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/seasons/pause',(_req,res)=>{studio.seasons.pause();res.json({ok:true});});
   app.post('/api/seasons/advance',async(req,res)=>res.json(await studio.seasons.advance(z.object({text:z.string().trim().max(1200).default('')}).parse(req.body))));
   app.post('/api/seasons/choose',(req,res)=>res.json(studio.seasons.choose(z.object({id:z.string().uuid(),choiceId:z.string().max(40).optional()}).parse(req.body))));
-  app.post('/api/seasons/clip',(req,res)=>res.json(studio.seasons.clip(z.object({id:z.string().uuid(),nodeId:z.string().max(40)}).parse(req.body))));
+  app.post('/api/seasons/clip',viewerClipOnly);
   app.post('/api/seasons/settings',(req,res)=>res.json(studio.seasons.configure(z.object({autoProposals:z.boolean()}).parse(req.body))));
   app.post('/api/seasons/propose',async(_req,res)=>res.json(await studio.seasons.propose()));
   app.post('/api/seasons/respond',(req,res)=>res.json(studio.seasons.respond(z.object({id:z.string().uuid(),action:z.enum(['accept','decline','snooze'])}).parse(req.body))));
-  app.post('/api/clips',(req,res)=>res.json(studio.clipFeatures.save(z.object({title:z.string().trim().max(100).optional(),image:Frame.shape.image}).parse(req.body))));
+  app.post('/api/clips',viewerClipOnly);
   app.get('/api/clips/:id',(req,res)=>res.json(clips.get(z.string().uuid().parse(req.params.id))));
   app.delete('/api/clips/:id',(req,res)=>{clips.remove(z.string().uuid().parse(req.params.id));studio.publish();res.json({ok:true});});
   app.get('/api/clips/:id/media/:kind',(req,res)=>{const c=clips.get(z.string().uuid().parse(req.params.id));const ext=req.params.kind==='video'&&c.video?'webm':req.params.kind==='thumbnail'?c.thumbnail:null;if(!ext)throw new Error('클립 미디어가 없습니다.');res.sendFile(clips.file(c.id,ext));});
-  app.post('/api/clips/:id/video',express.raw({type:'video/webm',limit:'20mb'}),(req,res)=>{const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);const clip=clips.video(z.string().uuid().parse(req.params.id),req.body,metadata);studio.publish();res.json(clip);});
+  app.post('/api/clips/:id/video',express.raw({type:'video/webm',limit:'20mb'}),(req,res)=>{const metadata=z.object({startedAt:z.coerce.number(),endedAt:z.coerce.number(),hasAudio:z.enum(['true','false']).transform(v=>v==='true')}).parse(req.query);const candidate=clips.get(z.string().uuid().parse(req.params.id));if(!studio.running||!studio.settings.clipBufferEnabled||!studio.settings.autoHighlights||!candidate.creator||candidate.sessionId!==studio.sessionId||metadata.startedAt>candidate.observedAt||metadata.endedAt<candidate.observedAt)throw new Error('관객이 선택한 순간이 허용된 영상 버퍼 안에 있어야 합니다.');const clip=clips.video(candidate.id,req.body,metadata);studio.publish();res.json(clip);});
   app.post('/api/clips/:id/comments',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().optional()}).parse(req.body);const comment=clips.comment(z.string().uuid().parse(req.params.id),{...body,name:studio.settings.streamer});studio.publish();res.json(comment);});
   app.delete('/api/clips/:id/comments/:commentId',(req,res)=>{clips.removeComment(z.string().uuid().parse(req.params.id),z.string().uuid().parse(req.params.commentId));studio.publish();res.json({ok:true});});
   app.post('/api/clips/:id/react',async(req,res)=>{const body=z.object({targets:z.array(z.string().max(40)).min(1).max(4),parentId:z.string().uuid().nullable().optional()}).parse(req.body);res.json(await studio.clipFeatures.comments({id:z.string().uuid().parse(req.params.id),...body}));});

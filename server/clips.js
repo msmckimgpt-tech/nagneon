@@ -10,13 +10,13 @@ export class Clips {
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
   file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
   writeMedia(id,extension,buffer){if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');const file=this.file(id,extension);mkdirSync(this.dir,{recursive:true});writeFileSync(file+'.tmp',buffer);renameSync(file+'.tmp',file);return file;}
-  create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature}){
+  create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature,creator}){
     if(this.data.length>=100)throw new Error('핫클립 100개에 도달했습니다. 이전 클립을 정리하세요.');
     if(signature){const duplicate=this.data.find(c=>c.signature===signature&&this.now()-c.createdAt<3600000);if(duplicate)return duplicate;}
     // 방송 날짜(day)는 클립을 저장한 시각이 아니라 세션이 시작된 시각(startedAt)을 따른다.
     // 자정을 넘긴 뒤 수동 저장하거나, 방송 종료 후 저장해도 방송이 열린 날짜로 기록된다.
     const id=randomUUID(),at=this.now(),broadcastAt=Number.isFinite(startedAt)?startedAt:at,date=new Date(broadcastAt),day=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
-    const clip={id,title:title?.trim().slice(0,100)||scene?.slice(0,70)||'함께한 순간',game:game||'Just Chatting',participants,sessionId,createdAt:at,updatedAt:at,startedAt:Number.isFinite(startedAt)?startedAt:null,observedAt:observedAt||at,day,scene:scene||'함께 나눈 대화',source,signature,comments:[],messages:messages.slice(-25),video:false,thumbnail:null};
+    const clip={id,title:title?.trim().slice(0,100)||scene?.slice(0,70)||'함께한 순간',game:game||'Just Chatting',participants,sessionId,createdAt:at,updatedAt:at,startedAt:Number.isFinite(startedAt)?startedAt:null,observedAt:observedAt||at,day,scene:scene||'함께 나눈 대화',source,signature,creator,comments:[],messages:messages.slice(-25),video:false,thumbnail:null};
     if(image&&this.dir){const extension=image.startsWith('data:image/png')?'png':'jpg';this.writeMedia(id,extension,Buffer.from(image.split(',')[1],'base64'));clip.thumbnail=extension;}
     try{return this.change(data=>{data.push(clip);return clip;});}catch(error){if(clip.thumbnail)try{unlinkSync(this.file(id,clip.thumbnail));}catch{}throw error;}
   }
@@ -52,6 +52,19 @@ export class Clips {
 
 export class ClipFeatures {
   constructor(studio,clips){this.studio=studio;this.clips=clips;}
+  spectatorPicks(observation,{image,speech,witnesses,capturedAt}){
+    const s=this.studio;if(!s.running||s.settings.mode!=='live'||!s.settings.autoHighlights||(!speech&&(!image||observation.confidence<.55)))return [];
+    const created=[];
+    for(const pick of (observation.clipPicks||[]).slice(0,2)){
+      const p=s.settings.personas.find(p=>p.id===pick.personaId&&p.enabled&&!p.system&&p.id!==s.settings.managerId);
+      if(!p||!witnesses.includes(p.id)||s.settings.blockedWords.some(w=>(pick.title+' '+pick.reason).includes(w)))continue;
+      if(this.clips.data.some(c=>c.creator&&s.now()-c.createdAt<(c.creator.id===p.id?300000:60000)))continue;
+      const signature=s.sessionId+':'+pick.signature.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu,'');
+      if(this.clips.data.some(c=>c.signature===signature))continue;
+      const clip=this.clips.create({title:pick.title,scene:observation.scene,game:observation.game,participants:s.settings.personas.filter(p=>witnesses.includes(p.id)&&!p.system).map(p=>({id:p.id,name:p.name})),messages:s.messages.filter(m=>m.time<=capturedAt),image,sessionId:s.sessionId,source:'spectator',creator:{id:p.id,name:p.name,reason:pick.reason},signature,startedAt:s.startedAt,observedAt:capturedAt});
+      created.push(clip);s.log(`${p.name} 관객이 핫클립을 남겼습니다: ${pick.title}`);
+    }if(created.length)s.publish();return created;
+  }
   save({title,image}={}){const s=this.studio;if(!s.sessionId||(!s.messages.length&&!s.observation))throw new Error('방송에서 함께한 장면이나 대화가 먼저 필요합니다.');const participants=s.settings.personas.filter(p=>s.audience.data.members[p.id]?.joinedAt>=s.startedAt).map(p=>({id:p.id,name:p.name}));const clip=this.clips.create({title,image,game:s.observation?.game||'Just Chatting',participants,messages:s.messages,scene:s.observation?.scene,sessionId:s.sessionId,source:'manual',startedAt:s.startedAt});s.publish();return clip;}
   async comments({id,parentId,targets}){
     const s=this.studio;

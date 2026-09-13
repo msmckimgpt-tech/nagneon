@@ -56,12 +56,12 @@ export function liveViewerContext(audience,personas,history,previous,{journal,sp
   for(const p of personas){
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
     packets[p.id]={
-      joinedAt,heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
+      joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[])}:{}),
       chatHistory:Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35):[],
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null
     };
   }
-  const members=audience.members.map(({memories,...member})=>member);
+  const members=audience.members.map(({memories,note,preferences,...member})=>member);
   return {audience:structuredClone({...audience,members}),viewerContext:packets};
 }

@@ -74,5 +74,5 @@ test('HTTP practice, director and special routes reject missing or invalid input
   assert.equal((await post('special/generate',{kind:'interview',personaId:'momo',requestId:crypto.randomUUID()})).status,400);
   assert.equal((await post('training/start',{id:'opening'})).status,200);assert.equal((await post('training/action',{action:'__proto__'})).status,400);assert.equal((await post('start',{})).status,409);
   const response=await post('training/action',{action:'response',text:'안녕하세요!'});assert.equal(response.status,200);assert.equal((await post('training/stop',{})).status,200);
-  service.studio.configure({...service.studio.settings,mode:'live',lurkRatio:0});assert.equal((await post('start',{})).status,200);assert.equal((await post('director/start',{episodeId:'fan-festival'})).status,200);assert.equal((await post('director/advance',{text:'우리 축제 시작!'})).status,200);assert.equal((await post('director/finish',{status:'interrupted'})).status,200);
+  service.studio.configure({...service.studio.settings,mode:'live',lurkRatio:0});assert.equal((await post('start',{})).status,200);assert.equal((await post('director/start',{episodeId:'fan-festival'})).status,409);assert.equal((await post('director/advance',{text:'우리 축제 시작!'})).status,409);assert.equal((await post('director/finish',{status:'interrupted'})).status,200);
 });
