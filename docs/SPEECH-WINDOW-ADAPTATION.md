@@ -39,8 +39,10 @@ Windows Microsoft Heami Desktop을 파일 출력으로만 사용해 새로운 �
 
 ## 배포와 통합
 
-필수 **495개 Node 검사와 TypeScript/Vite 빌드**가 통과했다(`check-final.log`). 새 배포 폴더는 이 worktree의 `release/2026-09-13T14-36-49-231Z/app/BACKSEAT-win32-x64`, **2,451개 파일 / 3,130,143,004바이트 / 미서명**이다. 실제 배포 ASAR의 모듈과 동봉한 medium 작업자로 9.4초 발언이 12초 경로를 사용하는 것을 확인했다. 그 작업자를 전사 중 종료해 복구하고 짧은 한국어4개를 같은 세션에 전달했으며, 동시에 실행한 별도 YAMNet/small 인식기도 완료됐다. 시험 소유 작업자의 종료도 확인했다.
+필수 **495개 Node 검사와 TypeScript/Vite 빌드**가 통과했다(`check-canonical.log`). 새 배포 폴더는 이 worktree의 `release/2026-09-13T14-46-24-910Z/app/BACKSEAT-win32-x64`, **2,451개 파일 / 3,130,142,882바이트 / 미서명**이다. 실제 배포 ASAR의 모듈과 동봉한 medium 작업자로 9.4초 발언이 12초 경로를 사용하는 것을 확인했다. 그 작업자를 전사 중 종료해 복구하고 짧은 한국어4개를 같은 세션에 전달했으며, 동시에 실행한 별도 YAMNet/small 인식기도 완료됐다. 시험 소유 작업자의 종료도 확인했다.
 
-`window-delivered-VuN7b5/result.json`, `delivered-recovery.log`, `window-build-result.json`이 실제 실행 원본이다. 그 보고서와 같은 ASAR에 대해 전체2,451개 파일 SHA-256, 현재 소스67개, fuses가 통과했다(`package-integrity-test.json`). 이번 변경은 음성 전처리/진단뿐이므로 Astra 호출은 추가하지 않았으며, 이전 배포의 모델 응답2회를 이번 새 배포에서 실행한 것처럼 합산하지 않는다.
+`window-delivered-Hpm42Q/result.json`, `delivered-canonical.log`, `window-final-build-result.json`이 실제 실행 원본이다. 그 보고서와 같은 ASAR에 대해 전체2,451개 파일 SHA-256, 현재 소스67개, fuses가 통과했다(`package-integrity-test.json`). 이번 변경은 음성 전처리/진단뿐이므로 Astra 호출은 추가하지 않았으며, 이전 배포의 모델 응답2회를 이번 새 배포에서 실행한 것처럼 합산하지 않는다.
 
 서명·네이티브 설치·물리 마이크·실제 게임 중 체감·장기 채팅 품질·Steam 판매 조건은 별도의 남은 기준이다. 사용자 앱을 교체하거나 재시작하지 않았다. 이어서 요청된 2차 실사용 분석은 별도 작업 트리에서 원본 기록을 읽고 진행한다.
+
+Windows checkout에서도 배포 소스 해시가 같도록 수정한 worker 하나를 LF로 정규화하고 `.gitattributes`에 해당 파일만 지정했다. 전후 Git canonical blob은 같으며 `worker-eol.json`에 바이트 해시를 남겼다. 정규화 후 Python9개, 필수495개/빌드, 새 배포 실제 인식기 복구와 전체 무결성 검사를 다시 통과했다. 처음 혼합 줄바꿈 배포의 `window-build-result.json`은 중간 검증으로 보존한다.
