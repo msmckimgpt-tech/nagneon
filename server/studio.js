@@ -46,7 +46,14 @@ export class Studio extends EventEmitter {
     this.publish();return {...result,pending:this.speechInbox.pending.length};
   }
   log(text){this.events.push({id:randomUUID(),time:this.now(),text});this.events=this.events.slice(-60);}
-  setChatDisplay(showStreamerMessages){const next=Settings.parse({...this.settings,showStreamerMessages});this.persist(next);this.settings=next;this.publish();return {showStreamerMessages};}
+  setChatDisplay(showStreamerMessages){
+    if(typeof showStreamerMessages!=='boolean')throw new Error('표시 설정은 참 또는 거짓이어야 합니다.');
+    const result={showStreamerMessages};
+    if(this.settings.showStreamerMessages===showStreamerMessages)return result;
+    const next={...this.settings,showStreamerMessages};this.persist(next);this.settings=next;
+    // A display preference does not invalidate messages, memories or audience state.
+    this.emit('chat-display',result);return result;
+  }
   correctTranscripts(proposals,candidates){let rejected=false;const eligible=new Map(candidates.map(e=>[e.messageId,e]));
     for(const proposal of proposals||[]){const original=eligible.get(proposal.messageId);if(!original)continue;eligible.delete(proposal.messageId);
       if(proposal.text?.trim()===original.text)continue;

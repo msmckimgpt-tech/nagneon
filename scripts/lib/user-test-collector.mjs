@@ -1,7 +1,8 @@
-import {open,lstat,realpath,mkdir,rename,writeFile,appendFile,readFile,unlink} from 'node:fs/promises';
+import {open,lstat,realpath,mkdir,appendFile,readFile,unlink} from 'node:fs/promises';
 import {resolve,join,relative,isAbsolute,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {JournalData} from '../../server/conversation-journal.js';
+import {writeCollectorOutput} from './collector-output.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value)?value:{};
@@ -123,7 +124,7 @@ export class UserTestCollector {
     }finally{await lease.close();await unlink(leasePath);}
   }
   async atomic(name,value){
-    const temp=join(this.output,name+'.tmp');await writeFile(temp,JSON.stringify(value,null,2));await rename(temp,join(this.output,name));
+    await writeCollectorOutput(this.output,name,value);
   }
   async stopped(){try{await lstat(join(this.output,'STOP'));return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}}
   async poll(){

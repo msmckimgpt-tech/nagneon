@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {memo,useEffect,useRef,useState,type CSSProperties} from 'react';
 import {Activity,ArrowUpRight,AudioLines,BookOpen,Check,ChevronRight,Clapperboard,Download,Gamepad2,Heart,LayoutDashboard,MessageCircle,Mic,Monitor,MoreHorizontal,Pause,Play,Plus,Radio,Send,Settings2,Shield,SlidersHorizontal,Sparkles,Trash2,Users,Volume2,X} from 'lucide-react';
 import {api} from './api';
 import {SpecialStudio,DonationToast} from './SpecialStudio';
@@ -18,9 +18,9 @@ import {useMedia} from './useMedia';
 import type {Message,Settings,State} from './types';
 
 const time=(n:number)=>new Date(n).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',hour12:false});
-function ChatLine({message,moderate,managerId,onInsight}:{message:Message;onInsight?:(message:Message)=>void;moderate?:(action:string,id:string)=>void;managerId:string}){
+const ChatLine=memo(function ChatLine({message,moderate,managerId,onInsight}:{message:Message;onInsight?:(message:Message)=>void;moderate?:(action:string,id:string)=>void;managerId:string}){
   return <div className={'chat-line '+message.kind}><span className="chat-time">{time(message.time)}</span><div><strong style={{color:message.color}}>{message.personaId===managerId&&<Shield size={12}/>} {message.name}</strong><span className="chat-text">{message.transcription?.correction?.text||message.text}</span>{message.transcription?.correction&&<details className="transcript-origin"><summary>음성 교정</summary><p>인식 원문: {message.text}</p><p>맥락으로 추정한 교정이에요.</p></details>}</div>{onInsight&&message.kind==='chat'&&<button className="insight-button icon" title="이 채팅의 속마음 보기" onClick={()=>onInsight(message)}><Sparkles size={13}/></button>}{moderate&&<button className="delete-message icon" title="메시지 삭제" onClick={()=>moderate('delete',message.id)}><X size={12}/></button>}</div>;
-}
+});
 export function App(){
   const overlay=location.pathname==='/overlay';const [state,setState]=useState<State|null>(null),[connected,setConnected]=useState(false),[error,setError]=useState('');
   const [tab,setTab]=useState('studio'),[draft,setDraft]=useState<Settings|null>(null),[modal,setModal]=useState(false),[captureSound,setCaptureSound]=useState<boolean|null>(null),[text,setText]=useState('');
@@ -29,8 +29,10 @@ export function App(){
   const [overlayTransparency,setOverlayTransparency]=useState(0);
   const [focusMessage,setFocusMessage]=useState<Message|null>(null);
   const chatEnd=useRef<HTMLDivElement>(null);const media=useMedia(overlay?null:state,setError);
-  useEffect(()=>{const es=new EventSource('/api/events');es.onmessage=e=>{setState(JSON.parse(e.data));setConnected(true);};es.onerror=()=>setConnected(false);const timer=setInterval(()=>setNow(Date.now()),1000);return()=>{es.close();clearInterval(timer);};},[]);
-  useEffect(()=>{const pane=chatEnd.current?.parentElement;if(pane)pane.scrollTo({top:pane.scrollHeight,behavior:'smooth'});},[state?.messages.length,state?.settings.showStreamerMessages]);
+  useEffect(()=>{const es=new EventSource('/api/events');es.onmessage=e=>{setState(JSON.parse(e.data));setConnected(true);};
+    es.addEventListener('chat-display',e=>{const {showStreamerMessages}=JSON.parse((e as MessageEvent).data);if(typeof showStreamerMessages==='boolean')setState(previous=>!previous||previous.settings.showStreamerMessages===showStreamerMessages?previous:{...previous,settings:{...previous.settings,showStreamerMessages}});});
+    es.onerror=()=>setConnected(false);const timer=overlay?undefined:setInterval(()=>setNow(Date.now()),1000);return()=>{es.close();clearInterval(timer);};},[overlay]);
+  useEffect(()=>{const pane=chatEnd.current?.parentElement;if(pane)pane.scrollTo({top:pane.scrollHeight,behavior:'auto'});},[state?.messages.at(-1)?.id,state?.training.messages.at(-1)?.id,state?.settings.showStreamerMessages]);
   useEffect(()=>{if(state&&initialGuide===null)setInitialGuide(state.onboarding?.status==='new');},[state,initialGuide]);
   useEffect(()=>window.backseat?.onPanic(()=>media.stopAll()),[]);
   useEffect(()=>window.backseat?.onOverlayState(setThrough),[]);
