@@ -62,7 +62,7 @@ export class World {
     const {id,name,color,role,enabled,system}=p;
     return {id,name,color,role,enabled,system,...(this.revealed(id,'profile')?{personality:p.personality,values:p.values,sociability:p.sociability,expertise:p.expertise}:{}),profileUnlocked:this.revealed(id,'profile')};
   })};}
-  publicAudience(){const s=this.studio;return {lore:s.audience.data.lore,posts:s.audience.data.posts,presence:s.audience.presence,
+  publicAudience(){const s=this.studio;return {lore:s.audience.data.lore,posts:s.audience.data.posts.map(({activityReads,...post})=>post),presence:s.audience.presence,
     members:Object.fromEntries(s.settings.personas.map(p=>{const m=s.audience.data.members[p.id];return [p.id,m?{
       sessions:m.sessions,seconds:m.seconds,joinedAt:m.joinedAt,note:m.note||'',aliases:m.aliases||[],
       ...(this.revealed(p.id,'profile')?{origin:m.origin,recognized:m.recognized,affinity:m.affinity}:{}),

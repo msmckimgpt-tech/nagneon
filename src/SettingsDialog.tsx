@@ -288,6 +288,10 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <p className="field-note">직접 공유한 화면과 켜 둔 마이크·연결된 소리만 기록합니다. 버퍼를 끄거나 연결을 끊으면 해당 임시 구간을 비우고, 이미 저장된 클립은 핫클립에서 삭제할 수 있어요.</p>
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
+            <input type="checkbox" checked={draft.communityActivityEnabled!==false} onChange={e=>update('communityActivityEnabled',e.target.checked)}/>
+            <span>관객의 커뮤니티 활동 허용<small>앱이 켜져 있을 때 클립 기록과 갤러리를 읽고 댓글·추천·방송 후기를 스스로 결정해요. 방송 응답을 우선하며 자동 방문은 시간당 최대 6회, 세션 호출 한도 안에서 진행해요. 꺼 두면 방문을 쉽니다.</small></span>
+          </label>
+          <label className="set-check">
             <input type="checkbox" checked={draft.pointsEnabled}
               onChange={e=>update('pointsEnabled',e.target.checked)}/>
             <span>가상 후원 포인트와 특수 기능 사용

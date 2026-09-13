@@ -9,6 +9,7 @@ export const Discovery=z.object({enabled:z.boolean().default(false),arrivalSecon
 export const Settings = z.object({
   title: short(100), streamer: short(40), gameId: short(40), mode: z.enum(['rehearsal','live']),
   showStreamerMessages:z.boolean().default(true),
+  communityActivityEnabled:z.boolean().default(true),
   contextualTranscription:z.boolean().default(true),
   streamerStyle: z.string().max(2000).default('친근한 채팅, 요청할 때만 훈수'), adviceMode: z.enum(['on-request','always','never']).default('on-request'),
   webSearch: z.boolean().default(false), mistakenAdvice: z.number().min(0).max(1).default(0), attentionSeeking: z.number().min(0).max(1).default(0),
@@ -37,7 +38,7 @@ export const Observation = z.object({
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8),donations:z.array(z.object({personaId:short(40),message:z.string().trim().max(200),anonymous:z.boolean()})).max(2).default([])}).default({positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}),
-  messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean() })).max(8)
+  messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional() })).max(8)
 });
 const imageData=(max)=>z.string().max(max).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/);
 export const Frame = z.object({image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),

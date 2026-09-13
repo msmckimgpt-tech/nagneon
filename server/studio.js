@@ -21,6 +21,7 @@ import {repeatedChat} from './chat-quality.js';
 import {admitTranscriptCorrection,transcriptAnomaly} from './transcript-correction.js';
 import {revisesLiveSituation} from './streamer-expression.js';
 import {Community} from './community.js';
+import {CommunityActivity} from './community-activity.js';
 import {ViewingContinuity,SCREEN_REACTION_TTL_MS} from './viewing-continuity.js';
 import {donationMessage} from './chat-attention.js';
 import {temporalVideo} from './temporal-video.js';
@@ -37,6 +38,7 @@ export class Studio extends EventEmitter {
     this.seasons=new StorySeasons(this,{data:seasonsData,save:saveSeasons});
     this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);this.community=new Community(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
+    this.communityActivity=new CommunityActivity(this);
   }
   resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   endVideo({sessionId,sourceId}){
@@ -48,9 +50,10 @@ export class Studio extends EventEmitter {
     if(this.viewing.last?.video?.sourceId===sourceId){this.viewing.reset();this.knowledge.lastSeen=null;this.observation=null;}
     this.publish();return {ok:true};
   }
-  state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
+  state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,communityActivity:undefined,posts:this.community.list().reverse(),presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy&&!this.communityActivity?.active,communityActivity:this.communityActivity?.snapshot(),lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
   receiveSpeech({id,sessionId,text,source='keyboard',capture}){
+    this.communityActivity.interrupt();
     if(!this.running||sessionId!==this.sessionId)throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
     if(capture&&(source!=='microphone'||!Number.isFinite(capture.startedAt)||!Number.isFinite(capture.endedAt)||capture.startedAt<this.startedAt-2000||capture.endedAt>this.now()+2000||capture.endedAt<=capture.startedAt||capture.endedAt-capture.startedAt>15000))throw new Error('발언을 녹음한 시각을 확인하세요.');
     const hearers=this.presentWitnesses().filter(id=>!capture||this.audience.data.members[id]?.joinedAt<=capture.startedAt);
@@ -82,13 +85,13 @@ export class Studio extends EventEmitter {
     }return {rejected};
   }
   configure(settings){if(this.running||this.training.active||this.busy)throw new Error('방송·연습·관객 응답을 종료한 뒤 설정을 변경하세요.');const next=Settings.parse(this.autonomy?this.autonomy.configure(settings):settings);this.economy.ensureWallets(next.personas);this.persist(next);this.settings=next;this.publish();}
-  start(){if(this.training.active)throw new Error('상황 연습을 마친 뒤 방송을 시작하세요.');if(this.running)return;if(this.settings.mode==='live'&&!this.provider.status().configured)throw new Error('방송 설정에서 ChatGPT 계정 또는 선택한 AI 제공처의 연결을 확인하세요.');
+  start(){this.communityActivity.interrupt();if(this.training.active)throw new Error('상황 연습을 마친 뒤 방송을 시작하세요.');if(this.running)return;if(this.settings.mode==='live'&&!this.provider.status().configured)throw new Error('방송 설정에서 ChatGPT 계정 또는 선택한 AI 제공처의 연결을 확인하세요.');
     this.controller.abort();this.controller=new AbortController();this.epoch++;this.queue=[];this.messages=[];this.events=[];this.resetCounters();this.running=true;this.sessionId=randomUUID();this.startedAt=this.now();
     try{if(this.settings.mode==='live'){this.audience.start(this.settings,this.now()).forEach(e=>this.log(e));this.autonomy?.start();}}
     catch(error){this.running=false;this.sessionId=null;this.startedAt=null;this.controller.abort();this.lastError=error.message;this.publish();throw error;}
     this.log(this.settings.mode==='live'?'AI 방송 시작':'리허설 시작 · 예시 반응, API 사용 없음');this.publish();}
   stop(){
-    this.sound.stop();this.running=false;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];this.speechInbox.clear();this.knowledge.lastSeen=null;this.ambient?.reset();
+    this.communityActivity?.interrupt();this.sound.stop();this.running=false;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];this.speechInbox.clear();this.knowledge.lastSeen=null;this.ambient?.reset();
     // Storage failure must never keep the live session or its pending model alive.
     for(const [label,save] of [['시즌',()=>this.seasons.pause()],['관객',()=>this.audience.stop()],['시청 시간',()=>this.autonomy?.stop()]]){
       try{save();}catch(error){this.lastError=`${label} 종료 기록 저장 실패: ${error.message}`;this.log(this.lastError);}
@@ -97,7 +100,7 @@ export class Studio extends EventEmitter {
     try{this.director.finish('interrupted');}catch(error){this.log(`기획 방송 기록 저장 실패: ${error.message}`);this.director.active=null;this.director.serial++;}
     this.log('방송 종료 · 대기 반응 취소');this.publish();
   }
-  close(){this.stop();clearInterval(this.timer);}
+  close(){this.communityActivity.close();this.stop();clearInterval(this.timer);}
   prepareMessage(personaId,text,kind='chat') {
     const p=this.settings.personas.find(p=>p.id===personaId);
     return {id:randomUUID(),personaId,name:p?.name || this.settings.streamer,color:p?.color || '#ffffff',text,kind,time:this.now(),...((this.director.active||this.seasons.active)?{fictional:true}:{})};
@@ -146,9 +149,9 @@ export class Studio extends EventEmitter {
   startTraining(id){if(this.running||this.busy)throw new Error('방송과 관객 응답을 종료한 뒤 연습하세요.');this.training.start(id,this.settings.personas.filter(p=>p.id!==this.settings.managerId));this.trainingMessages=[];this.pump();this.publish();return this.state().training;}
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
-  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
+  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running){this.communityActivity?.tick();return;}const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
     const count=this.queue.length;this.queue=this.queue.filter(m=>m.origin!=='live'||((!Number.isFinite(m.expiresAt)||now<m.expiresAt)&&(this.settings.mode!=='live'||sameViewingVisit(this.audience,m.personaId,m.viewingVisit))));if(this.queue.length!==count)this.publish();
-    const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
+    const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0){this.communityActivity?.tick();return;}
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled))return;this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.chatDriven?{chatDriven:true}:{})});}catch(error){this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
   reserveCall(){if(this.calls>=this.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다. 방송을 종료하고 한도를 확인하세요.');this.calls++;}
@@ -156,6 +159,7 @@ export class Studio extends EventEmitter {
   // 모델 응답이 지연되어 그 사이 입장/이탈이 생겨도 이 스냅샷을 기준으로 목격을 판단한다(늦게 온 관객은 목격자가 아니다).
   presentWitnesses(){if(this.settings.mode!=='live')return [];return this.settings.personas.filter(p=>p.enabled&&['active','lurking'].includes(this.audience.presence[p.id])&&this.audience.data.members[p.id]?.joinedAt>=this.startedAt).map(p=>p.id);}
   async react({image,video,speech=''}){
+    if(this.communityActivity.active)await this.communityActivity.yield();else this.communityActivity.interrupt();
     if(video&&this.endedVideoSources.has(video.sourceId))return {skipped:'ended-screen'};
     if(!this.running)throw new Error('방송을 먼저 시작하세요.');if(this.busy)return {skipped:'busy'};
     if(this.autonomy?.waiting)return {skipped:'audience-arrival'};

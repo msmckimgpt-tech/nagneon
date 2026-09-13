@@ -27,7 +27,7 @@ function fixture(t,{provider=fake(),save=()=>{}}={}){
   const c=clips.create(base());return {s,clips,c,tick:()=>now+=1000};
 }
 
-test('HTTP comment reading survives restart/rename into only that viewers live context and deletion removes the source',async()=>{
+test('autonomous reading with retired HTTP trigger survives restart/rename into only that viewers live context and deletion removes the source',async()=>{
   const dir=await folder();let service,args;const provider=fake(async a=>{args=a;return result(a.special?[reply()]:[]);});
   try{
     service=await startServer({port:0,dataDir:dir,provider,localSpeech:false});seedMetAudience(service.studio);const s=service.studio;clearInterval(s.timer);s.configure({...s.settings,mode:'live',category:'just-chatting',chatPace:4,lurkRatio:0,maxCalls:30});s.start();
@@ -35,7 +35,8 @@ test('HTTP comment reading survives restart/rename into only that viewers live c
     const parent=s.clips.comment(c.id,{name:'플레이어',text:'기차 소리 별명은 야간열차로 할게요'});
     const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};
     assert.equal((await fetch(service.url+`/api/clips/${c.id}/react`,{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({targets:['new']})})).status,401);
-    const response=await fetch(service.url+`/api/clips/${c.id}/react`,{method:'POST',headers,body:JSON.stringify({targets:['new'],parentId:parent.id})});assert.equal(response.status,200);assert.equal((await response.json()).count,1);
+    const response=await fetch(service.url+`/api/clips/${c.id}/react`,{method:'POST',headers,body:JSON.stringify({targets:['new'],parentId:parent.id})});assert.equal(response.status,410);
+    s.now=()=>Date.now()+70000;s.random=()=>.9999;s.pump();assert.ok(s.communityActivity.active);await s.communityActivity.active.promise;s.now=Date.now;assert.equal(s.clips.get(c.id).comments.length,2);
     assert.equal(args.audience.members.find(m=>m.id==='new').attended,false);assert.equal(s.journal.recall('new','야간열차').length,0);
     for(const path of [`/api/clips/${c.id}`,'/api/state','/api/export'])assert.ok(!(await (await fetch(service.url+path,{headers})).text()).includes('metadataHash'),'public surfaces do not expose reading receipts');
     const unseen=s.clips.comment(c.id,{name:'플레이어',text:'새로 올린 비밀번호는 7359예요'});

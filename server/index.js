@@ -90,6 +90,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
+  app.use(async(req,_res,next)=>{if(!['GET','HEAD'].includes(req.method))await studio.communityActivity.yield();next();});
   app.get('/api/donations',(_req,res)=>res.json({entries:economy.donationHistory(studio.settings.personas)}));
   app.get('/api/events',(req,res)=>{
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
@@ -126,8 +127,9 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/community/posts/:id/recommend',(req,res)=>res.json(studio.community.recommend(req.params.id,z.object({recommended:z.boolean()}).parse(req.body).recommended)));
   app.post('/api/community/posts/:id/comments',(req,res)=>res.json(studio.community.comment(req.params.id,z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().default(null)}).parse(req.body))));
   app.delete('/api/community/posts/:id/comments/:commentId',(req,res)=>{studio.community.removeComment(req.params.id,req.params.commentId);res.json({ok:true});});
-  app.post('/api/community/posts/:id/react',async(req,res)=>res.json(await studio.community.react(req.params.id,z.object({parentId:z.string().uuid().nullable().default(null)}).parse(req.body).parentId)));
-  app.post('/api/community/reflect',async(_req,res)=>res.json(await studio.reflect()));
+  const autonomousCommunityOnly=(_req,res)=>res.status(410).json({error:'관객은 앱이 켜져 있는 동안 스스로 방문하고 댓글과 추천을 결정합니다. 방송 응답이 먼저 진행됩니다.'});
+  app.post('/api/community/posts/:id/react',autonomousCommunityOnly);
+  app.post('/api/community/reflect',autonomousCommunityOnly);
   app.post('/api/start',(_req,res)=>{if(probe.controller)throw new Error('연결 응답 확인을 마친 뒤 방송을 시작하세요.');studio.start();res.json(studio.state());});
   app.post('/api/training/start',(req,res)=>res.json(studio.startTraining(z.object({id:z.string().max(60)}).parse(req.body).id)));
   app.post('/api/training/action',(req,res)=>{const {action,text}=z.object({action:z.enum(['response','checklist','moderation']),text:z.string().max(600).default('')}).parse(req.body);res.json(studio.trainingAction(action,text));});
@@ -161,7 +163,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   clipRecordingRoutes(app,{studio,clips,inspector:clipInspector});
   app.post('/api/clips/:id/comments',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),parentId:z.string().uuid().nullable().optional()}).parse(req.body);const comment=clips.comment(z.string().uuid().parse(req.params.id),{...body,name:studio.settings.streamer});studio.publish();res.json(comment);});
   app.delete('/api/clips/:id/comments/:commentId',(req,res)=>{clips.removeComment(z.string().uuid().parse(req.params.id),z.string().uuid().parse(req.params.commentId));studio.publish();res.json({ok:true});});
-  app.post('/api/clips/:id/react',async(req,res)=>{const body=z.object({targets:z.array(z.string().max(40)).min(1).max(4),parentId:z.string().uuid().nullable().optional()}).parse(req.body);res.json(await studio.clipFeatures.comments({id:z.string().uuid().parse(req.params.id),...body}));});
+  app.post('/api/clips/:id/react',autonomousCommunityOnly);
   const requestId=z.string().uuid();
   app.post('/api/special/unlock',(req,res)=>res.json(studio.special.unlock(z.object({kind:z.enum(['profile','relations']),personaId:z.string().max(40),requestId}).parse(req.body))));
   app.post('/api/special/generate',async(req,res)=>res.json(await studio.special.generate(z.discriminatedUnion('kind',[
@@ -203,7 +205,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,new Promise(r=>server.close(r))]);}};
+  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close(),activityClosed=studio.communityActivity.yield();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,activityClosed,new Promise(r=>server.close(r))]);}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);

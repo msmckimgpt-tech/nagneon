@@ -1,14 +1,15 @@
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
+import {ActivityReads,recordActivityRead} from './community-activity-state.js';
 
 const categories=['자유','후기','질문','공지'];
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
-export const GalleryPost=z.object({id:z.string().min(1).max(100),name:z.string(),text:z.string(),time:z.number().nonnegative(),kind:z.string(),personaId:actor.optional(),title:z.string().max(100).optional(),category:z.enum(categories).optional(),votes:z.array(actor).max(41).optional(),comments:z.array(z.object({id:z.string().uuid(),name:z.string().max(100),personaId:actor,text:z.string().max(1000),time:z.number().nonnegative(),parentId:z.string().uuid().nullable(),kind:z.enum(['streamer','ai']),deleted:z.boolean().optional()})).max(150).optional()}).passthrough().superRefine((p,ctx)=>{
+export const GalleryPost=z.object({activityReads:ActivityReads.optional(),id:z.string().min(1).max(100),name:z.string(),text:z.string(),time:z.number().nonnegative(),kind:z.string(),personaId:actor.optional(),title:z.string().max(100).optional(),category:z.enum(categories).optional(),votes:z.array(actor).max(41).optional(),comments:z.array(z.object({id:z.string().uuid(),name:z.string().max(100),personaId:actor,text:z.string().max(1000),time:z.number().nonnegative(),parentId:z.string().uuid().nullable(),kind:z.enum(['streamer','ai']),deleted:z.boolean().optional()})).max(150).optional()}).passthrough().superRefine((p,ctx)=>{
   const comments=p.comments||[],ids=new Set(comments.map(c=>c.id));
   if(ids.size!==comments.length||new Set(p.votes||[]).size!==(p.votes||[]).length)ctx.addIssue({code:'custom',message:'게시판 기록에 중복 ID가 있습니다.'});
   for(const c of comments)if(c.parentId&&!comments.some(parent=>parent.id===c.parentId&&!parent.parentId))ctx.addIssue({code:'custom',message:'게시판 답글 연결이 올바르지 않습니다.'});
 });
-export const galleryPost=p=>({...structuredClone(p),title:p.title||p.text.split('\n')[0].slice(0,70)||'방송 이야기',category:p.category||(p.kind==='ai'?'후기':'자유'),comments:structuredClone(p.comments||[]),votes:[...(p.votes||[])]});
+export const galleryPost=p=>{const {activityReads,...publicPost}=structuredClone(p);return {...publicPost,title:p.title||p.text.split('\n')[0].slice(0,70)||'방송 이야기',category:p.category||(p.kind==='ai'?'후기':'자유'),comments:structuredClone(p.comments||[]),votes:[...(p.votes||[])]};};
 
 export class Community {
   constructor(studio){this.studio=studio;}
@@ -22,11 +23,11 @@ export class Community {
   remove(id){this.change(posts=>{const index=posts.findIndex(p=>p.id===id);if(index<0)throw Error('게시글을 찾을 수 없습니다.');posts.splice(index,1);});}
   recommend(id,recommended){return this.change(posts=>{const p=posts.find(p=>p.id===id);if(!p)throw Error('게시글을 찾을 수 없습니다.');p.votes=(p.votes||[]).filter(v=>v!=='streamer');if(recommended)p.votes.push('streamer');return galleryPost(p);});}
   comment(id,{text,parentId=null}){return this.addComments(id,[{text,name:this.studio.settings.streamer,personaId:'streamer',kind:'streamer',parentId}]);}
-  addComments(id,items,expected,votes=[]){return this.change(posts=>{
+  addComments(id,items,expected,votes=[],activityRead){return this.change(posts=>{
     const p=posts.find(p=>p.id===id);if(!p)throw Error('게시글을 찾을 수 없습니다.');if(expected&&JSON.stringify(galleryPost(p))!==expected)throw Error('읽는 동안 게시글이 바뀌었습니다. 새 내용을 확인해주세요.');
     p.comments||=[];if(p.comments.length+items.length>150)throw Error('게시글 댓글은 150개까지 보관합니다.');
     const created=items.map(i=>{if(!i.text.trim()||i.text.length>1000)throw Error('댓글은 1~1,000자로 작성하세요.');if(i.parentId&&!p.comments.some(c=>c.id===i.parentId&&!c.parentId&&!c.deleted))throw Error('답글 대상 댓글을 확인해주세요.');return {...i,id:randomUUID(),text:i.text.trim(),time:this.studio.now()};});p.comments.push(...created);
-    for(const vote of votes){p.votes=(p.votes||[]).filter(id=>id!==vote.personaId);if(vote.recommended)p.votes.push(vote.personaId);}return created;
+    for(const vote of votes){p.votes=(p.votes||[]).filter(id=>id!==vote.personaId);if(vote.recommended)p.votes.push(vote.personaId);}if(activityRead)recordActivityRead(p,activityRead);return created;
   });}
   removeComment(id,commentId){this.change(posts=>{const p=posts.find(p=>p.id===id),c=p?.comments?.find(c=>c.id===commentId);if(!c)throw Error('댓글을 찾을 수 없습니다.');c.deleted=true;c.text='삭제된 댓글입니다.';});}
   async react(id,parentId=null){

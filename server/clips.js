@@ -3,12 +3,13 @@ import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,sta
 import {join,resolve} from 'node:path';
 import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
 import {recallArrivalClip} from './arrival-clip-memory.js';
+import {recordActivityRead} from './community-activity-state.js';
 const MAX_STORAGE=500*1024*1024;
 export class Clips {
   constructor({data=[],save=()=>{},dir,now=Date.now}={}){this.data=data;this.save=save;this.dir=dir;this.now=now;}
   change(fn){const next=structuredClone(this.data);const value=fn(next);this.save(next);reuseClipMemoryIndex(this.data,next);this.data=next;return value;}
-  get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,...publicClip}=clip;return structuredClone(publicClip);}
-  list(){return this.data.map(({comments,messages,readings,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
+  get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,activityReads,...publicClip}=clip;return structuredClone(publicClip);}
+  list(){return this.data.map(({comments,messages,readings,activityReads,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
   recall(viewerId,query='',now=this.now()){return recallClips(this.data,viewerId,query,now);}
   recallArrival(reading,now=this.now()){return recallArrivalClip(this.data,reading,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
@@ -42,8 +43,8 @@ export class Clips {
   // 여러 댓글을 하나의 change()/save로 원자적으로 커밋한다. 클립 부재·부모 삭제·깊이·상한을
   // 커밋 시점에 다시 검증하므로, 하나라도 거부되거나 저장에 실패하면 전부 롤백되어
   // 부분적으로 남은 모델 댓글 묶음이 생기지 않는다.
-  commentBatch(id,items,{reading}={}){
-    if(!items.length)return [];
+  commentBatch(id,items,{reading,readers=[],votes=[],activityRead}={}){
+    if(!items.length&&!reading&&!votes.length&&!activityRead)return [];
     return this.change(data=>{
       const c=data.find(c=>c.id===id);if(!c)throw new Error('핫클립을 찾을 수 없습니다.');
       if(c.comments.length+items.length>150)throw new Error('클립당 댓글은 150개까지 남길 수 있습니다.');
@@ -53,7 +54,9 @@ export class Clips {
       }
       if(reading)assertClipSnapshot(c,reading);
       const at=this.now();const created=items.map(it=>{const item={id:randomUUID(),text:it.text.trim(),name:it.name,personaId:it.personaId,parentId:it.parentId||null,kind:it.kind||'ai',at};c.comments.push(item);return item;});
-      if(reading)recordClipReading(c,reading,created,at);
+      if(reading)recordClipReading(c,reading,created,at,readers);
+      if(activityRead)recordActivityRead(c,activityRead);
+      for(const vote of votes){c.votes=(c.votes||[]).filter(id=>id!==vote.personaId);if(vote.recommended)c.votes.push(vote.personaId);}
       c.updatedAt=at;return created;
     });
   }

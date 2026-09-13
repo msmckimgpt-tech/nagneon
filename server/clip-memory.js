@@ -29,12 +29,12 @@ export function assertClipSnapshot(clip,snapshot){
 }
 
 // Runs inside the same Clips.change as accepted comments. Only successfully
-// published speakers gain a reading receipt; peer replies from this batch were
+// published speakers and autonomous silent readers gain a receipt; peer replies from this batch were
 // not in the input, so each speaker remembers only their own new reply.
-export function recordClipReading(clip,snapshot,created,at){
+export function recordClipReading(clip,snapshot,created,at,readers=[]){
   clip.readings ||= [];
   const merge=(old,rows)=>[...new Map([...old,...rows.filter(identified).map(stamp)].map(r=>[r.id,r])).values()];
-  for(const viewerId of new Set(created.filter(c=>c.kind==='ai').map(c=>c.personaId))){
+  for(const viewerId of new Set([...readers,...created.filter(c=>c.kind==='ai').map(c=>c.personaId)])){
     const own=created.filter(c=>c.personaId===viewerId).map(clipComment);
     let receipt=clip.readings.find(r=>r.viewerId===viewerId);
     if(!receipt){receipt={viewerId,readAt:at,metadataHash:digest(metadata(snapshot)),messages:[],comments:[]};clip.readings.push(receipt);}
