@@ -17,6 +17,7 @@ sourceFiles.push('desktop/capture.cjs','server/local-sound.js','server/sound-sce
 sourceFiles.push('server/world.js','server/audience-autonomy.js','server/audience.js','server/ambient.js','server/advice-intent.js','server/schema.js','server/clips.js','server/special-features.js','server/economy.js');
 sourceFiles.push('server/speech-inbox.js','server/chat-quality.js');
 sourceFiles.push('server/transcript-correction.js');
+sourceFiles.push('server/conversation-rhythm.js');
 for(const file of sourceFiles)if(digest(extractFile(join(folder,'resources/app.asar'),file))!==digest(await readFile(resolve(file))))failures.push('App source differs: '+file);
 if(await hashFile(join(folder,'resources/speech/speech_worker.py'))!==await hashFile('scripts/speech_worker.py'))failures.push('Speech worker differs');
 if(await hashFile(join(folder,'resources/sound/sound_worker.py'))!==await hashFile('scripts/sound_worker.py'))failures.push('Sound worker differs');

@@ -8,6 +8,8 @@
 // - 스트리머가 알려준 공용 지식(taughtNotes)은 개인 목격과 구분해 전달한다.
 // - 신규 관객은 witnessed 가 비고 watchedSeconds=0 이므로 다른 관객의 개인 기억을 자기 지식으로 받지 않는다.
 
+import {conversationRhythm} from './conversation-rhythm.js';
+
 const clamp=(v)=>Math.min(1,Math.max(0,v));
 const round=(v)=>Math.round(v*100)/100;
 
@@ -51,14 +53,16 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Public context excludes everyone's personal memories. Each speaking persona
 // receives its own memory and only chat/previous frames after its latest entry.
 // Packets still share one model call; this is provenance, not secret isolation.
-export function liveViewerContext(audience,personas,history,previous,{journal,speech='',sound}={}){
+export function liveViewerContext(audience,personas,history,previous,{journal,speech='',sound,now=Date.now()}={}){
   const packets={};
   for(const p of personas){
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
+    const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now):[];
     packets[p.id]={
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[])}:{}),
-      chatHistory:Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35):[],
+      chatHistory:witnessed.slice(-35),
+      conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null
     };
   }
