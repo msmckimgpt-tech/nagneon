@@ -68,3 +68,7 @@
 보존한 중간 실패: 최초 통합은 main 변경을 감지하여 공유 폴더를 수정하기 전에 중단했다. 다음 검사는 npm PowerShell shim이 `& npm`의 인수를 잘못 재구성해 `Unknown command: pm`으로 제품 검사 이전에 끝났다. 동일한 npm CLI를 검증된 Node 경로로 실행하여 복구했다. `chat-culture-final-integration-check.log`는 이 실행 오류이며274개 통과 기록과 구분한다.
 
 `release/2026-09-13T05-03-00-839Z`는 말투 변경만 포함한 중간 패키지로, 동시 추가된 호출 한도/오버레이 변경을 포함하지 않는다. `artifacts/chat-culture-intermediate-package.json`에 별도 표시했다. 통합본의 배포 검사는 후속 기록을 따른다.
+
+최종 전체 배포본은 **`release/2026-09-13T05-14-19-582Z/app/BACKSEAT-win32-x64`**, 1,599,463,750바이트/2444파일/미서명이다. 제품 병합 `d834326`과 검증기 `b9f1d00`을 기준으로 만들었다. `chat-culture-packaged-runtime.json`에서 전달 ASAR 모듈의 한국어 STT/출력 소리/공식 CLI 로그인 인식을 실제로 확인했고, `chat-culture-package-integrity.log`에서 전체hash/fuses/핵심43원본 일치를 확인했다. 실제 모델7사례는 앞서 기록한 같은 말투/컨텍스트 코드에서 실행했으며 이 패키지에서 모델을 다시 호출한 것은 아니다. GUI·마이크·설치 프로그램은 실행하지 않았다.
+
+배포 검증기가 실패한 실행 보고서를 받으면 거절하도록 보강했다. 같은 폴더라도 다른 ASAR 해시는 거절하고, 이전 세대 증거를 재사용할 때는 소리 런타임과 추가된 입력 지침/설정 의존성도 비교한다. 실제 전체 패키지에 `passed:false`와 잘못된 ASAR 해시를 각각 넣은 검증은 두 번 모두 종료1/실패 한 건으로 끝났고, 정상 실행 보고서는 종료0으로 통과했다(`runtime-evidence-rejection.json`). 성공·실패 원본, 집계 및 코드 보존 목록은 `artifacts/first-test-chat-culture-evidence/manifest.json`을 확인한다. 사용자 대화 전문은 이 묶음에 복제하지 않는다.

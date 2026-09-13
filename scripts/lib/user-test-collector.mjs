@@ -1,4 +1,4 @@
-import {open,lstat,realpath,mkdir,rename,writeFile,appendFile,readFile} from 'node:fs/promises';
+import {open,lstat,realpath,mkdir,rename,writeFile,appendFile,readFile,unlink} from 'node:fs/promises';
 import {resolve,join,relative,isAbsolute,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {JournalData} from '../../server/conversation-journal.js';
@@ -96,12 +96,31 @@ export class UserTestCollector {
     if(this.output===this.source||inside(this.source,this.output)||inside(this.output,this.source))throw fault('OUTPUT_OVERLAPS_SOURCE');
     this.reader=reader||new TestDataReader(source);this.maxTimelineBytes=maxTimelineBytes;this.timelineBytes=0;this.polls=0;this.changes=0;this.initialized=false;
   }
-  async initialize(){
+  async initialize({resume=false}={}){
     await mkdir(dirname(this.output),{recursive:true});
     if(resolve(await realpath(dirname(this.output)))!==dirname(this.output))throw fault('OUTPUT_LINK_REJECTED');
+    if(resume)return this.resume();
     await mkdir(this.output); // A collection directory is owned by one process.
     this.initialized=true;
     await this.atomic('collection.json',{version:1,pid:process.pid,source:this.source,since:this.since,until:this.until,intervalSeconds:15,scope:'read-only saved application data; no devices or network',retention:'latest content snapshot; metrics timeline only'});
+  }
+  async resume(){
+    if(resolve(await realpath(this.output))!==this.output)throw fault('OUTPUT_LINK_REJECTED');
+    // Only one recovery attempt may inspect/replace the owner at a time. A live
+    // owner, including a reused PID, is never stopped or overridden.
+    const leasePath=join(this.output,'resume.lock'),lease=await open(leasePath,'wx');
+    try{
+      const reader=new TestDataReader(this.output,{maxFileBytes:65536,maxReadBytes:131072});reader.readBytes=0;reader.provenance={};
+      const meta=await reader.json('collection.json');
+      if(meta?.version!==1||typeof meta.source!=='string'||resolve(meta.source)!==this.source||meta.since!==this.since||meta.until!==this.until||!Number.isSafeInteger(meta.pid)||meta.pid<1)throw fault('COLLECTION_OWNER_MISMATCH');
+      try{process.kill(meta.pid,0);throw fault('COLLECTOR_ALREADY_RUNNING');}catch(error){if(error.code!=='ESRCH')throw error;}
+      const status=await reader.json('status.json',true);
+      let timeline;try{timeline=await lstat(join(this.output,'metrics.jsonl'));}catch(error){if(error.code!=='ENOENT')throw error;}
+      if(timeline&&(!timeline.isFile()||timeline.isSymbolicLink()||timeline.size>this.maxTimelineBytes))throw fault('COLLECTION_TIMELINE_INVALID');
+      this.timelineBytes=timeline?.size||0;this.polls=Number.isSafeInteger(status?.polls)&&status.polls>=0?status.polls:0;this.changes=Number.isSafeInteger(status?.changes)&&status.changes>=0?status.changes:0;
+      await this.atomic('collection.json',{...meta,pid:process.pid,resumedAt:this.now(),previousPid:meta.pid});
+      this.initialized=true; // First poll replaces latest.json, never a new transcript archive.
+    }finally{await lease.close();await unlink(leasePath);}
   }
   async atomic(name,value){
     const temp=join(this.output,name+'.tmp');await writeFile(temp,JSON.stringify(value,null,2));await rename(temp,join(this.output,name));

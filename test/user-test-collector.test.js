@@ -4,6 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,readdir,lstat,rm,symlink} from 'node:fs
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
+import {spawn} from 'node:child_process';
 import {JournalStore} from '../server/journal-store.js';
 import {UserTestCollector,TestDataReader,readCollectorStatus} from '../scripts/lib/user-test-collector.mjs';
 
@@ -71,4 +72,29 @@ test('deadline, stop file, size limit, overlapping paths and duplicate ownership
   c=new UserTestCollector({...f,output:join(f.root,'second'),since,until,now:()=>since+1000});await c.initialize();await writeFile(join(c.output,'STOP'),'');assert.equal((await c.poll()).reason,'stop-requested');
   c=new UserTestCollector({...f,output:join(f.root,'third'),since,until,now:()=>since+1000,maxTimelineBytes:1});await c.initialize();assert.equal((await c.poll()).reason,'timeline-limit');
   assert.deepEqual(await readdir(f.source),[]);
+});
+
+async function endedOwner(output){
+  const p=spawn(process.execPath,['-e',''],{windowsHide:true});await new Promise((yes,no)=>{p.on('error',no);p.on('close',yes);});
+  const file=join(output,'collection.json'),meta=JSON.parse(await readFile(file,'utf8'));await json(file,{...meta,pid:p.pid});
+}
+
+test('resume continues a confirmed-ended owner in place and removes deleted quotes on the next poll',async t=>{
+  const f=await fixture(t),store=new JournalStore(f.source);store.save({version:1,revision:1,entries:[entry()]});
+  const before=new UserTestCollector({...f,since,until,now:()=>since+2000});await before.initialize();await before.poll();await endedOwner(f.output);
+  const bytes=(await lstat(join(f.output,'metrics.jsonl'))).size;store.save({version:1,revision:2,entries:[]});const sourceBefore=await tree(f.source);
+  const after=new UserTestCollector({...f,since,until,now:()=>since+3000});await after.initialize({resume:true});assert.equal(after.timelineBytes,bytes);const status=await after.poll();
+  assert.equal(status.polls,2);assert.equal(status.metrics.messages,0);assert.deepEqual(await tree(f.source),sourceBefore);
+  for(const file of await readdir(f.output))assert.doesNotMatch(await readFile(join(f.output,file),'utf8'),/훈수/);
+  assert.equal(JSON.parse(await readFile(join(f.output,'collection.json'),'utf8')).pid,process.pid);assert.ok(!(await readdir(f.output)).includes('resume.lock'));
+  await writeFile(join(f.output,'STOP'),'');assert.equal((await after.poll()).reason,'stop-requested');
+});
+
+test('resume refuses active owners, mismatched windows, concurrent recovery, and junctions without taking ownership',async t=>{
+  const f=await fixture(t),first=new UserTestCollector({...f,since,until});await first.initialize();const original=await readFile(join(f.output,'collection.json'),'utf8');
+  await assert.rejects(()=>new UserTestCollector({...f,since,until}).initialize({resume:true}),{code:'COLLECTOR_ALREADY_RUNNING'});
+  await assert.rejects(()=>new UserTestCollector({...f,since:since+1,until}).initialize({resume:true}),{code:'COLLECTION_OWNER_MISMATCH'});
+  assert.equal(await readFile(join(f.output,'collection.json'),'utf8'),original);
+  await writeFile(join(f.output,'resume.lock'),'other recovery');await assert.rejects(()=>new UserTestCollector({...f,since,until}).initialize({resume:true}),{code:'EEXIST'});assert.equal(await readFile(join(f.output,'resume.lock'),'utf8'),'other recovery');
+  const linked=join(f.root,'linked-output');await symlink(f.output,linked,process.platform==='win32'?'junction':'dir');await assert.rejects(()=>new UserTestCollector({...f,output:linked,since,until}).initialize({resume:true}),{code:'OUTPUT_LINK_REJECTED'});
 });

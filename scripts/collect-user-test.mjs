@@ -5,7 +5,7 @@ const option=name=>process.argv.find(arg=>arg.startsWith('--'+name+'='))?.slice(
 const source=option('source'),output=option('output'),since=Date.parse(option('since')),until=Date.parse(option('until'));
 if(!source||!output||!Number.isFinite(since)||!Number.isFinite(until))throw Error('Required: --source=<data> --output=<new folder> --since=<ISO time> --until=<ISO time>');
 const collector=new UserTestCollector({source,output,since,until});
-await collector.initialize();
+await collector.initialize({resume:process.argv.includes('--resume')});
 try{
   do{
     const status=await collector.poll();

@@ -36,3 +36,10 @@
 `test/user-test-collector.test.js` 6개 검사는 실제 파일에 대해 입력 전체 SHA-256 무변경, 원문/메모/비밀 제외 범위, 삭제 반영, 실제 JournalStore 커밋과 경쟁, 손상·해시·경로·junction·크기 제한, 종료/중복 실행을 검증한다. `artifacts/user-test-collector-focused.log` 6통과, `artifacts/user-test-background-check.log` **248 Node 검사 + TypeScript/Vite 통과**. 화면·장치·GUI를 사용하지 않았다.
 
 Codex 작업 heartbeat **`backseat` / BACKSEAT 사용자 테스트 분석**이 매시간 새 기록을 검토한다(12회 한도). 변화가 없으면 조용히 유지하고 의미 있는 결함 수정/수집 실패/사용자 조치가 필요할 때만 알린다. 종료 이후 마지막 상태를 확인하고 자동화를 일시 중지한다. 상태 오류와 실제 서비스 오류를 구분하며, 새로운 결함은 별도 worktree에서 파일/합성 입력으로 재현한 뒤 수정한다. 관객 관계의 자연스러움·지속적 선호·대화 반복·관객 유입·클립·포인트 균형을 조사하되, 한 세션의 몇 발언을 전체 성향이라고 일반화하지 않는다.
+# 수집 보조 프로세스의 재개
+
+2026-09-13 14:17 KST에 최초 PID30940이 더 이상 존재하지 않음을 프로세스 조회로 확인했다. 마지막 상태는14:07:58이고 종료 원인 로그는 없었다. 사용자1차 세션은 그 전에 끝났으며 원본 journal revision278/278발언과 수집본 일치를 다시 확인했다. 원본 저장 파일은 수집기와 별개로 남아 있다.
+
+`--resume` 옵션은 **같은 source/output/since/until**에서 종료된 기존 수집만 이어 쓴다. 기존 PID가 살아 있거나 재사용됐으면 거절하고 종료하지 않는다. 동시 재개는 `resume.lock`으로 차단한다. 폴더 링크·출처/기간 불일치·기존 메타데이터 크기·timeline 용량을 확인하고 원래 종료 시각과 카운트를 유지한다. 첫 poll은 같은 `latest.json`을 갱신하므로 별도 대화 복사본을 만들지 않는다. 삭제한 원문은 다음 성공한 poll에서 사라진다.
+
+현재 실행 기준은 `artifacts/user-test-collector-resumed-launch.json`과 수집 폴더 `collection.json`이다. 오래된 `status.json`의 collecting 표기만으로 살아 있다고 판단하지 않는다. 마지막 갱신이 멈췄으면 이 도구가 시작한 정확한 PID/생성 시각/실행 경로를 읽기 전용으로 확인한다. 실제 프로세스가 없고 원래 수집 기간 안일 때만 같은 인수에 `--resume`을 붙여 숨김 Node로 재개한다. 기간 종료/STOP을 무시하거나 사용자 앱을 재시작하지 않는다. 자동 갱신 heartbeat도 이 기준을 따른다.
