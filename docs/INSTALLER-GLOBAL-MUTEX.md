@@ -24,6 +24,12 @@
 
 모든 시험 프로세스는 **현재 로그인 세션1**에서 실행했다. 실제 Global 이름 공간을 사용했으며 문자열만 검사한 mock은 아니다. 그러나 다른 Windows 계정·로그인/RDP 세션에서 실행한 수용 시험도 아니다. 관리자 권한 상승, 새 계정/세션, HKCU·Start Menu 변경, 사용자 앱 실행은 없었다. 기존 제거 실패·파일 보존 회귀 검사도253개에 포함된다.
 
+## 통합과 증거
+
+제품 커밋 `07443a65074e7ea7144520e36c415a17edefe8ed`를 별도 `live-capture-integration` worktree에서 **앱301개/빌드 + 엔진253개**로 검증하고 잠금 소유권·main HEAD·인덱스·원격 상태를 재확인한 뒤 main에 fast-forward했다. 통합 로그는 해당 worktree의 `artifacts/global-mutex-integration-check.log`, `global-mutex-integration-unit.log`이며, 작업 폴더의 `artifacts/global-mutex-integration-result.json`에 실제 종료 코드와 결과가 있다. 외부 push는 하지 않았다.
+
+변경 전후 C# 소스, 컴파일된 시험 파일, 실패/성공 원본, 배포 엔진 컴파일과 통합 결과를 작업 폴더의 `artifacts/global-mutex-evidence/manifest.json`에 파일별 SHA256으로 보존한다. Windows 계정 자격 증명이나 사용자 대화는 포함하지 않는다. 기존 수집기 PID29916/생성 시각 `2026-09-13T06:06:54.756327Z`의 실행 경로와 입력/출력 인자를 다시 확인했고 재시작하거나 수집 범위를 바꾸지 않았다.
+
 ## 남은 기준
 
 같은 계정의 다른 로그인 세션, 다른 계정의 접근 거절, elevated/일반 프로세스 혼합을 실제 Windows 세션에서 확인해야 한다. **구버전이 다른 세션에서 Local 잠금만 잡고 있는 상태**를 새 코드가 소급하여 전역 잠금으로 바꿀 수는 없다. 기존 실행기를 재시작하지 않았으므로 현재 사용자 앱의 잠금이 교체됐다고 주장하지 않는다.
