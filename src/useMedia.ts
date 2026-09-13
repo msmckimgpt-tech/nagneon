@@ -3,6 +3,7 @@ import {useSystemSound} from './useSystemSound';
 import {api} from './api';
 import type {State} from './types';
 import {useClipBuffer} from './useClipBuffer';
+import {ClipUploads} from './clip-uploads';
 import {VoiceBoundary,SpeechQueue,SpeechOutbox,VOICE_MAX_MS} from './speech-flow';
 
 export function useMedia(state:State|null,onError:(s:string)=>void){
@@ -12,14 +13,15 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const recording=useRef(false),recorder=useRef<MediaRecorder|null>(null),context=useRef<AudioContext|null>(null);
   const stateRef=useRef(state);stateRef.current=state;const pendingSpeech=useRef(new SpeechOutbox());const epoch=useRef(0),wake=useRef<()=>void>(()=>{});
   const speechQueue=useRef<SpeechQueue<Blob,{text:string;cues?:{delivery?:string}}>|null>(null);
+  const clipUploads=useRef<ClipUploads|null>(null);
   const errorRef=useRef(onError);errorRef.current=onError;
   const [outputStream,setOutputStream]=useState<MediaStream|null>(null),[picture,setPicture]=useState(true);const pictureRef=useRef(true);
   const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
   const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled,state?.sessionId || null,outputStream);
   useEffect(()=>{const v=video.current;if(v&&screenStream.current&&v.srcObject!==screenStream.current){v.srcObject=screenStream.current;void v.play().catch(()=>{});}});
-  function stopSound(){screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}
+  function stopSound(){clipUploads.current?.dispose();screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}
   function stopScreen(){captureEpoch.current++;stopSound();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current)captureVideo.current.srcObject=null;captureVideo.current=null;}
-  function stopMic(){epoch.current++;recording.current=false;speechQueue.current?.reset();speechQueue.current=null;if(recorder.current?.state==='recording')recorder.current.stop();micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
+  function stopMic(){clipUploads.current?.dispose();epoch.current++;recording.current=false;speechQueue.current?.reset();speechQueue.current=null;if(recorder.current?.state==='recording')recorder.current.stop();micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
   function stopAll(){stopScreen();stopMic();pendingSpeech.current.clear();}
   async function share(sourceId?:string,options={systemAudio:false,picture:true}){
     const ticket=++captureEpoch.current;
@@ -37,21 +39,15 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   }
   function frame(){const v=captureVideo.current;if(!pictureRef.current||!screenStream.current||!v?.videoWidth)return undefined;const canvas=document.createElement('canvas');canvas.width=Math.min(1280,v.videoWidth);canvas.height=Math.round(v.videoHeight*canvas.width/v.videoWidth);canvas.getContext('2d')!.drawImage(v,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',0.65);}
   function say(text:string,source:'keyboard'|'microphone'='keyboard'){const s=stateRef.current;if(!s?.running){errorRef.current('방송을 먼저 시작해주세요.');return;}if(!pendingSpeech.current.add(text,s.sessionId,source)){errorRef.current('전달할 말이 많이 밀렸어요. 관객 응답 후 마지막 말을 다시 입력해주세요.');return;}wake.current();}
-  const attachedClips=useRef(new Set<string>());
   useEffect(()=>{
-    if(!state?.running||!state.settings.autoHighlights||!state.settings.clipBufferEnabled)return;
-    for(const clip of state.clips){
-      if(clip.source!=='spectator'||clip.sessionId!==state.sessionId||clip.video||attachedClips.current.has(clip.id)||Date.now()-clip.createdAt>120000)continue;
-      attachedClips.current.add(clip.id);
-      void (async()=>{try{
-        const recording=await clips.takeAt(clip.observedAt||clip.createdAt);
-        if(!recording||!screenStream.current||!stateRef.current?.running||stateRef.current.sessionId!==recording.sessionId||!stateRef.current.settings.clipBufferEnabled)return;
-        const params=new URLSearchParams({startedAt:String(recording.startedAt),endedAt:String(recording.endedAt),hasAudio:String(recording.hasAudio)});
-        const response=await fetch(`/api/clips/${clip.id}/video?${params}`,{method:'POST',headers:{'Content-Type':'video/webm','X-Backseat-Client':'studio'},body:recording.blob});
-        if(!response.ok)throw new Error((await response.json()).error+' · 관객의 장면 기록은 저장되어 있습니다.');
-      }catch(error){errorRef.current(error instanceof Error?error.message:'관객 클립 영상 연결 실패');}})();
-    }
-  },[state?.clips,state?.running,state?.settings.autoHighlights,state?.settings.clipBufferEnabled]);
+    if(!state?.running||!state.sessionId||!state.settings.autoHighlights||!state.settings.clipBufferEnabled||!picture||!screenStream.current)return;
+    const sessionId=state.sessionId,source=screenStream.current,microphone=micStream.current;
+    const uploads=new ClipUploads({sessionId,takeAt:clips.takeAt,onError:message=>errorRef.current(message),
+      allowed:()=>!!stateRef.current?.running&&stateRef.current.sessionId===sessionId&&stateRef.current.settings.autoHighlights&&stateRef.current.settings.clipBufferEnabled&&pictureRef.current&&screenStream.current===source&&micStream.current===microphone});
+    clipUploads.current=uploads;
+    return()=>{uploads.dispose();if(clipUploads.current===uploads)clipUploads.current=null;};
+  },[state?.running,state?.sessionId,state?.settings.autoHighlights,state?.settings.clipBufferEnabled,picture,screenStream.current,micStream.current,outputStream]);
+  useEffect(()=>{clipUploads.current?.add(state?.clips||[]);},[state?.clips,state?.running,state?.sessionId,state?.settings.autoHighlights,state?.settings.clipBufferEnabled,picture,screenStream.current,micStream.current,outputStream]);
   async function startMic(){
     if(acquiringMic.current||micStream.current)return;
     if(!stateRef.current?.running||stateRef.current.settings.mode!=='live'){errorRef.current('실제 AI 방송을 시작한 뒤 마이크를 켜주세요.');return;}
