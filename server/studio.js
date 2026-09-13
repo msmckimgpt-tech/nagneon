@@ -189,7 +189,7 @@ export class Studio extends EventEmitter {
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses(),capturedAt=this.lastRequest;
-        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,speech,sound:this.sound,now:capturedAt,viewing});
+        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,clips:this.clips,speech,sound:this.sound,now:capturedAt,viewing});
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
         const liveSpeech=this.speechInbox.sources(speechBatch.ids);

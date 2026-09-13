@@ -1,12 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
 const MAX_STORAGE=500*1024*1024;
 export class Clips {
   constructor({data=[],save=()=>{},dir,now=Date.now}={}){this.data=data;this.save=save;this.dir=dir;this.now=now;}
-  change(fn){const next=structuredClone(this.data);const value=fn(next);this.save(next);this.data=next;return value;}
-  get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');return structuredClone(clip);}
-  list(){return this.data.map(({comments,messages,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
+  change(fn){const next=structuredClone(this.data);const value=fn(next);this.save(next);reuseClipMemoryIndex(this.data,next);this.data=next;return value;}
+  get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,...publicClip}=clip;return structuredClone(publicClip);}
+  list(){return this.data.map(({comments,messages,readings,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
+  recall(viewerId,query='',now=this.now()){return recallClips(this.data,viewerId,query,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
   file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
   writeMedia(id,extension,buffer){if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');const file=this.file(id,extension);mkdirSync(this.dir,{recursive:true});writeFileSync(file+'.tmp',buffer);renameSync(file+'.tmp',file);return file;}
@@ -35,7 +37,7 @@ export class Clips {
   // 여러 댓글을 하나의 change()/save로 원자적으로 커밋한다. 클립 부재·부모 삭제·깊이·상한을
   // 커밋 시점에 다시 검증하므로, 하나라도 거부되거나 저장에 실패하면 전부 롤백되어
   // 부분적으로 남은 모델 댓글 묶음이 생기지 않는다.
-  commentBatch(id,items){
+  commentBatch(id,items,{reading}={}){
     if(!items.length)return [];
     return this.change(data=>{
       const c=data.find(c=>c.id===id);if(!c)throw new Error('핫클립을 찾을 수 없습니다.');
@@ -44,7 +46,9 @@ export class Clips {
         if(!it.text||!it.text.trim()||it.text.length>1000)throw new Error('댓글은 1~1,000자로 작성하세요.');
         if(it.parentId){let p=c.comments.find(x=>x.id===it.parentId),depth=1;if(!p||p.deleted)throw new Error('대댓글 대상이 이 클립에 없습니다.');while(p.parentId){p=c.comments.find(x=>x.id===p.parentId);if(!p||++depth>=4)throw new Error('대댓글은 4단계까지 가능합니다.');}}
       }
+      if(reading)assertClipSnapshot(c,reading);
       const at=this.now();const created=items.map(it=>{const item={id:randomUUID(),text:it.text.trim(),name:it.name,personaId:it.personaId,parentId:it.parentId||null,kind:it.kind||'ai',at};c.comments.push(item);return item;});
+      if(reading)recordClipReading(c,reading,created,at);
       c.updatedAt=at;return created;
     });
   }
@@ -94,10 +98,11 @@ export class ClipFeatures {
     // attended: 이 클립 방송에 실제 참여했는지. false여도 기록을 읽고 댓글을 남길 수 있으나(오프스트림 감상)
     // 그 자리에 있었던 척은 하지 않는다.
     const attendee=new Set((clip.participants||[]).map(p=>p.id));
-    const members=people.map(p=>({id:p.id,name:p.name,attended:attendee.has(p.id),...(s.audience.data.members[p.id]||{})}));
+    const members=people.map(p=>({...s.audience.data.members[p.id],id:p.id,name:p.name,attended:attendee.has(p.id)}));
+    const reading=clipTextSnapshot(clip,parentId);
     const epoch=s.epoch;if(s.controller.signal.aborted)s.controller=new AbortController();s.reserveCall();s.busy=true;s.publish();
     try{
-      const result=await s.provider.react({settings:{...s.settings,personas:people,chatPace:people.length,webSearch:false},history:clip.messages,previous:{game:clip.game,scene:clip.scene},speech:'',offStream:true,audience:{members},special:{kind:'clip-comment',private:false,instruction:'이 핫클립 기록(제목·장면 요약·남은 채팅)을 읽고 댓글을 남긴다. 기록은 캡션과 채팅 기반이며 영상 자체를 재생·분석하지 않는다. 라이브 당시 없던 관객(attended=false)도 기록을 통해 감상할 수 있으나 그 자리에 함께 있었다고 지어내지 않는다. 기록 밖 사건이나 영상의 실제 재생 내용을 안다고 말하지 않는다. 대댓글 대상이 있으면 그 말에 자연스럽게 답한다. 관객마다 하나씩 짧게 작성한다.',clip:{title:clip.title,game:clip.game,scene:clip.scene,comments:clip.comments.slice(-30),replyTo:parent}}},s.controller.signal);
+      const result=await s.provider.react({settings:{...s.settings,personas:people,chatPace:people.length,webSearch:false},history:reading.messages.map(({at,...m})=>({...m,time:at})),previous:{game:clip.game,scene:clip.scene},speech:'',offStream:true,audience:{members},special:{kind:'clip-comment',private:false,instruction:'이 핫클립 기록(제목·장면 요약·남은 채팅)을 읽고 댓글을 남긴다. 기록은 캡션과 채팅 기반이며 영상 자체를 재생·분석하지 않는다. 라이브 당시 없던 관객(attended=false)도 기록을 통해 감상할 수 있으나 그 자리에 함께 있었다고 지어내지 않는다. 기록 밖 사건이나 영상의 실제 재생 내용을 안다고 말하지 않는다. 대댓글 대상이 있으면 그 말에 자연스럽게 답한다. 관객마다 하나씩 짧게 작성한다.',clip:{title:reading.title,game:reading.game,scene:reading.scene,fictional:reading.fictional,comments:reading.comments,replyTo:reading.comments.find(c=>c.id===parentId)||null}}},s.controller.signal);
       // 취소/세션 전환이면 아무것도 커밋하지 않는다.
       if(epoch!==s.epoch)throw new Error('방송 상태가 바뀌어 댓글 생성을 취소했습니다.');s.tokens+=Number(result.usage?.total_tokens)||0;
       // 거부 규칙(미허용 관객·중복·스포일러·차단어·빈/과길이)을 통과한 댓글만 묶음으로 모은다.
@@ -106,7 +111,7 @@ export class ClipFeatures {
         seen.add(p.id);batch.push({text,name:p.name,personaId:p.id,parentId:parentId||null,kind:'ai'});accepted.push({p,text});}
       if(!batch.length)throw new Error('표시할 수 있는 댓글을 만들지 못했습니다.');
       // 원자적 커밋: 대기 중 클립 삭제·부모 삭제·상한 초과면 전부 롤백된다. 성공 후에만 관객 기억/관계를 갱신한다.
-      const created=this.clips.commentBatch(id,batch);
+      const created=this.clips.commentBatch(id,batch,{reading});
       for(const {p,text} of accepted){s.audience.message(p.id,text,s.settings);const member=s.audience.data.members[p.id];if(member&&parent&&parent.personaId!==p.id&&parent.personaId!=='streamer')member.peers[parent.personaId]=Math.min(20,(member.peers[parent.personaId]||0)+1);}
       s.audience.save(s.audience.data);return {ok:true,count:created.length};
     }finally{if(epoch===s.epoch)s.busy=false;s.publish();}
