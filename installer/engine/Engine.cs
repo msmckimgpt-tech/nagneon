@@ -46,6 +46,9 @@ namespace Backseat.Installer
     internal sealed class Engine
     {
         private const string AppSubdir = "app";
+        private readonly IUninstallHost uninstallHost;
+        public Engine() : this(new WindowsUninstallHost()) { }
+        internal Engine(IUninstallHost host) { if (host == null) throw new ArgumentNullException("host"); uninstallHost = host; }
 
         // ===================================================================
         //  INSTALL
@@ -289,22 +292,28 @@ namespace Backseat.Installer
 
         private int UninstallLocked(StateStore store, InstalledState st, string root, OpReport report)
         {
-            AssertPublicationOwnership(st.RegUninstallKey, st.AppId, st.ShortcutGroup, st.AppName, root);
+            uninstallHost.AssertOwned(st, root);
             store.ValidateBackup(st.AppId);
-            var metadataPaths = new[] { store.StatePath, store.BakPath };
+            // Keep the runnable retry entrypoint with the ownership metadata.
+            // A late publication failure must not leave an ARP entry pointing
+            // to an already-deleted uninstaller. Hold all controls from preflight
+            // and delete them only after payload and publication cleanup succeed.
+            var metadataPaths = new[] { store.StatePath, store.BakPath,
+                Path.Combine(root, Identity.LauncherName), Path.Combine(root, st.UninstallerName) };
             foreach (string path in metadataPaths)
                 if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0)
-                    throw EngineError.Busy("install metadata is read-only; nothing removed");
+                    throw EngineError.Busy("install control files are read-only; nothing removed");
             using (var metadata = new DeleteLockBatch())
             {
-                if (!metadata.TryOpenAll(metadataPaths)) throw EngineError.Busy("install metadata is locked; nothing removed");
+                if (!metadata.TryOpenAll(metadataPaths)) throw EngineError.Busy("install control files are locked; nothing removed");
                 return UninstallPayload(store, st, root, report, metadata);
             }
         }
 
         private int UninstallPayload(StateStore store, InstalledState st, string root, OpReport report, DeleteLockBatch metadata)
         {
-            // Gather ALL owned files across ALL owned versions + the launcher.
+            // Gather payload files across every owned version. Launcher,
+            // uninstaller and metadata are already held by the final control batch.
             var ownedFiles = new List<string>();
             var exePaths = new List<string>();
             foreach (VersionRecord v in st.AllVersions())
@@ -319,13 +328,10 @@ namespace Backseat.Installer
                 exePaths.Add(PathSafety.CombineInsideRoot(pdir, v.ExeName, "owned-exe"));
             }
             string launcherPath = Path.Combine(root, Identity.LauncherName);
-            string uninstallerPath = Path.Combine(root, st.UninstallerName);
-            ownedFiles.Add(launcherPath);
-            ownedFiles.Add(uninstallerPath);
             exePaths.Add(launcherPath);
 
             // Informational running-process scan (the lock batch is authoritative).
-            RunningScan scan = ProcessScan.ScanForOwnedExes(exePaths);
+            RunningScan scan = uninstallHost.Scan(exePaths);
 
             // Preflight: exclusive delete-on-close handles on EVERY owned file.
             // All open -> nothing is locked and nothing new can be started while we
@@ -363,30 +369,12 @@ namespace Backseat.Installer
             foreach (VersionRecord v in st.AllVersions())
                 RemoveEmptyTreeWithin(Path.Combine(Path.Combine(root, AppSubdir), v.PayloadDirname), root);
 
-            // Start Menu shortcut (only if it still points at our launcher) + group.
-            string lnk = ShortcutOps.ShortcutPath(st.ShortcutGroup, st.AppName);
-            if (ShortcutOps.DeleteIfOwned(lnk, launcherPath))
-            {
-                report.Step("removed-shortcut");
-                TryRemoveEmptyDir(ShortcutOps.GroupDir(st.ShortcutGroup));
-            }
-            else if (File.Exists(lnk))
-            {
-                report.AddLeftover("startmenu:" + st.AppName + ".lnk (target not owned)");
-            }
+            uninstallHost.RemovePublished(st, root, report);
 
-            // HKCU uninstall entry (owned validation).
-            if (RegistryOps.DeleteUninstallEntryIfOwned(st.RegUninstallKey, st.AppId, root))
-                report.Step("removed-registry");
-            else
-                report.AddLeftover("hkcu:" + st.RegUninstallKey + " (not owned)");
-
-            // Uninstaller binary (the running uninstall engine is a temp copy).
-            TryDeleteFile(uninstallerPath);
-
-            // Control metadata LAST so an interrupted uninstall stays re-runnable.
+            // State, backup and retry programs LAST. A disposition error cancels
+            // this whole batch while handles remain open, preserving the retry.
             if (metadata.CommitDeletions().Count > 0)
-                throw EngineError.Unrecoverable("install metadata could not be removed completely");
+                throw EngineError.Unrecoverable("install control files could not be removed completely");
             report.Step("removed-control-metadata");
             TryRemoveEmptyDir(store.ControlDir);
             TryRemoveEmptyDir(Path.Combine(root, AppSubdir));
@@ -838,7 +826,7 @@ namespace Backseat.Installer
             catch { /* non-empty or locked: leave it (leftover) */ }
         }
 
-        private static void TryRemoveEmptyDir(string dir)
+        internal static void TryRemoveEmptyDir(string dir)
         {
             try
             {

@@ -57,6 +57,8 @@ NSIS는 각 파일을 전용 임시 폴더에 추출하고 C# 엔진을 호출�
 
 ## C# 엔진 진행 · 2026-09-13
 
+추가로 [제거 실패 후 재시도 파일 보존](UNINSTALL-RETRY-CONTROLS.md)을 적용했다. 기존에는 게시 정리 실패 시 제거 프로그램이 이미 사라졌다. 이제 상태·백업·launcher·uninstaller를 마지막까지 함께 잠가 보존한다. 파일 기반 엔진231개 검사와 앱301개/빌드를 통과했으나, 이 변경의 실제 NSIS·HKCU·Start Menu 수용은 아직 검증하지 않았으므로 일반 배포 차단은 유지한다.
+
 첫 WSL Claude 작업은 정상 종료했고 `artifacts/claude-engine-output.txt`, `claude-engine-tests.log`(74개), `claude-engine-realrun.log`를 남겼다. 그 이후의 실제 수용 결과와 현재 한계는 위 최신 절이 우선한다.
 
 다음에는 부모 검토 후 테스트 식별자의 실제 설치/업데이트/실행 중 제거/중단·복구/외부 파일 보존과 실패 지점 전부를 검증한다. 엔진 README의 제외 범위는 위임 작업에만 적용되며 전역 승인 제한이 아니다.

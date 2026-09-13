@@ -36,6 +36,14 @@ namespace Backseat.Installer.Tests
                 crashStore.EnsureControlDir();
                 Environment.Exit(ExitCodes.CrashFault);
             }
+            if (args.Length == 1 && args[0] == "--crash-after-uninstall-payload")
+            {
+                string crashRoot = Path.Combine(_fixtureRoot, "uninstall-crash-child");
+                InstalledState st = new StateStore(crashRoot).ReadState();
+                var host = new FileOnlyUninstallHost(); host.Fault = "crash";
+                new Engine(host).Uninstall(crashRoot, st.AppId, new OpReport("uninstall", crashRoot));
+                return 1; // the injected publication boundary must terminate the child
+            }
             if (args.Length != 1 || !string.Equals(Path.GetFullPath(args[0]), _fixtureRoot, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Expected the fixture directory beside this test binary");
             Directory.CreateDirectory(_fixtureRoot);
@@ -51,6 +59,8 @@ namespace Backseat.Installer.Tests
             try { StateJournalRoundTripTests(); } catch (Exception e) { Blew("StateJournalRoundTripTests", e); }
             try { StateStoreFsTests(); } catch (Exception e) { Blew("StateStoreFsTests", e); }
             try { FirstInstallBootstrapTests(); } catch (Exception e) { Blew("FirstInstallBootstrapTests", e); }
+            try { UninstallLateFailureTests(); } catch (Exception e) { Blew("UninstallLateFailureTests", e); }
+            try { UninstallControlPreflightTests(); } catch (Exception e) { Blew("UninstallControlPreflightTests", e); }
             try { DeleteLockBatchTests(); } catch (Exception e) { Blew("DeleteLockBatchTests", e); }
             try { ReparseTests(); } catch (Exception e) { Blew("ReparseTests", e); }
             try { MutexTests(); } catch (Exception e) { Blew("MutexTests", e); }
@@ -515,6 +525,114 @@ namespace Backseat.Installer.Tests
             string p2 = d + "\\abc.bin"; File.WriteAllBytes(p2, System.Text.Encoding.ASCII.GetBytes("abc"));
             Eq(Hashing.Sha256File(p2), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                 "sha256 of 'abc'");
+        }
+
+        // In-memory publication only; Engine.Uninstall still exercises actual
+        // state validation, mutex, Win32 delete locks and filesystem deletion.
+        private sealed class FileOnlyUninstallHost : IUninstallHost
+        {
+            public string Fault;
+            public bool Shortcut = true, Registration = true, SawRetryExecutable;
+            public int PublicationCalls;
+            public void AssertOwned(InstalledState st, string root) { }
+            public RunningScan Scan(IEnumerable<string> paths) { return new RunningScan(); }
+            public void RemovePublished(InstalledState st, string root, OpReport report)
+            {
+                PublicationCalls++;
+                SawRetryExecutable = File.Exists(Path.Combine(root, st.UninstallerName));
+                if (Fault == "crash") Environment.Exit(ExitCodes.CrashFault);
+                if (Fault == "shortcut") throw new IOException("synthetic late shortcut failure");
+                Shortcut = false;
+                if (Fault == "registry") throw new IOException("synthetic late registry failure");
+                Registration = false;
+                if (Fault == "metadata") File.SetAttributes(new StateStore(root).StatePath, FileAttributes.ReadOnly);
+                if (Fault == "final-control") File.SetAttributes(Path.Combine(root, st.UninstallerName), FileAttributes.ReadOnly);
+            }
+        }
+
+        private static InstalledState FixtureInstalledState(string root)
+        {
+            Identity id = Identity.ExpectedFor("test");
+            var st = new InstalledState();
+            st.AppId = id.AppId; st.AppName = id.AppName; st.Marker = id.Marker; st.InstallRoot = root;
+            st.RegUninstallKey = id.RegUninstallKey; st.ShortcutGroup = id.ShortcutGroup;
+            st.UninstallerName = id.UninstallerName; st.ExeName = id.ExeName; st.Publisher = id.Publisher;
+            st.Current = MakeVR("0.1.0+x", "0.1.0", "x"); st.LastTxnId = "txn-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            string dir = Path.Combine(Path.Combine(root, "app"), st.Current.PayloadDirname);
+            Directory.CreateDirectory(dir); File.WriteAllBytes(Path.Combine(dir, st.ExeName), new byte[10]);
+            File.WriteAllText(Path.Combine(dir, "user-note.txt"), "user-owned note");
+            File.WriteAllText(Path.Combine(root, Identity.LauncherName), "synthetic launcher bytes");
+            File.WriteAllText(Path.Combine(root, st.UninstallerName), "synthetic uninstaller bytes");
+            var store = new StateStore(root); store.CommitState(st);
+            st.LastTxnId = "txn-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"; store.CommitState(st);
+            return st;
+        }
+
+        private static void UninstallLateFailureTests()
+        {
+            Section("Uninstall keeps the retry program and ownership metadata through late failures");
+            foreach (string fault in new[] { "shortcut", "registry", "metadata", "final-control" })
+            {
+                string root = NewFixtureDir("uninstall-late-" + fault); InstalledState st = FixtureInstalledState(root);
+                var store = new StateStore(root); var host = new FileOnlyUninstallHost(); host.Fault = fault;
+                var engine = new Engine(host); var report = new OpReport("uninstall", root);
+                var paths = new[] { store.StatePath, store.BakPath, Path.Combine(root, Identity.LauncherName), Path.Combine(root, st.UninstallerName) };
+                var hashes = new Dictionary<string, string>(); foreach (string p in paths) hashes[p] = Hashing.Sha256File(p);
+                bool failed = false; try { engine.Uninstall(root, st.AppId, report); } catch (IOException) { failed = true; } catch (EngineError) { failed = true; }
+                Ok(failed && !report.Ok, fault + " failure is reported");
+                Ok(report.Steps.Contains("deleted-owned-files"), fault + " fails after actual payload deletion");
+                Ok(host.SawRetryExecutable, fault + " retry executable exists during publication cleanup");
+                foreach (string p in paths) Ok(File.Exists(p) && Hashing.Sha256File(p) == hashes[p], fault + " preserves " + Path.GetFileName(p));
+                foreach (string p in paths) if (File.Exists(p)) File.SetAttributes(p, FileAttributes.Normal); host.Fault = null;
+                var retry = new OpReport("uninstall", root); int code = engine.Uninstall(root, st.AppId, retry);
+                Ok(code == ExitCodes.Success && retry.Ok, fault + " same-root retry completes");
+                Ok(!host.Shortcut && !host.Registration, fault + " publication cleanup completes");
+                foreach (string p in paths) Ok(!File.Exists(p), fault + " removes " + Path.GetFileName(p) + " only after success");
+                string note = Path.Combine(Path.Combine(Path.Combine(root, "app"), st.Current.PayloadDirname), "user-note.txt");
+                Eq(File.ReadAllText(note), "user-owned note", fault + " preserves unknown user note");
+            }
+
+            string crashRoot = Path.Combine(_fixtureRoot, "uninstall-crash-child"); Directory.CreateDirectory(crashRoot);
+            InstalledState installed = FixtureInstalledState(crashRoot); var crashStore = new StateStore(crashRoot);
+            var controls = new[] { crashStore.StatePath, crashStore.BakPath, Path.Combine(crashRoot, Identity.LauncherName), Path.Combine(crashRoot, installed.UninstallerName) };
+            var before = new Dictionary<string, string>(); foreach (string p in controls) before[p] = Hashing.Sha256File(p);
+            var start = new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tests.exe"), "--crash-after-uninstall-payload");
+            start.UseShellExecute = false; start.CreateNoWindow = true;
+            using (Process child = Process.Start(start))
+            {
+                if (!child.WaitForExit(15000)) throw new Exception("uninstall child did not exit in time");
+                Ok(child.ExitCode == ExitCodes.CrashFault, "real process terminates at post-payload publication boundary");
+            }
+            Ok(!File.Exists(Path.Combine(Path.Combine(Path.Combine(crashRoot, "app"), installed.Current.PayloadDirname), installed.ExeName)), "crash happened after actual payload deletion");
+            foreach (string p in controls) Ok(File.Exists(p) && Hashing.Sha256File(p) == before[p], "process interruption preserves " + Path.GetFileName(p));
+            var recovered = new OpReport("uninstall", crashRoot);
+            Ok(new Engine(new FileOnlyUninstallHost()).Uninstall(crashRoot, installed.AppId, recovered) == ExitCodes.Success && recovered.Ok, "new process can retry after prior process interruption");
+            foreach (string p in controls) Ok(!File.Exists(p), "post-interruption retry removes " + Path.GetFileName(p));
+        }
+
+        private static void UninstallControlPreflightTests()
+        {
+            Section("Uninstall preflight protects payload and controls before any removal");
+            foreach (string name in new[] { "state", "backup", "launcher", "uninstaller" })
+            foreach (bool readOnly in new[] { false, true })
+            {
+                string root = NewFixtureDir("uninstall-control-preflight"); InstalledState st = FixtureInstalledState(root); var store = new StateStore(root);
+                string file = name == "state" ? store.StatePath : name == "backup" ? store.BakPath : name == "launcher" ? Path.Combine(root, Identity.LauncherName) : Path.Combine(root, st.UninstallerName);
+                var hashes = new Dictionary<string, string>(); foreach (string p in Directory.GetFiles(root, "*", SearchOption.AllDirectories)) hashes[p] = Hashing.Sha256File(p);
+                var host = new FileOnlyUninstallHost(); bool blocked = false; FileStream held = null;
+                try
+                {
+                    if (readOnly) File.SetAttributes(file, FileAttributes.ReadOnly);
+                    else held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    try { var report = new OpReport("uninstall", root); blocked = new Engine(host).Uninstall(root, st.AppId, report) == ExitCodes.Busy; }
+                    catch (EngineError e) { blocked = e.Code == ExitCodes.Busy; }
+                }
+                finally { if (held != null) held.Dispose(); if (readOnly) File.SetAttributes(file, FileAttributes.Normal); }
+                Ok(blocked, name + (readOnly ? " read-only" : " sharing lock") + " prevents uninstall");
+                Ok(host.PublicationCalls == 0, name + " preflight failure never removes publication");
+                bool preserved = true; foreach (var p in hashes) if (!File.Exists(p.Key) || Hashing.Sha256File(p.Key) != p.Value) preserved = false;
+                Ok(preserved && Directory.GetFiles(root, "*", SearchOption.AllDirectories).Length == hashes.Count, name + " preflight preserves all files byte-for-byte");
+            }
         }
 
         // ------------------------------------------------------------------ helpers

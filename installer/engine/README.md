@@ -88,7 +88,9 @@ Older journals that reached control replacement without these backups can
 require manual recovery; do not claim byte-exact restoration for those cases.
 
 Uninstall locks the launcher, uninstaller and every tracked payload file before
-deleting. Delete disposition errors trigger cancellation while handles remain
+deleting. Launcher/uninstaller now stay in the final control batch with state
+and backup until publication cleanup succeeds, preserving a retry entrypoint
+through late failure. Delete disposition errors trigger cancellation while handles remain
 open. If cancellation cannot be confirmed or owned files remain, failure is
 reported and control metadata retained. This is not an atomic transaction
 across NTFS, registry and shortcuts. Unknown files are retained/reported.
@@ -122,8 +124,11 @@ reading state, then holds it through the launched child's lifetime.
    first-install faults and actual power loss; managed file flush does not
    separately fsync directory entries. Earlier full installation evidence above
    predates this change; external publication/NSIS tests have not been rerun.
-2. Late publication/metadata failures during uninstall; locks and read-only
-   metadata are tested before deletion, not every post-deletion combination.
+2. File-only late-uninstall tests now preserve all four controls through injected
+   publication failure, real delete-disposition failure and a child-process exit.
+   The engine suite has 231 passing checks. See docs/UNINSTALL-RETRY-CONTROLS.md.
+   Real NSIS/HKCU/Start Menu retry acceptance and untested post-deletion
+   combinations still remain; this is not a multi-resource atomic transaction.
 3. Image-section races, hostile concurrent path swaps, Windows short aliases and
    simultaneous Windows sessions. The root mutex is currently session-local.
 4. Long paths, disk exhaustion, corrupted control backups, reparse/mount variants,
