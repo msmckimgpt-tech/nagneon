@@ -25,6 +25,12 @@
 - `delivered-continuity-result.json`: 정확한 배포 ASAR를 새 증거 폴더에 풀어 **그 안의 Studio**로 정지 화면, 시청 시간, 과거 질문/반응 시각, 관객 간 호명,45초 만료를 검증했다. 이 부분은 합성 provider이며 native Electron 실행이나 실모델 시험이라고 주장하지 않는다.
 - `viewing-continuity-package-integrity.log`: 전체 파일 해시, 핵심 소스44개, ASAR와 fuse 설정, 해당 ASAR에 대한 성공한 런타임 증거 확인 통과. 사용자 실행 앱에는 아직 적용하지 않았다.
 
+## 통합과 증거
+
+제품 커밋 `510b8477f6c6ebf4db4f2c627b4aab2d8c21c4fc`를 별도 통합 worktree에서 **301검사 + TypeScript/Vite**로 다시 검증한 뒤, 잠금 소유권·main HEAD·인덱스·원격 상태를 재확인하고 main에 fast-forward했다. 통합 원본은 `../live-capture-integration/artifacts/viewing-continuity-integration-check.log`, 작업 폴더의 `artifacts/viewing-continuity-integration-result.json`이다. 외부 push는 하지 않았다.
+
+원본 로그, 합성 모델 응답과 PNG, 배포/런타임 보고서, 통합 결과, 해당 소스를 `artifacts/viewing-continuity-evidence/manifest.json`의 파일별 SHA-256으로 보존한다. 실제 사용자 대화 전문은 포함하지 않는다. 수집기는 기존 PID29916/생성 시각 `2026-09-13T06:06:54.756327Z`의 정확한 진입점과 실행 경로를 다시 확인했으며,568회 확인 시378개 메시지/오류0 상태였다. 이 시점의 관측이며 종료 시각이나 수집 범위를 늘리지 않았다.
+
 ## 한계와 다음 확인
 
 이미지 바이트가 같을 때만 결정적으로 재분석을 줄인다. 영상 압축 노이즈나 계속 움직이는 화면의 사건 중복 여부는 여전히 모델의 맥락 판단에 달렸다. 제한된 합성 사례는 모든 게임·한국 방송 문화·개별 시청자의 만족도를 보증하지 않는다. 호출 전 클라이언트의 화면 캡처·인코딩까지 생략하는 최적화는 아니다.
