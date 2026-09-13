@@ -1,0 +1,427 @@
+{
+  "provenance": "AI-authored typed scenario with actual Astra low replies; no user session or captured devices",
+  "journal": {
+    "revision": 21,
+    "entries": [
+      {
+        "id": "6f9c04fb-1408-4a7f-831e-2dde03760f1e",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340737252,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "모모, 다음 금요일 저녁 여덟 시에 추리게임 같이 해보자. 범인 맞히기 누가 더 잘하나 보자 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "3da609e9-cf52-4654-b057-6540656151ff",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340748303,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "좋아요, 다음 금요일 저녁 여덟 시! 같이 응원해도 범인 맞히기는 안 봐드려요 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "aa99a0e5-bec9-4567-a415-407769dbb2d8",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340753303,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "아 아니다. 토요일 아홉 시야. 내가 날짜랑 시간을 헷갈렸네 ㅋㅋ 그때 보자 모모.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "b3944b99-4226-48ec-bf79-3039d1088d9b",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340763123,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "토요일 아홉 시! 그때 봐요.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "c1e7475f-9ee0-43fa-99fb-4379d8d65346",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340768123,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "팝콘도둑은 영화 볼 때 어떤 야식 먹어? 나는 군만두파야. 딱 하나만 골라봐.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "e45880d0-95f9-488f-b80b-1b996b76836f",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340781685,
+        "personaId": "pop",
+        "name": "팝콘도둑",
+        "text": "저는 버터팝콘! 영화보다 먼저 다 먹는 게 문제지만요 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "4fb5cd62-c146-4cf6-bac2-0a1f5d080181",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340786685,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "모모는? 팝콘도둑 눈치 보지 말고 네가 먹고 싶은 야식 골라봐 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "25363296-3c8c-4c76-8c93-4dd6e6d66d2c",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340797033,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "저는 떡볶이요! 달짝지근하고 살짝 매운 걸로 먹고 싶어요.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "a98d48ed-4356-445b-be07-afc7e304a016",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340802033,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "난 군만두도 바삭한 게 좋더라. 근데 오늘 한쪽만 태워먹음. 나 요리천재임 진짜 ㅋㅋ 농담이야.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "a6a54904-0238-41d9-bfb6-c46048c73e13",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340812757,
+        "personaId": "pop",
+        "name": "팝콘도둑",
+        "text": "ㅋㅋㅋ 천재성도 한쪽에만 몰아주셨네",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "0b618000-aef6-480a-a8c3-3bbab4d4b6c4",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340817757,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "팝콘도둑, 나 이쯤 되면 만두 요리대회 나가도 되겠지? 장난으로만 받아줘 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "bdeb9d83-5573-47bf-b60a-fcc88ed1c9f2",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340829365,
+        "personaId": "pop",
+        "name": "팝콘도둑",
+        "text": "출품명은 ‘앞뒤가 다른 만두’로 가시죠. 반전 부문 대상",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "95075c65-731a-4c25-9969-258891038f8d",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340834365,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "모모, 비 오는 날은 집에서 책 읽는 게 좋더라. 넌 뭐 하고 쉬어?",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "0cfa7eb3-10a8-4214-a4c7-62d9034c59ba",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340847188,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "저는 잔잔한 음악 틀어놓고 퍼즐 맞추는 거 좋아해요. 다 못 맞춰도 느긋하게 조각 찾다 보면 쉬는 기분 나요.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "33a4b2a9-a659-463d-8553-10c476623e75",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340852188,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "난 추리소설 결말 먼저 보면 재미없던데. 팝콘도둑은 결말 먼저 보는 편이야?",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "ef52671a-d66c-459b-ade2-64e6013b8d7f",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340864013,
+        "personaId": "pop",
+        "name": "팝콘도둑",
+        "text": "저는 끝까지 참는 편이에요. 범인 헛짚고 마지막에 뒤통수 맞는 맛이 좋아서요.",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "2dcdd627-5727-47d0-a2f4-6ab2137cc4d6",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340869013,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "오늘 수다 떠니까 좋네. 모모, 다음에 게임할 때는 정답 말고 내 헛다리 짚는 거 좀 구경해줘 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "25e21598-a6ed-4433-9de7-cd66b60ca1d7",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340879902,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "좋아요, 정답은 속으로만 찍을게요. 근데 저도 같은 헛다리 짚고 있을지도 ㅋㅋ",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "9668baf2-3eb9-4ae6-9d1f-8a76ad283a15",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340884902,
+        "personaId": "streamer",
+        "name": "플레이어",
+        "text": "오늘은 여기까지. 다들 잘 쉬어, 다음에 보자!",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "streamer"
+      },
+      {
+        "id": "18bc38b1-598b-4aa0-9460-b04fd5b036e0",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340895943,
+        "personaId": "momo",
+        "name": "모모",
+        "text": "오늘 수다 즐거웠어요. 푹 쉬어요!",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      },
+      {
+        "id": "0633597f-a423-4706-8454-38cd0aaae27c",
+        "sessionId": "f18b1043-33ce-4f6d-a7a4-8144100bcd84",
+        "at": 1789340897343,
+        "personaId": "pop",
+        "name": "팝콘도둑",
+        "text": "잘 쉬세요! 얘기하다 배고파졌네",
+        "witnesses": [
+          "momo",
+          "pop",
+          "luna"
+        ],
+        "fictional": false,
+        "title": "오늘도 같이 한 판",
+        "pinned": false,
+        "kind": "chat"
+      }
+    ],
+    "version": 1
+  },
+  "audience": {
+    "members": {
+      "momo": {
+        "sessions": 1,
+        "seconds": 170.091,
+        "recognized": 5,
+        "affinity": 0.27499999999999997,
+        "peers": {},
+        "memories": [
+          "좋아요, 다음 금요일 저녁 여덟 시! 같이 응원해도 범인 맞히기는 안 봐드려요 ㅋㅋ",
+          "토요일 아홉 시! 그때 봐요.",
+          "저는 떡볶이요! 달짝지근하고 살짝 매운 걸로 먹고 싶어요.",
+          "저는 잔잔한 음악 틀어놓고 퍼즐 맞추는 거 좋아해요. 다 못 맞춰도 느긋하게 조각 찾다 보면 쉬는 기분 나요.",
+          "좋아요, 정답은 속으로만 찍을게요. 근데 저도 같은 헛다리 짚고 있을지도 ㅋㅋ",
+          "오늘 수다 즐거웠어요. 푹 쉬어요!"
+        ],
+        "origin": {
+          "key": "direct",
+          "label": "직접 초대 · 기존 관객",
+          "firstSeenAt": 1789340727252
+        },
+        "joinedAt": 1789340727252
+      },
+      "pop": {
+        "sessions": 1,
+        "seconds": 170.091,
+        "recognized": 4,
+        "affinity": 0.24999999999999997,
+        "peers": {},
+        "memories": [
+          "저는 버터팝콘! 영화보다 먼저 다 먹는 게 문제지만요 ㅋㅋ",
+          "ㅋㅋㅋ 천재성도 한쪽에만 몰아주셨네",
+          "출품명은 ‘앞뒤가 다른 만두’로 가시죠. 반전 부문 대상",
+          "저는 끝까지 참는 편이에요. 범인 헛짚고 마지막에 뒤통수 맞는 맛이 좋아서요.",
+          "잘 쉬세요! 얘기하다 배고파졌네"
+        ],
+        "origin": {
+          "key": "direct",
+          "label": "직접 초대 · 기존 관객",
+          "firstSeenAt": 1789340727252
+        },
+        "joinedAt": 1789340727252
+      },
+      "luna": {
+        "sessions": 1,
+        "seconds": 170.091,
+        "recognized": 0,
+        "affinity": 0.15,
+        "peers": {},
+        "memories": [],
+        "origin": {
+          "key": "direct",
+          "label": "직접 초대 · 기존 관객",
+          "firstSeenAt": 1789340727252
+        },
+        "joinedAt": 1789340727252
+      }
+    },
+    "lore": [],
+    "posts": []
+  }
+}

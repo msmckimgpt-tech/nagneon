@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {transcriptAnomaly} from './transcript-correction.js';
+import {recallContinuations} from './recall-continuation.js';
 
 export const JOURNAL_LIMIT=4000, PIN_LIMIT=100;
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
@@ -77,11 +78,9 @@ export class ConversationJournal {
       // and do not add this fallback to frame-only requests with no speech.
       if(query.trim())take(scored.slice(-3).reverse(),3);
     }
-    // Include the next public utterance by the same speaker when nearby: it may
-    // qualify or correct a retrieved statement. Chronology remains explicit.
-    for(const entry of [...selected.values()]){const index=candidates.findIndex(e=>e.id===entry.id);const following=candidates.slice(index+1,index+5).find(e=>e.personaId===entry.personaId&&e.sessionId===entry.sessionId&&e.at-entry.at<=120000&&/취소|정정|바꿀|철회/.test(e.text));if(following)selected.set(following.id,following);}
+    const continued=recallContinuations([...selected.values()],this.data.entries,candidates);
     if(this.normalized.size>JOURNAL_LIMIT){const active=new Set(this.data.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
-    let remaining=1800;const chosen=[...selected.values()].slice(0,8).sort((a,b)=>a.at-b.at);
+    let remaining=1800;const chosen=continued.sort((a,b)=>a.at-b.at);
     return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title,...(e.kind?{kind:e.kind}:{}),...(e.donation?{donation:{...e.donation}}:{}),...(e.transcription?.correction?{transcriptionCorrection:{text:e.transcription.correction.text.slice(0,600),confidence:e.transcription.correction.confidence,source:"contextual-stt"}}:{})};});
   }
 }
