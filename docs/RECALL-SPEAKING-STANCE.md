@@ -53,3 +53,11 @@
 이전 후원 회귀 스크립트도 최종 코드로 실행했다. `artifacts/donation-memory-astra-k4Jzv4/result.json`의 **3사례 모두 통과**, 8.834~10.586초였다. 직접 기억하는 두 답은 “24포인트였어요! 익명으로 보내주셨죠.”, “24포인트였어요. 익명의 관객이 퍼즐 해결 축하한다고 보내셨죠.”였으며 신규 관객은 금액을 모른다고 했다. 총 11개 최종 호출에서 과거 기억을 새 긍정 사건/포인트 지급으로 바꾸지 않았다.
 
 수정 전과 중간에는 각 8개, 최종에는 8개와 기존 회귀 3개를 호출했다. 실패를 숨긴 재시도나 첫 성공만 고르는 평가는 아니다. 입력·출력·각 시점 코드 해시는 해당 실행 폴더와 `artifacts/recall-voice-*.log`, `artifacts/donation-memory-astra-regression.log`에 남긴다. 이번 결과는 단골 전체의 장기 말투 유지, 사용자 실사용 개선 폭, 간접 클립 기억의 라이브 전이를 검증하지 않았다.
+
+## 통합 결과
+
+제품 커밋 **`15052bc0ec1ce9d4a0293544062b9e990dc808c5`**, 명시한 7개 파일을 별도 통합 트리 `live-capture-integration`에 적용했다. 그 환경에서 **400개 검사와 TypeScript/Vite 빌드가 다시 통과**했다. 실제 로컬 HTTP와 두 번의 서버 재시작으로 후원 검색, 무인증 조회 거부, 목격자/익명 기억, 클립·내보내기, 개명 후 무료 개인 조회, 삭제 후 재시작과 포인트 보존의 **6개 흐름**도 통과했다. 이 HTTP 검사는 가짜 모델을 쓰며 위 실제 Astra 검사와 구분한다.
+
+원본은 통합 트리의 `artifacts/recall-voice-integration-check.log`, `artifacts/recall-voice-integration-flow.log`, `artifacts/recall-voice-integration-flow/result.json`이다. 개발 트리의 `artifacts/recall-voice-integration-result.json`에 기준·대상·파일 범위·검사 종료 상태를 남겼다. main/개발/통합 트리가 깨끗하며 기준 HEAD와 원격 main `07421b3`가 바뀌지 않은 것을 재확인하고, 소유권을 기록한 통합 잠금 안에서 main을 fast-forward했다. 잠금을 해제했으며 원격 push는 하지 않았다.
+
+문서 정리 후 최종 HEAD·상태는 `artifacts/recall-voice-final-state.json`, 원본 증거 경로와 SHA-256은 `artifacts/recall-voice-evidence/manifest.json`에 보관한다. main 소스에 반영됐지만 기존 실행 앱과 배포 패키지를 교체하지 않았다. 네이티브 실행·장치 캡처·사용자 테스트 수집기의 시작/종료는 이번 작업에 포함하지 않는다.
