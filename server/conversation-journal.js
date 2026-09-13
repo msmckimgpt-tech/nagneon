@@ -62,7 +62,14 @@ export class ConversationJournal {
     take(scored.filter(r=>r.relevance>0).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),3);
     take(scored.filter(r=>r.entry.pinned).reverse(),1);
     take(scored.filter(r=>r.anchor).reverse(),1);
-    if(!selected.size)take(scored.filter(r=>r.entry.personaId===viewerId).reverse(),2);
+    if(!selected.size){
+      take(scored.filter(r=>r.entry.personaId===viewerId).reverse(),2);
+      // Casual follow-ups may omit a topic's search words. Quiet witnesses
+      // still remember conversation: offer at most three recent witnessed
+      // sources, not a guessed semantic match. Keep specific hits in priority
+      // and do not add this fallback to frame-only requests with no speech.
+      if(query.trim())take(scored.slice(-3).reverse(),3);
+    }
     // Include the next public utterance by the same speaker when nearby: it may
     // qualify or correct a retrieved statement. Chronology remains explicit.
     for(const entry of [...selected.values()]){const index=candidates.findIndex(e=>e.id===entry.id);const following=candidates.slice(index+1,index+5).find(e=>e.personaId===entry.personaId&&e.sessionId===entry.sessionId&&e.at-entry.at<=120000&&/취소|정정|바꿀|철회/.test(e.text));if(following)selected.set(following.id,following);}

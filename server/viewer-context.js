@@ -61,7 +61,10 @@ export function liveViewerContext(audience,personas,history,previous,{journal,sp
     const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now):[];
     packets[p.id]={
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
-      ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[])}:{}),
+      // recall already selects only this stable ID's witnesses. A new entry
+      // time must not turn earlier shared conversations into secondhand reports.
+      // Hearing a claim still does not prove its contents, nor imply seeing video.
+      ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[]).map(e=>({...e,experience:e.kind==='donation'?'witnessed-donation':e.speakerId===p.id?'own-words':'witnessed-words'}))}:{}),
       chatHistory:witnessed.slice(-35),
       chatAttention:chatAttention(witnessed,p,{now}),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
