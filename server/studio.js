@@ -21,6 +21,8 @@ import {repeatedChat} from './chat-quality.js';
 import {admitTranscriptCorrection} from './transcript-correction.js';
 import {ViewingContinuity,SCREEN_REACTION_TTL_MS} from './viewing-continuity.js';
 import {donationMessage} from './chat-attention.js';
+import {temporalVideo} from './temporal-video.js';
+import {VIDEO_REACTION_TTL_MS} from '../shared/temporal-policy.js';
 
 export class Studio extends EventEmitter {
   constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
@@ -33,7 +35,16 @@ export class Studio extends EventEmitter {
     this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
   }
-  resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
+  resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
+  endVideo({sessionId,sourceId}){
+    if(sessionId!==this.sessionId||!this.running)return {ok:true};
+    for(const [id,at] of this.endedVideoSources)if(this.now()-at>60000)this.endedVideoSources.delete(id);
+    this.endedVideoSources.set(sourceId,this.now());
+    if(this.liveReaction?.sourceId===sourceId){this.liveReaction.superseded=true;this.liveReaction.controller.abort();}
+    this.queue=this.queue.filter(m=>m.screenSourceId!==sourceId);
+    if(this.viewing.last?.video?.sourceId===sourceId){this.viewing.reset();this.knowledge.lastSeen=null;this.observation=null;}
+    this.publish();return {ok:true};
+  }
   state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
   receiveSpeech({id,sessionId,text,source='keyboard',capture}){
@@ -113,7 +124,7 @@ export class Studio extends EventEmitter {
     }
     if(action==='clear'){this.journal.forget(this.messages.map(m=>m.id));this.speechInbox.clear();this.messages=[];this.queue=[];this.log('채팅 비우기');}this.publish();
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false}={}){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:{positive:obs.positiveMoment.positive,impact:obs.positiveMoment.impact},at:observedAt};
     let delay=0;
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
@@ -124,7 +135,7 @@ export class Studio extends EventEmitter {
       const duplicate=origin==='live'?repeatedChat(m,recent,this.now()):recent.some(x=>x.text===m.text);
       if(!p || blocked || duplicate || (m.spoiler&&this.settings.spoilerGuard)){if(p&&!duplicate)this.log(`매니저: ${p.name} 메시지 보류`);continue;}
       delay+=600+this.random()*1600;
-      this.queue.push({...m,origin,chatDriven,...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.queue.push({...m,origin,chatDriven,...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
@@ -141,7 +152,8 @@ export class Studio extends EventEmitter {
   // 요청 캡처 시점의 목격자 스냅샷: 화면을 함께 본 것으로 인정할, 이번 세션에 실제 입장한(joinedAt>=startedAt) active/lurking 관객.
   // 모델 응답이 지연되어 그 사이 입장/이탈이 생겨도 이 스냅샷을 기준으로 목격을 판단한다(늦게 온 관객은 목격자가 아니다).
   presentWitnesses(){if(this.settings.mode!=='live')return [];return this.settings.personas.filter(p=>p.enabled&&['active','lurking'].includes(this.audience.presence[p.id])&&this.audience.data.members[p.id]?.joinedAt>=this.startedAt).map(p=>p.id);}
-  async react({image,speech=''}){
+  async react({image,video,speech=''}){
+    if(video&&this.endedVideoSources.has(video.sourceId))return {skipped:'ended-screen'};
     if(!this.running)throw new Error('방송을 먼저 시작하세요.');if(this.busy)return {skipped:'busy'};
     if(this.autonomy?.waiting)return {skipped:'audience-arrival'};
     const speechBatch=speech?{text:speech,ids:[]}:this.speechInbox.batch();speech=speechBatch.text;
@@ -149,16 +161,19 @@ export class Studio extends EventEmitter {
     if(this.now()-Math.max(this.lastRequest,this.viewing.checkedAt)<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
     const epoch=this.epoch,directed=this.director.context()||this.seasons.context(),directorSerial=this.director.serial,seasonSerial=this.seasons.serial;
-    let viewing;
+    let viewing,frames=[],screenTimeline;
     if(this.settings.mode==='live'){
       this.tickAudience();if(this.autonomy?.waiting)return {skipped:'audience-arrival'};const witnesses=this.presentWitnesses();
+      const temporal=temporalVideo(video,{now:this.now(),sessionId:this.sessionId,startedAt:this.startedAt,joinedAt:witnesses.map(id=>this.audience.data.members[id].joinedAt),previous:this.viewing.last?.video});
+      if(temporal?.ignored)return {skipped:temporal.ignored};
+      if(temporal){frames=temporal.frames;screenTimeline=temporal.timeline;image=frames.at(-1)?.image;}
       const soundIds=this.sound.events.filter(e=>!e.silent&&this.now()-e.endedAt<30000&&e.witnesses.some(id=>witnesses.includes(id))).map(e=>e.id);
       // A fresh, witnessed address to another viewer is conversation input even
       // on a paused game. Ordinary cheers do not continually wake themselves.
       const peerIds=this.messages.filter(m=>!m.chatDriven&&!m.fictional&&m.time<=this.now()&&this.now()-m.time<60000&&
         (m.kind==='donation'?witnesses.some(id=>m.time>=this.audience.data.members[id].joinedAt):
           m.kind==='chat'&&witnesses.includes(m.personaId)&&this.settings.personas.some(p=>p.id!==m.personaId&&witnesses.includes(p.id)&&m.time>=this.audience.data.members[p.id].joinedAt&&m.text.includes(p.name)))).slice(-40).map(m=>m.id);
-      viewing=this.viewing.observe({image,people:witnesses.map(id=>({id,joinedAt:this.audience.data.members[id].joinedAt})),soundIds,peerIds,scope:this.settings.category+':'+this.settings.gameId,at:this.now()});
+      viewing=this.viewing.observe({image,frames,screenTimeline,people:witnesses.map(id=>({id,joinedAt:this.audience.data.members[id].joinedAt})),soundIds,peerIds,scope:this.settings.category+':'+this.settings.gameId,at:this.now()});
       if(!image)this.knowledge.lastSeen=null;
       const ambient=this.autonomy&&!directed?this.ambient.snapshot():null;
       if(!speech.trim()&&!directed&&!ambient?.active&&this.viewing.unchanged(viewing)){
@@ -169,10 +184,10 @@ export class Studio extends EventEmitter {
           this.knowledge.observe(this.settings.gameId==='auto'?this.observation.game:game.name,this.observation.scene,viewing.at,game.popularity,witnesses);this.publish();
         }}catch(error){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);this.publish();throw error;}
         this.failures=0;this.retryAt=0;if(this.lastError){this.lastError='';this.publish();}
-        return {skipped:'unchanged-input'};
+        this.viewing.acknowledge(viewing);return {skipped:'unchanged-input'};
       }
     }
-    const operation={controller:new AbortController(),hasSpeech:!!speech||!!directed,superseded:false};this.liveReaction=operation;
+    const operation={controller:new AbortController(),hasSpeech:!!speech||!!directed,superseded:false,sourceId:screenTimeline?.sourceId};this.liveReaction=operation;
     const signal=AbortSignal.any([this.controller.signal,operation.controller.signal]);
     this.lastRequest=viewing?.at??this.now();this.busy=true;this.lastError='';this.publish();
     try{
@@ -189,18 +204,20 @@ export class Studio extends EventEmitter {
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses(),capturedAt=this.lastRequest;
-        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,clips:this.clips,speech,sound:this.sound,now:capturedAt,viewing});
+        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,screenTimeline?.sourceChanged?null:this.observation,{journal:this.journal,clips:this.clips,speech,sound:this.sound,now:capturedAt,viewing});
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
         const liveSpeech=this.speechInbox.sources(speechBatch.ids);
-        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,frames,screenTimeline,speech,viewerKnowledge,adviceRequested,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         if(epoch!==this.epoch||!this.running)return {skipped:'stopped'};
         this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded)return {skipped:'superseded'};
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
+        const visualExpiresAt=screenTimeline?screenTimeline.through+VIDEO_REACTION_TTL_MS:capturedAt+SCREEN_REACTION_TTL_MS;
+        if(screenTimeline&&!operation.hasSpeech&&this.now()>=visualExpiresAt){this.viewing.acknowledge(viewing);this.observation=null;this.knowledge.lastSeen=null;return {skipped:'stale-screen'};}
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
         const chatDriven=!speech.trim()&&!directed&&this.viewing.sameExternalInput(viewing);
-        this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',{chatDriven,...(operation.hasSpeech?{}:{expiresAt:capturedAt+SCREEN_REACTION_TTL_MS})});
+        this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',{chatDriven,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
         const donations=this.economy.reward({observation:result.observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
         for(const d of donations)this.publishMessage(donationMessage(d));
         if(this.autonomy&&!directed){

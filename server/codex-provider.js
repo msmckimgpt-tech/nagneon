@@ -65,7 +65,8 @@ export class CodexProvider extends OpenAIProvider {
       // preamble in this audience application. No user/global configuration changes.
       if(this.compactInstructions){const instructions=join(dir,'audience-instructions.md');await writeFile(instructions,payload.instructions+'\nReturn only the requested JSON. Do not inspect files. Use web search only when explicitly permitted.');command.push('-c',`model_instructions_file=${JSON.stringify(instructions)}`);}
       for(const flag of ['shell_tool','unified_exec','apps','plugins','hooks','memories','multi_agent','browser_use','computer_use','image_generation','skill_search','view_image','code_mode','code_mode_host'])command.push('--disable',flag);
-      if(args.image){const path=join(dir,args.image.startsWith('data:image/png')?'frame.png':'frame.jpg');await writeFile(path,Buffer.from(args.image.split(',')[1],'base64'));command.push('--image',path);}
+      const images=payload.input[0].content.filter(c=>c.type==='input_image');
+      for(const [i,entry] of images.entries()){const image=entry.image_url;const path=join(dir,`frame-${i+1}.${image.startsWith('data:image/png')?'png':'jpg'}`);await writeFile(path,Buffer.from(image.split(',')[1],'base64'));command.push('--image',path);}
       command.push('-');
       const prompt=(this.compactInstructions?'':payload.instructions+'\nReturn only the requested JSON. Do not inspect files. Only use web search if explicitly permitted above.\n')+payload.input[0].content[0].text;
       const usage=await new Promise((resolve,reject)=>{

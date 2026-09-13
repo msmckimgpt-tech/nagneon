@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import modelCallLimits from '../shared/model-call-limits.json' with {type:'json'};
+import {VIDEO_MAX_FRAMES,VIDEO_FRAME_CHARS,VIDEO_WINDOW_MS} from '../shared/temporal-policy.js';
 const short = (n) => z.string().trim().min(1).max(n);
 export const Persona = z.object({ id: short(40).regex(/^[a-zA-Z0-9_-]+$/), name: short(30), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), role: z.enum(['viewer','manager']), personality: short(1200), enabled: z.boolean(), system:z.boolean().default(false), sociability:z.number().min(0).max(1).default(0.6), expertise:z.number().min(0).max(1).default(0.5), values:z.string().max(1000).default('즐거운 공동 시청과 스트리머 존중') });
 export const Game = z.object({ id: short(40), name: short(80), genre: short(40), context: short(3000), popularity: z.number().min(0).max(1).default(0.5) });
@@ -37,4 +38,12 @@ export const Observation = z.object({
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8),donations:z.array(z.object({personaId:short(40),message:z.string().trim().max(200),anonymous:z.boolean()})).max(2).default([])}).default({positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}),
   messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean() })).max(8)
 });
-export const Frame = z.object({ image: z.string().max(2_800_000).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/).optional(), speech: z.string().max(3000).default('') });
+const imageData=(max)=>z.string().max(max).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/);
+export const Frame = z.object({image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),
+  video:z.object({sessionId:z.string().uuid(),sourceId:z.string().uuid(),frames:z.array(z.object({image:imageData(VIDEO_FRAME_CHARS),at:z.number().int().nonnegative(),still:z.object({since:z.number().int().nonnegative(),samples:z.number().int().min(2).max(33)}).optional()})).min(1).max(VIDEO_MAX_FRAMES)}).optional()
+}).superRefine((v,ctx)=>{
+  if(v.image&&v.video)ctx.addIssue({code:'custom',message:'화면 입력은 한 가지 경로로 전달하세요.'});
+  const f=v.video?.frames;
+  if(f&&(f.some((item,i)=>i>0&&item.at<=f[i-1].at)||f.at(-1).at-f[0].at>VIDEO_WINDOW_MS))ctx.addIssue({code:'custom',message:'연속 화면의 순서와 시간 범위를 확인하세요.'});
+  if(f?.some(item=>item.still&&(item.still.since>=item.at||item.at-item.still.since>VIDEO_WINDOW_MS)))ctx.addIssue({code:'custom',message:'같은 화면을 본 시간 범위를 확인하세요.'});
+});

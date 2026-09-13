@@ -5,10 +5,13 @@ import type {State} from './types';
 import {useClipBuffer} from './useClipBuffer';
 import {ClipUploads} from './clip-uploads';
 import {VoiceBoundary,SpeechQueue,SpeechOutbox,VOICE_MAX_MS,type SpeechCapture} from './speech-flow';
+import {TemporalFrames} from './temporal-frames';
+import {startTemporalCapture} from './temporal-capture';
 
 export function useMedia(state:State|null,onError:(s:string)=>void){
   const video=useRef<HTMLVideoElement>(null),screenStream=useRef<MediaStream|null>(null),micStream=useRef<MediaStream|null>(null);
   const captureVideo=useRef<HTMLVideoElement|null>(null),wasRunning=useRef(false),captureEpoch=useRef(0),acquiringMic=useRef(false);
+  const temporal=useRef(new TemporalFrames());const [captureRevision,setCaptureRevision]=useState(0);
   const [sharing,setSharing]=useState(false),[mic,setMic]=useState(false),[level,setLevel]=useState(0),[transcript,setTranscript]=useState(''),[delivery,setDelivery]=useState('');
   const recording=useRef(false),recorder=useRef<MediaRecorder|null>(null),context=useRef<AudioContext|null>(null);
   const stateRef=useRef(state);stateRef.current=state;const pendingSpeech=useRef(new SpeechOutbox());const epoch=useRef(0),wake=useRef<()=>void>(()=>{});
@@ -19,8 +22,9 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
   const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled,state?.sessionId || null,outputStream);
   useEffect(()=>{const v=video.current;if(v&&screenStream.current&&v.srcObject!==screenStream.current){v.srcObject=screenStream.current;void v.play().catch(()=>{});}});
+  function endFrames(){const {sessionId,sourceId}=temporal.current;temporal.current.reset();if(sessionId&&sourceId)void api('viewing-end',{sessionId,sourceId}).catch(()=>{if(stateRef.current?.running)errorRef.current('이전 화면의 반응 중단을 확인하지 못했습니다. 연결 상태를 확인해주세요.');});}
   function stopSound(){clipUploads.current?.dispose();screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}
-  function stopScreen(){captureEpoch.current++;stopSound();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current)captureVideo.current.srcObject=null;captureVideo.current=null;}
+  function stopScreen(){captureEpoch.current++;endFrames();stopSound();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current)captureVideo.current.srcObject=null;captureVideo.current=null;}
   function stopMic(){clipUploads.current?.dispose();epoch.current++;recording.current=false;speechQueue.current?.reset();speechQueue.current=null;if(recorder.current?.state==='recording')recorder.current.stop();micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
   function stopAll(){stopScreen();stopMic();pendingSpeech.current.clear();}
   async function share(sourceId?:string,options={systemAudio:false,picture:true}){
@@ -29,15 +33,21 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       if(ticket!==captureEpoch.current)return;
       const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:options.systemAudio?{echoCancellation:false,noiseSuppression:false,autoGainControl:false,restrictOwnAudio:true} as MediaTrackConstraints:false});
       if(ticket!==captureEpoch.current){stream.getTracks().forEach(t=>t.stop());return;}
-      screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=stream;pictureRef.current=options.picture;setPicture(options.picture);setOutputStream(stream.getAudioTracks().length?stream:null);if(options.systemAudio&&!stream.getAudioTracks().length)errorRef.current('Windows 출력 소리를 받지 못했습니다. 소리 연결을 다시 선택해주세요.');for(const track of stream.getAudioTracks())track.onended=()=>{if(screenStream.current===stream)stopSound();};
+      endFrames();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=stream;pictureRef.current=options.picture;setPicture(options.picture);setOutputStream(stream.getAudioTracks().length?stream:null);if(options.systemAudio&&!stream.getAudioTracks().length)errorRef.current('Windows 출력 소리를 받지 못했습니다. 소리 연결을 다시 선택해주세요.');for(const track of stream.getAudioTracks())track.onended=()=>{if(screenStream.current===stream)stopSound();};
       const capture=document.createElement('video');capture.muted=true;capture.srcObject=stream;captureVideo.current=capture;await capture.play();
       if(ticket!==captureEpoch.current)return;
       // The tab's preview can disappear while play() is pending. Only the
       // independent capture player owns sharing; preview teardown is harmless.
-      const v=video.current;if(v){v.srcObject=stream;void v.play().catch(()=>{});}if(ticket!==captureEpoch.current)return;setSharing(options.picture);stream.getVideoTracks()[0].onended=()=>{if(screenStream.current===stream)stopScreen();};
+      const v=video.current;if(v){v.srcObject=stream;void v.play().catch(()=>{});}if(ticket!==captureEpoch.current)return;setSharing(options.picture);setCaptureRevision(n=>n+1);stream.getVideoTracks()[0].onended=()=>{if(screenStream.current===stream)stopScreen();};
     }catch(e){if(ticket===captureEpoch.current){stopScreen();errorRef.current(e instanceof Error?e.message:'화면 공유를 시작하지 못했습니다.');}}
   }
-  function frame(){const v=captureVideo.current;if(!pictureRef.current||!screenStream.current||!v?.videoWidth)return undefined;const canvas=document.createElement('canvas');canvas.width=Math.min(1280,v.videoWidth);canvas.height=Math.round(v.videoHeight*canvas.width/v.videoWidth);canvas.getContext('2d')!.drawImage(v,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',0.65);}
+  useEffect(()=>{
+    const capture=captureVideo.current;temporal.current.reset();
+    if(!sharing||!capture||!state?.running||state.settings.mode!=='live'||!state.sessionId)return;
+    temporal.current.reset(state.sessionId,crypto.randomUUID());
+    const stop=startTemporalCapture(capture,temporal.current,e=>{stopScreen();errorRef.current(e instanceof Error?e.message:'연속 화면을 수집하지 못했습니다.');});
+    return()=>{stop();endFrames();};
+  },[sharing,captureRevision,state?.running,state?.sessionId,state?.settings.mode,state?.settings.gameId,state?.settings.category]);
   function say(text:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const s=stateRef.current;if(!s?.running){errorRef.current('방송을 먼저 시작해주세요.');return;}if(!pendingSpeech.current.add(text,s.sessionId,source,capture)){errorRef.current('전달할 말이 많이 밀렸어요. 관객 응답 후 마지막 말을 다시 입력해주세요.');return;}wake.current();}
   useEffect(()=>{
     if(!state?.running||!state.sessionId||!state.settings.autoHighlights||!state.settings.clipBufferEnabled||!clips.buffering)return;
@@ -79,20 +89,26 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
     }catch(e){stopMic();errorRef.current(e instanceof Error?e.message:'마이크를 시작하지 못했습니다.');}finally{acquiringMic.current=false;}
   }
   useEffect(()=>{
-    if(!state?.running)return;let disposed=false,inFlight=false;const session=state.sessionId;
+    if(!state?.running)return;let disposed=false,inFlight=false,nextAttemptAt=0,speechVersion=0,answeredVersion=0;const session=state.sessionId;
     const tick=async()=>{
       const s=stateRef.current;if(disposed||!s?.running||s.sessionId!==session)return;
-      try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');return result;});}
+      try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');speechVersion++;return result;});}
       catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');return;}
       const current=stateRef.current;if(disposed||pendingSpeech.current.items.length||inFlight||!current?.running||current.sessionId!==session||current.busy||current.calls>=current.settings.maxCalls)return;
+      if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt)return;
       inFlight=true;
-      try{const result=await api<{skipped?:string;transcriptionNeedsReview?:boolean}>('react',{image:current.settings.mode==='live'?frame():undefined});if(result.transcriptionNeedsReview&&!disposed)errorRef.current('음성을 확실하게 이해하지 못했어요. 마지막 말을 다시 들려주세요.');}
+      const window=current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
+      try{const result=await api<{ok?:boolean;skipped?:string;transcriptionNeedsReview?:boolean}>('react',{video:window});
+        if(window&&((result.ok&&!result.transcriptionNeedsReview)||['unchanged-input','stale-screen'].includes(result.skipped||'')))temporal.current.acknowledge(window);
+        if(result.ok||['unchanged-input','stale-screen'].includes(result.skipped||'')){answeredVersion=requestSpeechVersion;nextAttemptAt=requestedAt+current.settings.intervalSeconds*1000;}
+        else nextAttemptAt=Date.now()+1500;
+        if(result.transcriptionNeedsReview&&!disposed)errorRef.current('음성을 확실하게 이해하지 못했어요. 마지막 말을 다시 들려주세요.');}
       catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'관객 응답 실패');}
       finally{inFlight=false;}
     };
     wake.current=()=>void tick();void tick();const timer=setInterval(()=>void tick(),1500);return()=>{disposed=true;wake.current=()=>{};clearInterval(timer);};
   },[state?.running,state?.sessionId]);
   useEffect(()=>{if(state){if(wasRunning.current&&!state.running)stopAll();wasRunning.current=state.running;}},[state?.running]);
-  useEffect(()=>()=>{epoch.current++;speechQueue.current?.reset();pendingSpeech.current.clear();captureEpoch.current++;screenStream.current?.getTracks().forEach(t=>t.stop());recording.current=false;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
+  useEffect(()=>()=>{epoch.current++;speechQueue.current?.reset();pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;screenStream.current?.getTracks().forEach(t=>t.stop());recording.current=false;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
   return {video,sharing,soundSharing:!!outputStream,soundStatus:sound.status,soundLevel:sound.level,stopSound,mic,level,transcript,delivery,share,stopScreen,startMic,stopMic,stopAll,say,clipBuffering:clips.buffering};
 }

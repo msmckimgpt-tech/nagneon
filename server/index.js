@@ -169,6 +169,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard'),capture:z.object({startedAt:z.number().finite().nonnegative(),endedAt:z.number().finite().nonnegative()}).strict().optional()}).strict().parse(req.body))));
   app.post('/api/chat/display',(req,res)=>res.json(studio.setChatDisplay(z.object({showStreamerMessages:z.boolean()}).strict().parse(req.body).showStreamerMessages)));
   app.post('/api/react',async(req,res)=>res.json(await studio.react(Frame.parse(req.body))));
+  app.post('/api/viewing-end',(req,res)=>res.json(studio.endVideo(z.object({sessionId:z.string().uuid(),sourceId:z.string().uuid()}).parse(req.body))));
   soundRoutes(app,studio,sound);
   app.post('/api/audio',express.raw({type:['audio/webm','audio/mp4','audio/ogg','audio/wav'],limit:'8mb'}),async(req,res)=>{
     if(!Buffer.isBuffer(req.body)||!req.body.length)throw new Error('음성 데이터가 비어 있습니다.');
