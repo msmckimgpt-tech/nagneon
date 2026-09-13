@@ -6,6 +6,7 @@ const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
 const profile=profileDirectory(process.argv);if(profile)app.setPath('userData',profile);
+const networkRecovery=require('./network-recovery.cjs').createNetworkRecovery(app);
 let main,overlay,service,studioSession,account,overlayInput;
 const preload=join(__dirname,'preload.cjs');
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(service.url+'/'))event.preventDefault();});}
@@ -45,7 +46,8 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     ipcMain.on('overlay:interactive',(event,value)=>{if(overlay&&!overlay.isDestroyed()&&event.sender===overlay.webContents&&event.senderFrame===overlay.webContents.mainFrame)overlayInput.interactive(value);});
     globalShortcut.register('CommandOrControl+Shift+F10',through);
     globalShortcut.register('CommandOrControl+Shift+F9',()=>{service.studio.stop();main.webContents.send('studio:panic');});
-    await main.loadURL(service.url+'/');main.show();main.on('closed',()=>{closeOverlay();app.quit();});
+    main.on('closed',()=>{closeOverlay();app.quit();});
+    if(await networkRecovery.load(main,service.url+'/'))main.show();
   }).catch(error=>{console.error(error.message);dialog.showErrorBox('BACKSEAT 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});
   app.on('will-quit',()=>{globalShortcut.unregisterAll();account?.dispose();void service?.close();});
 }
