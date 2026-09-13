@@ -69,3 +69,11 @@
 - `donation-tests.log`, `donation-render.log`: 기능·HTTP·렌더 검증 원본.
 
 개발 트리의 `npm run check` 최종 결과: **385개 검사, TypeScript와 Vite 빌드 통과** (`artifacts/check-final.log`). 미커밋 제품 파일을 검증한 뒤 명시한 파일만 커밋하고, 통합 트리에서 같은 필수 검사를 다시 실행한다. 최종 통합 상태는 후속 기록과 `artifacts/chat-attention-integration-result.json`에서 확인한다.
+
+## 통합 결과
+
+제품 커밋 **`4c7802b697a9efdfb0a890295660e3fa58eb46e9`**의 20개 파일만 검토·커밋했다. 별도 통합 트리 `live-capture-integration`에서 **385개 검사 및 TypeScript/Vite 빌드가 다시 통과**했다. 원본은 그 트리의 `artifacts/chat-attention-integration-check.log`다. 원격 main이 `07421b3`로 유지된 것, main·개발·통합 트리가 깨끗한 것과 기준 HEAD가 바뀌지 않은 것을 재확인하고 통합 잠금 안에서 main을 fast-forward했다. 결과 JSON은 위 증거 경로에 보관했으며 잠금은 해제했다. 원격 push는 하지 않았다.
+
+이전 패키지는 교체하지 않았다. main의 `Start-Backseat.cmd`를 다음에 실행하면 새 소스로 빌드하는 개발본에 반영된다. 사용자 앱 재시작·장치 조작은 하지 않았다. 기존 수집기는 PID 29916, 생성 시각 `2026-09-13T06:06:54.756327Z`, 지정된 `collection-write-recovery/scripts/collect-user-test.mjs` 경로로 실행 중임을 프로세스 정보만으로 확인했다(`artifacts/collector-observed.json`). 이는 새 사용자 테스트나 수집 데이터 품질 검증을 수행했다는 뜻이 아니다.
+
+이번 묶음의 파일 해시와 원본 위치는 `artifacts/chat-attention-evidence/manifest.json`에 기록한다. 관련 후속 과제와 장기 방송 수용 기준은 위 미검증 범위를 유지한다.
