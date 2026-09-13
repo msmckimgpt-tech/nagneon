@@ -43,3 +43,9 @@ Codex 작업 heartbeat **`backseat` / BACKSEAT 사용자 테스트 분석**이 �
 `--resume` 옵션은 **같은 source/output/since/until**에서 종료된 기존 수집만 이어 쓴다. 기존 PID가 살아 있거나 재사용됐으면 거절하고 종료하지 않는다. 동시 재개는 `resume.lock`으로 차단한다. 폴더 링크·출처/기간 불일치·기존 메타데이터 크기·timeline 용량을 확인하고 원래 종료 시각과 카운트를 유지한다. 첫 poll은 같은 `latest.json`을 갱신하므로 별도 대화 복사본을 만들지 않는다. 삭제한 원문은 다음 성공한 poll에서 사라진다.
 
 현재 실행 기준은 `artifacts/user-test-collector-resumed-launch.json`과 수집 폴더 `collection.json`이다. 오래된 `status.json`의 collecting 표기만으로 살아 있다고 판단하지 않는다. 마지막 갱신이 멈췄으면 이 도구가 시작한 정확한 PID/생성 시각/실행 경로를 읽기 전용으로 확인한다. 실제 프로세스가 없고 원래 수집 기간 안일 때만 같은 인수에 `--resume`을 붙여 숨김 Node로 재개한다. 기간 종료/STOP을 무시하거나 사용자 앱을 재시작하지 않는다. 자동 갱신 heartbeat도 이 기준을 따른다.
+
+## Windows 출력 잠금 복구 · 2026-09-13 15:06 KST
+
+PID27800은 상태 파일 rename의 `EPERM` 때문에 종료됐다. [출력 잠금 복구](COLLECTION-WRITE-RECOVERY.md)를 적용한 코드는 `collection-write-recovery/scripts/collect-user-test.mjs`이며, 기존 source/output/기간 그대로 **PID29916**으로 재개했다. **현재 실행 기준은 기존 수집 worktree의 `artifacts/user-test-collector-write-recovery-launch.json`과 출력 폴더의 `collection.json`**이다. 새 실행 메타데이터에는 정확한 entrypoint도 기록했다. 이전 실행 정보는 역사적 근거다.
+
+교체 오류에는 기존 파일을 지우지 않고 제한된 재시도를 적용한다. 연속 실패나 영구 오류는 stderr에 남기고 종료하며, 최종 상태 파일이 잠겨 있으면 `statusWritten:false`를 보고한다. 상태 파일만으로 진행 여부를 판단하지 않고 현재 메타데이터의 PID/생성 시각/정확한 실행 경로와 poll 갱신을 함께 확인한다. 재개 시에는 메타데이터의 검증된 entrypoint 또는 main의 최신 수집 코드를 사용하며, 이전 worktree의 오래된 코드를 무조건 실행하지 않는다.
