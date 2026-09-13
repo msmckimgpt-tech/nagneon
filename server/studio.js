@@ -186,7 +186,7 @@ export class Studio extends EventEmitter {
     if(this.now()-Math.max(this.lastRequest,this.viewing.checkedAt)<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
     const epoch=this.epoch,directed=this.director.context()||this.seasons.context(),directorSerial=this.director.serial,seasonSerial=this.seasons.serial;
-    let viewing,frames=[],screenTimeline,idleConversation;
+    let viewing,frames=[],screenTimeline,idleConversation,watchingCompany;
     if(this.settings.mode==='live'){
       this.tickAudience();if(this.autonomy?.waiting)return {skipped:'audience-arrival'};const witnesses=this.presentWitnesses();
       const temporal=temporalVideo(video,{now:this.now(),sessionId:this.sessionId,startedAt:this.startedAt,joinedAt:witnesses.map(id=>this.audience.data.members[id].joinedAt),previous:this.viewing.last?.video});
@@ -201,7 +201,12 @@ export class Studio extends EventEmitter {
       viewing=this.viewing.observe({image,frames,screenTimeline,people:witnesses.map(id=>({id,joinedAt:this.audience.data.members[id].joinedAt})),soundIds,peerIds,scope:this.settings.category+':'+this.settings.gameId,at:this.now()});
       if(!image)this.knowledge.lastSeen=null;
       const ambient=this.autonomy&&!directed?this.ambient.snapshot():null;
-      if(!speech.trim()&&!directed&&!ambient?.active&&this.viewing.unchanged(viewing))idleConversation=this.ambient.idle(witnesses);
+      if(!speech.trim()&&!directed&&!ambient?.active){
+        // Animated menus and repeated music change samples without necessarily
+        // changing the conversation. Offer company without dropping fresh input.
+        if(this.viewing.unchanged(viewing))idleConversation=this.ambient.idle(witnesses);
+        else watchingCompany=this.ambient.idle(witnesses,{observing:true});
+      }
       if(!speech.trim()&&!directed&&!ambient?.active&&!idleConversation&&this.viewing.unchanged(viewing)){
         // Identical current pixels still count as watching. Do not resurrect a
         // forgotten record or infer viewing while the image is disconnected.
@@ -238,7 +243,7 @@ export class Studio extends EventEmitter {
         const adviceRequestId=speechBatch.ids.at(-1)||(speech?this.messages.findLast(m=>m.kind==='streamer'&&m.text===speech)?.id:undefined);
         let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};
-        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         if(epoch!==this.epoch||!this.running)return {skipped:'stopped'};
         this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded)return {skipped:'superseded'};
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};

@@ -9,7 +9,7 @@ const topics=[
 export class Ambient {
   constructor(studio){this.studio=studio;this.reset();}
   reset(){this.active=null;this.until=0;this.quietUntil=0;this.turns=0;this.nextIdleAt=0;}
-  idle(witnesses){
+  idle(witnesses,{observing=false}={}){
     const s=this.studio,now=s.now();
     if(now<this.quietUntil||now<this.nextIdleAt||s.queue.length||!witnesses.length)return null;
     if(!s.messages.some(m=>m.kind==='streamer'&&!m.fictional&&m.time<=now&&now-m.time<1200000))return null;
@@ -18,7 +18,8 @@ export class Ambient {
     // One opportunity per 75–135s, including empty responses. This cannot
     // continuously wake itself or generate points/clips from an old scene.
     this.nextIdleAt=now+75000+s.random()*60000;
-    return {id:'quiet-company',idle:true,instruction:'새 화면 사건은 없다. 자기에게 제공된 방송 대화와 취향에서 가끔 한 명이 가볍게 말을 건네도 좋다. 한 줄의 자기 감상이나 취향 이야기로 같이 있는 느낌을 낸다. 이미 답한 질문·축하·약속을 반복하지 않고 답을 재촉하지 않는다. 대화할 근거가 없거나 집중/휴식 중이면 침묵도 가능하다. 최대 한 명만 말한다. 새 장면·소리·진행 변화·마이크 고장을 추측하지 않는다.'};
+    const priority=observing?'한동안 채팅이 없었다는 대화 기회이며 현재 화면이 정적이라는 판정은 아니다. 현재 화면·소리에서 실제 새 사건이 보이거나 스트리머가 집중할 상황이면 그 흐름을 먼저 따른다. 화면의 작은 애니메이션·반복 음악만 바뀌고 특별한 사건이 없으면, 과거 대화를 지금 처음 들은 듯 되풀이하지 말고 아래의 가벼운 대화도 가능하다.':'새 화면 사건은 없다.';
+    return {id:'quiet-company',idle:!observing,watching:observing,instruction:priority+' 자기에게 제공된 방송 대화와 취향에서 한 명이 관심 가는 작은 소재를 골라 자기 생각을 건넨다. 새 질문을 기다리거나 직전 발언을 요약하는 대신 아직 말하지 않은 개인적인 취향·작은 상상을 한두 문장으로 꺼낼 수 있다. 새로 드러내는 취향은 가능하지만 함께한 과거·외부 사건을 만들어 내지는 않는다. 이미 답한 질문·축하·약속을 반복하지 않고 답을 재촉하지 않는다. 대화할 근거가 없거나 집중/휴식 중이면 침묵도 가능하다. 이런 잡담은 최대 한 명만 말한다. 새 장면·소리·진행 변화·마이크 고장을 추측하지 않는다.'};
   }
   context(speech){const s=this.studio,now=s.now();
     if(/(?:채팅|질문|말|얘기|중계).{0,12}그만|그만\s*(?:해|하|말)|쉬고 싶|조용히|말.*걸지|그 얘기.*싫/.test(speech)){this.active=null;this.quietUntil=now+600000;return {quiet:true,instruction:'스트리머가 그만하거나 쉬기를 원했다. 놀이와 새 화제를 중단하고 재촉하지 않는다.'};}

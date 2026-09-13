@@ -51,6 +51,29 @@ test('quiet requests suppress idle attempts and ordinary similar words do not mu
   const g=fixture(t);g.s.ambient.context('그만큼 재밌어요');assert.equal(g.s.ambient.snapshot().quiet,false);
 });
 
+test('changing samples allow bounded company while retaining current video and later speech priority',async t=>{
+  const f=fixture(t,async args=>({observation:{...obs(),scene:args.image||'no image',messages:[]}}));
+  const sourceId=randomUUID(),video=i=>({sessionId:f.s.sessionId,sourceId,frames:[{image:'animation-'+i,at:f.s.now()}]});
+  send(f.s,'오늘은 천천히 같이 봐요');await f.s.react({video:video(0)});
+  for(let i=1;i<=4;i++){f.advance(15000);await f.s.react({video:video(i)});}
+  const req=f.requests.at(-1);assert.equal(req.ambient.watching,true);assert.equal(req.ambient.idle,false);
+  assert.equal(req.image,'animation-4');assert.equal(req.frames.at(-1).image,'animation-4');assert.equal(req.screenTimeline.sourceId,sourceId);
+  assert.equal(f.s.observation.scene,'animation-4','fresh observation is not discarded for company');
+  f.advance(15000);await f.s.react({video:video(5)});assert.notEqual(f.requests.at(-1).ambient?.id,'quiet-company');
+  // A new complete utterance uses the normal conversation path immediately.
+  f.advance(100000);send(f.s,'팝콘도둑은 오늘 기분 어때요?');await f.s.react({video:video(6)});
+  assert.equal(f.requests.at(-1).speech,'팝콘도둑은 오늘 기분 어때요?');assert.notEqual(f.requests.at(-1).ambient?.id,'quiet-company');
+});
+
+test('animated-screen company respects quiet requests and requires actual prior conversation',async t=>{
+  const f=fixture(t,async()=>({observation:{...obs(),messages:[]}}));
+  await f.s.react({image:'a'});f.advance(120000);await f.s.react({image:'b'});assert.equal(f.requests.at(-1).ambient,null);
+  send(f.s,'잠깐 조용히 봐주세요');f.advance(5000);await f.s.react({image:'c'});f.advance(120000);await f.s.react({image:'d'});
+  assert.equal(f.requests.at(-1).ambient.quiet,true);assert.notEqual(f.requests.at(-1).ambient.id,'quiet-company');
+  send(f.s,'다시 같이 얘기해요');f.advance(5000);await f.s.react({image:'e'});f.advance(65000);await f.s.react({image:'f'});
+  assert.equal(f.requests.at(-1).ambient.watching,true);
+});
+
 test('idle conversation survives the visual deadline because it did not observe that video',async t=>{
   const f=fixture(t,args=>{if(args.ambient?.idle)f.advance(21000);return Promise.resolve({observation:obs(args.ambient?.idle?'저는 이런 작은 퍼즐이 좋더라고요':'천천히 해봐요')});});
   const sourceId=randomUUID(),video=()=>({sessionId:f.s.sessionId,sourceId,frames:[{image:'data:image/png;base64,c3ludGhldGlj',at:f.s.now()}]});
