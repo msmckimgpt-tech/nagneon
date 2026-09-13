@@ -15,6 +15,8 @@ const expected=new Set(spec.files.map(f=>f.path));for(const file of await walk(f
 const sourceFiles=['desktop/main.cjs','desktop/session.cjs','desktop/runtime.cjs','desktop/preload.cjs','desktop/account-login.cjs','server/index.js','server/codex-provider.js','server/local-speech.js','server/local-access.js','server/onboarding.js','server/connection-probe.js','server/provider.js','server/knowledge.js','server/viewer-context.js','server/studio.js','server/conversation-journal.js','server/journal-store.js','server/data-schema.js','server/seasons.js','server/seasons-schema.js','shared/seasons.js'];
 sourceFiles.push('desktop/capture.cjs','server/local-sound.js','server/sound-scene.js','server/sound-routes.js','shared/sound-model.json');
 sourceFiles.push('server/world.js','server/audience-autonomy.js','server/audience.js','server/ambient.js','server/advice-intent.js','server/schema.js','server/clips.js','server/special-features.js','server/economy.js');
+sourceFiles.push('server/speech-inbox.js','server/chat-quality.js');
+sourceFiles.push('server/transcript-correction.js');
 for(const file of sourceFiles)if(digest(extractFile(join(folder,'resources/app.asar'),file))!==digest(await readFile(resolve(file))))failures.push('App source differs: '+file);
 if(await hashFile(join(folder,'resources/speech/speech_worker.py'))!==await hashFile('scripts/speech_worker.py'))failures.push('Speech worker differs');
 if(await hashFile(join(folder,'resources/sound/sound_worker.py'))!==await hashFile('scripts/sound_worker.py'))failures.push('Sound worker differs');

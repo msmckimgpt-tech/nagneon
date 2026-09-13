@@ -13,6 +13,8 @@ export const games = [
 ];
 export const defaults = {
   title: '오늘도 같이 한 판', streamer: '플레이어', gameId: 'auto',
+  showStreamerMessages: true,
+  contextualTranscription: true,
   streamerStyle: '친근한 한국어 트위치식 채팅. 적당한 드립과 응원, 요청할 때만 훈수.', adviceMode: 'on-request',
   mode: 'rehearsal', intervalSeconds: 12, maxCalls: 120, chatPace: 3,
   managerId: 'luna', managerRules: '스포일러 금지. 요청 전 훈수 자제. 비하 금지. 같은 말 도배 금지.',

@@ -6,6 +6,8 @@ const weight=z.number().min(0).max(100);
 export const Discovery=z.object({enabled:z.boolean().default(false),arrivalSeconds:z.number().int().min(10).max(600).default(45),mix:z.object({clip:weight.default(30),guide:weight.default(25),fan:weight.default(20),discussion:weight.default(10),browse:weight.default(15)}).prefault({})}).prefault({}).refine(d=>!d.enabled||Object.values(d.mix).some(w=>w>0),{message:'유입 비중을 하나 이상 0보다 크게 설정하세요.'});
 export const Settings = z.object({
   title: short(100), streamer: short(40), gameId: short(40), mode: z.enum(['rehearsal','live']),
+  showStreamerMessages:z.boolean().default(true),
+  contextualTranscription:z.boolean().default(true),
   streamerStyle: z.string().max(2000).default('친근한 채팅, 요청할 때만 훈수'), adviceMode: z.enum(['on-request','always','never']).default('on-request'),
   webSearch: z.boolean().default(false), mistakenAdvice: z.number().min(0).max(1).default(0), attentionSeeking: z.number().min(0).max(1).default(0),
   crowdStyle:z.enum(['cozy','lively','stadium']).default('cozy'), lurkRatio:z.number().min(0).max(0.9).default(0.3), communityCulture:z.string().max(2000).default('새 시청자 환영. 과도한 닉네임 친목과 소외 금지. 방송 밖 이야기는 맥락이 있을 때만 짧게.'),
@@ -25,6 +27,7 @@ export const Settings = z.object({
   if (!s.personas.some(p=>p.id===s.managerId && p.enabled)) ctx.addIssue({code:'custom',message:'활성 관객 중 매니저를 선택하세요.'});
 });
 export const Observation = z.object({
+  transcriptCorrections:z.array(z.object({messageId:z.string().uuid(),text:short(3000),confidence:z.number().min(0).max(1),reason:short(240)})).max(4).default([]),
   arrival:z.object({name:short(30),personality:short(1200),values:short(1000),sociability:z.number().min(0).max(1),expertise:z.number().min(0).max(1)}).nullable().default(null),
   viewerChanges:z.array(z.object({personaId:short(40),preference:short(200),nickname:z.string().max(30),reason:short(200),evidence:short(300),sociabilityDelta:z.number().min(-.05).max(.05)})).max(2).default([]),
   clipPicks:z.array(z.object({personaId:short(40),title:short(100),reason:short(240),signature:short(160)})).max(2).default([]),

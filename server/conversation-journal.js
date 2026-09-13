@@ -2,7 +2,8 @@ import {z} from 'zod';
 
 export const JOURNAL_LIMIT=4000, PIN_LIMIT=100;
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
-const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(3000),witnesses:z.array(actor).max(40),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean()});
+const Transcription=z.object({source:z.literal('microphone'),correction:z.object({text:z.string().min(1).max(3000),confidence:z.number().min(.9).max(1),reason:z.string().max(240),at:z.number().finite().nonnegative()}).optional()});
+const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(3000),witnesses:z.array(actor).max(40),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean(),transcription:Transcription.optional()});
 export const JournalData=z.object({version:z.literal(1),revision:z.number().int().nonnegative(),entries:z.array(Entry).max(JOURNAL_LIMIT)}).superRefine((v,ctx)=>{
   if(new Set(v.entries.map(e=>e.id)).size!==v.entries.length)ctx.addIssue({code:'custom',message:'중복된 대화 기억 ID입니다.'});
   if(v.entries.filter(e=>e.pinned).length>PIN_LIMIT)ctx.addIssue({code:'custom',message:'고정한 대화 기억이 너무 많습니다.'});
@@ -10,7 +11,7 @@ export const JournalData=z.object({version:z.literal(1),revision:z.number().int(
 export const emptyJournal=()=>({version:1,revision:0,entries:[]});
 // The schema has only primitive fields plus this witness array. Copy objects
 // and arrays for isolation while sharing immutable strings, even at capacity.
-const copyJournal=value=>({...value,entries:value.entries.map(e=>({...e,witnesses:[...e.witnesses]}))});
+const copyJournal=value=>({...value,entries:value.entries.map(e=>({...e,witnesses:[...e.witnesses],...(e.transcription?{transcription:structuredClone(e.transcription)}:{})}))});
 const normalize=text=>text.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ');
 const routine=['기억','이야기','얘기','오늘','어제','전에','그때','우리','내가','네가','너는','나는','무슨','뭐였','알려','말해','말하','말한','말했','내용','각자','서로','맡으려','맡고','어떤','다시','그냥','기준','지금','지난','예전','방금','확인','정확'];
 function terms(text){const set=new Set();for(let word of normalize(text).split(/\s+/)){if(word.length<2||routine.some(prefix=>word.startsWith(prefix)))continue;const suffix=['에게','에서','으로','이라고','라는','은','는','이','가','을','를'].find(s=>word.endsWith(s)&&word.length-s.length>=2);if(suffix)word=word.slice(0,-suffix.length);set.add(word);}return [...set].slice(0,40);}
@@ -18,26 +19,27 @@ function terms(text){const set=new Set();for(let word of normalize(text).split(/
 // Exact public quotes and the identities present when they were published.
 // No inferred emotional state, secret interview, or invented recollection enters here.
 export class ConversationJournal {
-  constructor(data=emptyJournal(),save=()=>{}){this.data=JournalData.parse(data);this.save=save;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(e.text)]));}
+  constructor(data=emptyJournal(),save=()=>{}){this.data=JournalData.parse(data);this.save=save;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(e.text+" "+(e.transcription?.correction?.text||""))]));}
   change(edit){const next=copyJournal(this.data);const changed=edit(next);if(changed===false)return;next.revision++;const checked=JournalData.parse(next);this.save(copyJournal(checked));this.data=checked;const active=new Set(checked.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
   record(message,{sessionId,witnesses,title=''}){
     const existing=this.data.entries.find(e=>e.id===message.id);
     if(existing){if(existing.text!==message.text||existing.personaId!==message.personaId||existing.sessionId!==sessionId)throw new Error('대화 기억 ID의 원문이 다릅니다.');return;}
-    const entry=Entry.parse({id:message.id,sessionId,at:message.time,personaId:message.personaId,name:message.name,text:message.text,witnesses:[...new Set(witnesses)],fictional:!!message.fictional,title:title.slice(0,200),pinned:false});
+    const entry=Entry.parse({id:message.id,sessionId,at:message.time,personaId:message.personaId,name:message.name,text:message.text,witnesses:[...new Set(witnesses)],fictional:!!message.fictional,title:title.slice(0,200),pinned:false,...(message.transcription?{transcription:message.transcription}:{})});
     this.change(next=>{next.entries.push(entry);while(next.entries.length>JOURNAL_LIMIT){const index=next.entries.findIndex(e=>!e.pinned);next.entries.splice(index,1);}});
   }
   pin(id,pinned){this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry)throw new Error('대화 기억을 찾을 수 없습니다.');if(entry.pinned===pinned)return false;if(pinned&&next.entries.filter(e=>e.pinned).length>=PIN_LIMIT)throw new Error(`대화는 ${PIN_LIMIT}개까지 고정할 수 있습니다.`);entry.pinned=pinned;});}
+  annotateTranscription(id,correction){let changed=false;this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry||entry.personaId!=='streamer'||entry.transcription?.source!=='microphone'||entry.transcription.correction)return false;entry.transcription=Transcription.parse({source:'microphone',correction});changed=true;});if(changed)this.normalized.delete(id);return changed;}
   forget(ids){const set=new Set(ids);this.change(next=>{const kept=next.entries.filter(e=>!set.has(e.id));if(kept.length===next.entries.length)return false;next.entries=kept;});}
   summary(){return {revision:this.data.revision,count:this.data.entries.length,pinned:this.data.entries.filter(e=>e.pinned).length,limit:JOURNAL_LIMIT,pinLimit:PIN_LIMIT};}
   list({viewerId='',query='',pinned=false,offset=0,limit=30}={}){
-    const needle=normalize(query).trim();const matches=this.data.entries.filter(e=>(!viewerId||e.witnesses.includes(viewerId))&&(!pinned||e.pinned)&&(!needle||normalize(e.text+' '+e.name+' '+e.title).includes(needle))).slice().reverse();
+    const needle=normalize(query).trim();const matches=this.data.entries.filter(e=>(!viewerId||e.witnesses.includes(viewerId))&&(!pinned||e.pinned)&&(!needle||normalize(e.text+' '+e.name+' '+e.title+' '+(e.transcription?.correction?.text||'')).includes(needle))).slice().reverse();
     return {entries:structuredClone(matches.slice(offset,offset+limit)),total:matches.length,offset,...this.summary()};
   }
   recall(viewerId,query='',excludeIds=[]){
     const excluded=new Set(excludeIds);let topic=query;for(const name of new Set(this.data.entries.map(e=>e.name)))if(name)topic=topic.replaceAll(name,' ');const words=terms(topic);
     const candidates=this.data.entries.filter(e=>e.witnesses.includes(viewerId)&&!excluded.has(e.id));
     const frequency=new Map();const scored=candidates.map((entry,index)=>{
-      if(!this.normalized.has(entry.id))this.normalized.set(entry.id,normalize(entry.text));
+      if(!this.normalized.has(entry.id))this.normalized.set(entry.id,normalize(entry.text+" "+(entry.transcription?.correction?.text||"")));
       const text=this.normalized.get(entry.id),hits=words.flatMap(word=>{
         let match=text.includes(word)?1:0;
         if(!match&&word.length>=3&&/[가-힣]/.test(word)){let found=0;for(let i=0;i<word.length-1;i++)if(text.includes(word.slice(i,i+2)))found++;const ratio=found/(word.length-1);if(ratio>=.5)match=ratio*.5;}
@@ -60,6 +62,6 @@ export class ConversationJournal {
     for(const entry of [...selected.values()]){const index=candidates.findIndex(e=>e.id===entry.id);const following=candidates.slice(index+1,index+5).find(e=>e.personaId===entry.personaId&&e.sessionId===entry.sessionId&&e.at-entry.at<=120000&&/취소|정정|바꿀|철회/.test(e.text));if(following)selected.set(following.id,following);}
     if(this.normalized.size>JOURNAL_LIMIT){const active=new Set(this.data.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
     let remaining=1800;const chosen=[...selected.values()].slice(0,8).sort((a,b)=>a.at-b.at);
-    return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title};});
+    return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title,...(e.transcription?.correction?{transcriptionCorrection:{text:e.transcription.correction.text.slice(0,600),confidence:e.transcription.correction.confidence,source:"contextual-stt"}}:{})};});
   }
 }

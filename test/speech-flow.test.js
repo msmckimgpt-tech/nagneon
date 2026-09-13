@@ -6,11 +6,11 @@ import {startServer} from '../server/index.js';
 import {defaults} from '../shared/defaults.js';
 const turn=()=>new Promise(r=>setImmediate(r));
 
-test('short speech flushes after 650ms silence, instead of waiting six seconds',()=>{
-  const b=new VoiceBoundary(0);for(let at=50;at<=1000;at+=50)assert.equal(b.sample(.08,at),null);for(let at=1050;at<1650;at+=50)assert.equal(b.sample(0,at),null);assert.equal(b.sample(0,1650),'speech-end');assert.equal(b.hasSpeech,true);
+test('short speech flushes after 450ms silence without waiting for the segment cap',()=>{
+  const b=new VoiceBoundary(0);for(let at=50;at<=1000;at+=50)assert.equal(b.sample(.08,at),null);for(let at=1050;at<1450;at+=50)assert.equal(b.sample(0,at),null);assert.equal(b.sample(0,1450),'speech-end');assert.equal(b.hasSpeech,true);
 });
 test('brief pauses stay in the same utterance and sustained speech ends at the length cap',()=>{
-  const b=new VoiceBoundary(0);for(let at=50;at<=12000;at+=50){const pause=at>1500&&at<1850;assert.equal(b.sample(pause?0:.07,at),at===12000?'limit':null);}assert.equal(b.hasSpeech,true);
+  const b=new VoiceBoundary(0);for(let at=50;at<=6000;at+=50){const pause=at>1500&&at<1850;assert.equal(b.sample(pause?0:.07,at),at===6000?'limit':null);}assert.equal(b.hasSpeech,true);
 });
 test('silence and a single noise spike never become a transcribed utterance',()=>{
   const b=new VoiceBoundary(0);for(let at=50;at<=3000;at+=50)assert.equal(b.sample(at===500?.1:0,at),at===3000?'idle':null);assert.equal(b.hasSpeech,false);

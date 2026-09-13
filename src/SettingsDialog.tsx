@@ -254,10 +254,19 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             <span>스포일러 필터 사용</span>
           </label>
           <p className="field-note">이미 만난 관객을 매니저로 임명할 수 있어요. 새 관객은 방송과 핫클립, 포인트로 연 만남을 통해 들어옵니다.</p>
+          <label className="set-check">
+            <input type="checkbox" checked={draft.showStreamerMessages!==false} onChange={e=>update('showStreamerMessages',e.target.checked)}/>
+            <span>채팅창과 오버레이에 내 발언 표시<small>숨겨도 관객은 말을 듣고 기억해요. 방송 중에는 채팅창 위에서도 바꿀 수 있어요.</small></span>
+          </label>
         </>;
 
       case 'media':
         return <>
+          <h3>음성 인식</h3>
+          <label className="set-check">
+            <input type="checkbox" checked={draft.contextualTranscription!==false} onChange={e=>update('contextualTranscription',e.target.checked)}/>
+            <span>게임과 대화 맥락으로 음성 오인식 교정<small>인식 원문을 먼저 전달하고, 관객이 답할 때 확실한 부분만 교정해요. ‘음성 교정’ 표시에서 원문을 확인할 수 있어요.</small></span>
+          </label>
           <h3>핫클립과 장면 기록</h3>
           <label className="set-check">
             <input type="checkbox" checked={draft.clipBufferEnabled}

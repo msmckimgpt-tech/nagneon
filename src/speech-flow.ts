@@ -1,4 +1,5 @@
 // Pure capture/queue policy, shared by the renderer and deterministic tests.
+export const VOICE_MAX_MS=6000,VOICE_SILENCE_MS=450;
 export class VoiceBoundary {
   startedAt:number;lastAt:number;lastVoiceAt:number;voicedMs=0;
   constructor(at:number){this.startedAt=at;this.lastAt=at;this.lastVoiceAt=at;}
@@ -6,8 +7,8 @@ export class VoiceBoundary {
     const dt=Math.min(200,Math.max(0,at-this.lastAt));this.lastAt=at;
     if(Number.isFinite(rms)&&rms>0.012){this.voicedMs+=dt;this.lastVoiceAt=at;}
     const elapsed=at-this.startedAt;
-    if(elapsed>=12000)return 'limit';
-    if(this.voicedMs>=200&&elapsed>=700&&at-this.lastVoiceAt>=650)return 'speech-end';
+    if(elapsed>=VOICE_MAX_MS)return 'limit';
+    if(this.voicedMs>=200&&elapsed>=700&&at-this.lastVoiceAt>=VOICE_SILENCE_MS)return 'speech-end';
     if(this.voicedMs<200&&elapsed>=3000)return 'idle';
     return null;
   }
@@ -41,4 +42,25 @@ export class SpeechMailbox {
   batch(){const items:typeof this.items=[];let size=0;for(const item of this.items){const n=item.text.length+(items.length?1:0);if(size+n>3000)break;size+=n;items.push(item);}return {text:items.map(i=>i.text).join(' '),ids:items.map(i=>i.id)};}
   acknowledge(ids:number[]){const done=new Set(ids);this.items=this.items.filter(i=>!done.has(i.id));}
   clear(){this.items=[];}
+}
+
+type DeliveryItem={id:string;sessionId:string;text:string;source:'keyboard'|'microphone'};
+// Delivery runs independently of the AI request. An uncertain HTTP result
+// retains the exact event ID so a retry cannot print the same speech twice.
+export class SpeechOutbox {
+  items:DeliveryItem[]=[];running=false;generation=0;controller:AbortController|null=null;idFactory:()=>string;
+  constructor(idFactory:()=>string=()=>crypto.randomUUID()){this.idFactory=idFactory;}
+  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard'){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source})));return true;}
+  clear(){this.generation++;this.items=[];this.controller?.abort();}
+  async flush(send:(item:DeliveryItem,signal:AbortSignal)=>Promise<unknown>){
+    if(this.running)return;this.running=true;const generation=this.generation;
+    try{
+      while(this.items.length&&generation===this.generation){
+        const item=this.items[0],controller=new AbortController();this.controller=controller;
+        try{await send(item,controller.signal);if(generation===this.generation)this.items.shift();}
+        catch(error){if(generation===this.generation&&!controller.signal.aborted)throw error;return;}
+        finally{if(this.controller===controller)this.controller=null;}
+      }
+    }finally{this.running=false;}
+  }
 }
