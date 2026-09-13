@@ -17,9 +17,15 @@
 개발 worktree는 `G:/dev/ai/00_game_backseat-worktrees/collection-write-recovery`, 브랜치는 `codex/collection-write-recovery`, 시작 커밋은 `acf8ca439d86c7481df892b7b2b54c3dcf3536c6`다. 다음 경로는 이 worktree 기준이다.
 
 - `artifacts/collector-write-focused-final.log`: 기존 수집 검사8개와 새 출력/실행 제어 검사9개, **17개 통과**. 기존 파일 바이트 보존, 임시 파일 제거, 링크/경로 거부, 반복 잠금, 영구 오류, 종료 시각/STOP, 실패 상태의 카운터 보존을 확인했다.
-- `artifacts/collector-write-check.log`: 카운터 보존 시험 추가 전 **284개 + TypeScript/Vite 통과**. 최종 커밋의 전체 검사는 별도 통합 worktree에서 수행한다.
+- `artifacts/collector-write-check.log`: 카운터 보존 시험 추가 전 **284개 + TypeScript/Vite 통과**. 최종 통합 커밋 `f5da53fdad281aedb13264cd27f9bc28e74831f9`는 별도 `live-capture-integration` worktree에서 **286개 + TypeScript/Vite 통과**했고, 실제 Windows 파일 잠금 시험도 다시 통과했다. 그 worktree의 `artifacts/collection-write-integration-check.log`, `collection-write-integration-native.log` 및 개발 worktree의 `artifacts/collection-write-integration-result.json`에 기록했다.
 - `scripts/verify-collector-output-lock.mjs`: 별도의 숨김 PowerShell 자식이 **합성 artifact 파일 하나**를 `.NET FileShare.Read`로 잠갔다. 실제 `EPERM`을 관찰하고 기존 내용이 보존됨을 확인한 뒤 잠금을 해제했다. 새 JSON 교체 성공과 자식의 정상 종료 코드0을 확인했다. `artifacts/latest-collector-output-lock.json`, `artifacts/collector-lock-2026-09-13T06-03-29-534Z/`가 근거다. GUI·HKCU·시작 메뉴·장치·사용자 원본에 쓰지 않았다.
 
 수집을15:06:54 KST에 숨김 Node **PID29916**, 생성 시각 `2026-09-13T06:06:54.7563270Z`로 재개했다. 코드는 이 worktree의 `scripts/collect-user-test.mjs`이며 출력은 기존 `live-capture-lifecycle/artifacts/user-test-20260913-034516`을 계속 사용한다. 이 출력은 이전부터 이 작업이 소유한 수집 폴더이며 다른 작업자의 시험/프로필과 공유하지 않는다. 기존 PID27800의 종료와 STOP 부재, 원래 기간 안임을 확인하고 `--resume`을 사용했다. 원본은 `G:/dev/ai/00_game_backseat/data` 하나, 종료 시각은 **2026-09-13T15:45:16Z**다.
 
 새 실행 정보는 기존 수집 worktree의 `artifacts/user-test-collector-write-recovery-launch.json`, 로그는 `user-test-collector-write-recovery.stdout.log` / `.stderr.log`다. 이전 `user-test-collector-resumed.stderr.log`도 실패 원본으로 보존한다. 이후 실제 프로세스와 증가하는 poll/최신 스냅샷을 재확인하며, 수집 재개가 곧 실제 음성 지연이나 관객 자연스러움의 개선을 증명하지는 않는다. 해당 분석을 다음에 이어간다.
+
+재개 후 PID/생성 시각/실행 경로가 일치했고 poll404→410으로 증가했다. 저장 대화378건(스트리머178/관객200), 세션2개, 수집 오류0을 확인했다. 같은 출력의 최신 사본을 갱신했으며 별도 사용자 대화 사본은 만들지 않았다.
+
+통합 중 main에 먼저 들어온 오버레이 표시 성능 개선 `b9def23`을 읽고 별도 통합 worktree에서 병합·검증해 보존했다. main과 개발 worktree는 검증한 커밋으로 fast-forward했고 푸시는 하지 않았다. 사용자 앱/장치를 조작하거나 재시작하지 않았으며, 별도로 진행 중인 음성 지연 작업의 미커밋 파일도 수정하지 않았다.
+
+원본 실패 로그, 새 코드, 검사 결과와 재개 메타데이터는 `artifacts/collection-write-evidence/manifest.json`에 해시와 함께 보존한다. 사용자 대화 원문은 이 증거 묶음에서 제외한다. 새 세션에 관한 수치 분석은 [2차 기록 진단](SECOND-TEST-DIAGNOSTICS.md)으로 연결한다.
