@@ -13,17 +13,26 @@ from faster_whisper.audio import decode_audio
 
 class MicrophoneWhisper(WhisperModel):
     # faster-whisper 1.2.1 pads every encoder input to 3000 frames (30s).
-    # CT2 4.8.2 supports shorter inputs. Keep all audio plus at least 1s
-    # of padding; never shorten an unbounded/long upload or change the model.
+    # CT2 4.8.2 supports shorter inputs. The bounded windows below include
+    # all audio plus at least 1.5s padding; longer uploads keep the full path.
     encoder_frames = 3000
 
     def encode(self, features):
         return super().encode(features[..., :self.encoder_frames])
 
 
+def encoder_window_frames(sample_count):
+    # Normal capture stops at 6s, but delayed browser callbacks and imported
+    # segments may be longer. Do not jump straight from 8s to 30s of work.
+    if sample_count > 0:
+        for seconds, frames in [(6.5, 800), (10.5, 1200), (14.5, 1600)]:
+            if sample_count <= seconds * 16000:
+                return frames
+    return 3000
+
+
 def recognize(model, samples):
-    duration = len(samples) / 16000
-    frames = 800 if 0 < duration <= 6.5 else 3000
+    frames = encoder_window_frames(len(samples))
     options = dict(language='ko', beam_size=3, vad_filter=True, condition_on_previous_text=False)
     fallback = False
     try:
@@ -40,7 +49,8 @@ def recognize(model, samples):
             segments, info = model.transcribe(samples, **options)
             segments = list(segments)
         text = ' '.join(s.text.strip() for s in segments if s.no_speech_prob < .65)
-        return text[:3000], {'encoderWindowMs': frames * 10, 'fallback': fallback}
+        return text[:3000], {'encoderWindowMs': frames * 10, 'fallback': fallback,
+                            'encoderPassesMs': [frames * 10] + ([30000] if fallback else [])}
     finally:
         model.encoder_frames = 3000
 
