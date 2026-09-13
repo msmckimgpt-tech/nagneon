@@ -31,7 +31,8 @@ export function conversationRhythm(history,personaId,{now=Date.now(),speech='',p
   return {turn:fragment?'possibly-continuing':normalized?'spoken':'watching',addressed:!!name&&normalized.includes(name),
     ownRecent:{messages:own.length,laughter:own.filter(m=>/[ㅋㅎ]{2,}/.test(m.text)).length,questions:own.filter(m=>isChatQuestion(m.text)).length,reflectiveEndings:own.filter(m=>/군요|겠네요|겠어요/.test(m.text)).length},
     recentRoom:{messages:recent.length,ownMessages:recent.filter(m=>m.personaId===personaId).length},
-    questionThreads:threads,styleFeedback,recentReactions};
+    questionThreads:threads,styleFeedback,recentReactions,
+    deliveredAdvice:seen.filter(m=>m.kind==='chat'&&m.advice&&!m.fictional).slice(-3).map(m=>({...utterance(m),personaId:m.personaId,ageSeconds:Math.max(0,Math.floor((now-m.time)/1000))}))};
 }
 
 // Original style examples; no creator's character or private test quote is
