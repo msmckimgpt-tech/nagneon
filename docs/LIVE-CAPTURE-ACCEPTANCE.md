@@ -34,3 +34,11 @@
 테스트 도구 첫 시도는 버튼의 활성화 검사와 클릭 사이 상태 변경, 숨김 시작 창 및 미리보기 텍스트가 붙은 선택 카드 탐색 때문에 실패하거나 멈췄다. 실제 GUI 프로세스 종료 코드를 수집하도록 `Start-Process -Wait -PassThru`를 사용하고, 창을 명시적으로 보이며, 화면 이름은 접근성 이름으로 찾고 개별 renderer 요청에 제한 시간을 적용했다. 숨김 단계 PID25376은 정확한 실행 경로·시작 시각을 확인한 뒤 이 시험만 종료했다. 초기 실패 원본을 성공 증거로 바꾸지 않는다.
 
 장기 관객 개성·재방문·관계·포인트 균형, 실제 사람 음성의 장기 혼합, 실제 게임 조작과 새 Windows/서명/상용 연동/Steam 심사는 계속 남는다.
+
+## 통합과 새 배포 폴더
+
+수정은 `78063ff`에 커밋했고 별도 `live-capture-integration` 작업 트리에서242검사/빌드를 통과했다. 공유 잠금 아래 원래 main의 이 작업 소유42파일을 해시 확인·백업하고, CRLF 인덱스 메타데이터15개는 HEAD/index/정규화된 worktree blob이 모두 같음을 증명한 뒤 갱신했다. main을 fast-forward하고 변경48파일이 검증 작업 트리와 바이트 단위로 같음을 확인했다. `artifacts/main-integration-result.json`, 실패·재개 로그와 원본 백업을 보존한다. 이 작업에서 원격 push는 하지 않았다.
+
+전체 새 패키지는 작업 트리의 **`release/2026-09-13T03-37-18-404Z/app/BACKSEAT-win32-x64`**, 1,599,433,651바이트/2444파일/미서명이다. `live-capture-package.log` 실제 종료0, `package-integrity-test.json` 전체 파일/fuse/핵심37원본 일치, `live-capture-packaged-runtime.json/.log` 새 ASAR 모듈·전달된Python/Whisper/YAMNet/Codex를 개발PATH 없이 실행하여 합성 한국어 음성·소리 분석 및 실제 Astra low2호출을 확인했다. `artifacts/latest-package.json`이 해당 폴더를 가리킨다. 이 세대 native 첫 실행/NSIS 재생성·설치를 했다는 뜻은 아니다.
+
+이후 사용자가 직접 테스트를 시작해 **화면 조작과 실제 장치 검사를 약12시간 중단**했다. 백그라운드 개발 및 기존 서비스 파일의 읽기 전용 수집은 별도로 명시적으로 요청했다. 현재 중단 시각·수집기·한계는 `docs/USER-TEST-COLLECTION.md`가 우선한다. 새 패키지를 사용 중인 앱에 자동 교체/재시작하지 않는다.

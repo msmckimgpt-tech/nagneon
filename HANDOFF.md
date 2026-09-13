@@ -6,6 +6,14 @@
 
 ### 진행 중 확장 · 2026-09-13
 
+**현재 우선: 사용자 직접 테스트와 백그라운드 개발.** 2026-09-13 12:45:16 ~ 2026-09-14 00:45:16 KST 동안 Computer Use·화면/입력·게임 실행·직접 장치 수집·사용자 앱 재시작을 중단한다. 시간이 지나도 자동 조작 재개를 하지 않는다. 사용자는 기존 서비스 데이터 수집을 유지하여 개발에 활용하도록 명시했다. `docs/USER-TEST-COLLECTION.md`와 AGENTS.md의 중단 조건이 아래 실기기 ‘다음 행동’보다 우선한다.
+
+읽기 전용 수집기 `scripts/collect-user-test.mjs`를 별도 worktree `G:/dev/ai/00_game_backseat-worktrees/live-capture-lifecycle`에서 숨김 Node로 시작했다. 원본은 기존 `G:/dev/ai/00_game_backseat/data`뿐이며 source save/마이그레이션/소켓/장치 조작 없음. `artifacts/user-test-collector-launch.json`과 `user-test-20260913-034516/status.json`이 실행 상태의 기준이다. 새 대화19건을 읽은 첫 실제 결과, 삭제·동시 커밋·비밀 제외·junction·읽기 크기·중단 검사를 포함한248개 Node/TS/Vite 통과. 정확한 호출 지연/일시적 오류는 기존 저장 파일에 없어 이 수집기로 얻지 못한다. 시간별 heartbeat `backseat`는 새 기록이 있을 때만 조사하며 조작을 자동 재개하지 않는다.
+
+직전 실제 Steam 지도/출력 소리/모델 테스트에서 캡처 탭 이동에 따른 전체 트랙 종료, 첫 만남 busy 경쟁, 한국어 훈수 요청/거절 오판을 수정했다. `docs/LIVE-CAPTURE-ACCEPTANCE.md`가 원본 실패와 검증 범위를 설명한다. 제품 커밋 `78063ff`, main/별도 통합 트리의242검사·빌드와48파일 바이트 일치 확인, 원격 push 없음. 최종 실제 세션 `steam-session-1789269943486`: Astra6호출·출력분석61구간·오류0; 물리 마이크/퍼즐 클리어/장르별 수용이 아니다. 게임과 테스트 앱은 중단 요청 전에 정리했고 보조 화상 키보드는 권한 거절 때문에 사용자에게 X 종료를 안내했다. 지금 다시 조회/조작하지 않는다.
+
+새 전체 패키지: **`G:/dev/ai/00_game_backseat-worktrees/live-capture-lifecycle/release/2026-09-13T03-37-18-404Z/app/BACKSEAT-win32-x64`**, 1,599,433,651바이트/2444파일/미서명. 새 ASAR 핵심37원본/전체 hash/fuses와 전달 런타임의 파일 기반한국어STT/소리/실제 Astra2호출 검증 완료. 이 세대 native 실행/NSIS 설치 수용은 안 했다. 사용자 실행 앱을 교체·재시작하지 않는다. 판매 목표의 나머지 품질·장기 수용·서명·상용 연동·Steam 심사는 계속 남는다. 아래 ‘최신’ 표현은 각 이전 단계의 역사다.
+
 **현재 최신: 관객 자율성 전환과 설정 6개 탭 구현·새 전체 배포본 검증 완료. 판매 목표는 계속 활성.** 이 절이 아래 화면 선택창 단계의 ‘미구현/다음 구현’ 기록보다 우선한다. 상세 기준은 `docs/AUDIENCE-AUTONOMY.md`, 원본과 실패 증거를 포함한 보존 목록은 `artifacts/audience-autonomy-evidence.json`이다. 사용자 실행 중 앱과 실제 `data/`를 재시작·초기화하지 않았다.
 
 `server/world.js`가 settings/audience/economy/autonomy를 단일 저장 단위로 관리한다. 신규 관객 후보 없음, 기존 만난 ID/기록 보존·미만남 후보 보관, API/SSE/export 비공개 투영, 유입 hold/commit/refund/재시작 영수증과 영구 해금이 구현됐다. `audience-autonomy.js`는 실제 유입 시 Astra 생성, 시간·클립·50P 유입, 대화 근거 진화·닉네임/별명 이력·개인 메모·제거를 담당한다. 메모는 모델 입력에서 제외한다. 저장 실패에도 방송을 중단하고, 실패한 첫 시작과 생성/해금 중 제거된 관객의 늦은 응답을 취소·환불한다.
