@@ -52,3 +52,13 @@
 ## 통합 기록
 
 제품 커밋 `696ac74129dcdd49650e5ecae7eb60c00affa8c3`을 깨끗한 통합 worktree에서 검증했다. 통합된 코드도 425개 테스트와 TypeScript/Vite 빌드가 통과했다. 원본은 개발 및 통합 worktree의 `artifacts/temporal-integration-check.log`, 작업 결과는 개발 worktree의 `artifacts/temporal-integration-result.json`이다. main은 이 코드와 본 기록만 fast-forward한다. 푸시와 사용자 실행본 교체는 하지 않았다. 원본 프로젝트의 `Start-Backseat.cmd`는 다음 수동 실행에서 소스를 다시 빌드한다.
+
+## 후속 통합 상태의 재검증
+
+음성 인식·관객 개성·[부재와 복귀](AUDIENCE-RETURN-CONTINUITY.md) 개선을 합친 main `47606ee8b352fd535dcf8d0fbc26b25a9e8f2b85`에서도 같은 6개 합성 시나리오를 실제 `gpt-6-astra` / `low`로 다시 실행했다. 개발 위치는 `G:/dev/ai/00_game_backseat-worktrees/audience-return-continuity`이며, 이번 증거는 기존 temporal-viewing 폴더의 결과와 분리한다.
+
+이 통합 코드의 **471개 테스트와 TypeScript/Vite 빌드**가 독립적인 integration worktree에서 통과했다. 이어진 실제 모델 호출 6개도 모두 통과했다. 단일 마지막 장면으로는 이동 과정을 모른다고 답했고, 연속 장면에서는 같은 자리로 돌아오는 도약과 양방향 이동을 구분했다. 정지 장면에는 그대로 있었다고 답했으며, 발언 없는 평범한 도약은 장면을 이해하면서 채팅을 보내지 않았다. 전체 장면 설명·공개 발언·긍정 사건을 직접 검토했고, 불필요한 유입·후원·클립 선택·전사 교정은 없었다.
+
+이번 호출 시간은 단일 10.842초, 도약 10.142초, 오른쪽 이동 9.441초, 왼쪽 이동 11.248초, 정지 10.170초, 발언 없는 도약 13.793초였다. 화면 수집 간격이 짧아졌다는 사실을 모델 응답 지연 해소로 해석하지 않는다. 현재 화면의 연속성을 더 잘 파악하는 개선이며, 모든 순간의 실시간 시청이나 실제 게임 성능은 여전히 별도 검증 대상이다.
+
+원본은 후속 개발 worktree의 `artifacts/temporal-astra-A5Y9T6/result.json`, 합성 PNG, `artifacts/temporal-astra-current.log`다. `artifacts/temporal-astra-result.json`은 해당 결과를 가리킨다. 같은 작업의 관객 부재·복귀 최종 실제 모델 9회와 이번 연속 장면 6회는 서로 다른 검사로 총 15회이며, 부재 검증의 초기 8회를 포함하면 이번 단계 전체 호출은 23회다. 소스 해시·main Git blob 확인과 원본 증거 목록은 `artifacts/return-final-state.json`, `artifacts/return-evidence-manifest.json`에 기록한다. 이 추가 기록 외 제품 코드는 471개 검사 후 변경하지 않았다. 사용자 앱·장치·Steam 게임은 실행하거나 재시작하지 않았다.
