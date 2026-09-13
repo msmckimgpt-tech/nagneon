@@ -20,7 +20,9 @@ app.whenReady().then(async()=>{try{
   await button('나중에 설정하기');await button('방송 시작');
   await js(`window.canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;window.paint=setInterval(()=>{const c=canvas.getContext('2d');c.fillStyle='#355';c.fillRect(0,0,640,360);c.fillStyle='white';c.fillText('frame '+Date.now(),30,30);},50);window.audio=new AudioContext();window.audioDestination=audio.createMediaStreamDestination();window.makeStream=()=>new MediaStream([...canvas.captureStream(15).getVideoTracks(),...audioDestination.stream.getAudioTracks().map(t=>t.clone())]);navigator.mediaDevices.getDisplayMedia=async()=>window.testStream=makeStream();window.originalPlay=HTMLMediaElement.prototype.play;window.previewWaits=[];HTMLMediaElement.prototype.play=function(){const actual=originalPlay.call(this);if(this.matches('.preview video')){actual.catch(()=>{});return new Promise((resolve,reject)=>previewWaits.push({element:this,resolve,reject}));}return actual;};void 0;`);
   await js(`document.querySelector('[title="시스템 출력 소리"]').click()`);
-  await until(()=>js('previewWaits.length>=2'));await button('나의 관객');
+  // Preparation now commits a decoded source before attaching the preview,
+  // so one pending preview play is sufficient for this navigation race.
+  await until(()=>js('previewWaits.length>=1'));await button('나의 관객');
   await until(()=>js('!document.querySelector(".preview video")'));
   await js(`previewWaits.splice(0).forEach(w=>w.reject(new DOMException('The play() request was interrupted because the media was removed from the document.','AbortError')));void 0;`);
   await pause(300);

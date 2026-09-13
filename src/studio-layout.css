@@ -56,3 +56,9 @@
 @media (min-width: 951px) and (max-width: 1100px) {
   .studio-workspace .stage-controls .control span { display: none; }
 }
+.capture-preparation{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid #343d32;background:#20271f}
+.capture-preparation [role=status]{display:grid;gap:4px;flex:1;min-width:0}
+.capture-preparation b{color:#d1e8bb;font-size:13px}
+.capture-preparation span{color:#abb4a6;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.capture-preparation button{flex-shrink:0}
+@media(max-width:600px){.capture-preparation{padding:12px;gap:10px;align-items:flex-start;flex-wrap:wrap}}
