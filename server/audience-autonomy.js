@@ -3,6 +3,7 @@ import {z} from 'zod';
 import profiles from '../shared/discovery.json' with {type:'json'};
 import {Persona} from './schema.js';
 import {arrivalClipSnapshot,arrivalClipInterest} from './arrival-clip-memory.js';
+import {arrivalIndividuality} from './audience-individuality.js';
 
 export const ARRIVAL_PRICE=50;
 const blankMember=()=>({sessions:0,seconds:0,recognized:0,affinity:.15,peers:{},memories:[],note:'',aliases:[]});
@@ -80,7 +81,8 @@ export class AudienceAutonomy {
     });
     const epoch=s.epoch;this.pending=requestId;s.busy=true;s.reserveCall();s.publish();
     try{
-      const result=await s.provider.react({settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},s.controller.signal);
+      const individuality=arrivalIndividuality(s.settings.personas,source.key,()=>s.random());
+      const result=await s.provider.react({settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,individuality,usedNames:s.settings.personas.map(p=>p.name),clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},s.controller.signal);
       if(epoch!==s.epoch||!s.running)throw new Error('방송이 끝나 새로운 만남을 취소했습니다.');
       s.tokens+=Number(result.usage?.total_tokens)||0;const birth=result.observation.arrival;
       if(!birth)throw new Error('관객을 구성하지 못해 포인트를 반환합니다.');
