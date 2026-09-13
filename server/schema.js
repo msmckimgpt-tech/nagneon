@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import modelCallLimits from '../shared/model-call-limits.json' with {type:'json'};
 const short = (n) => z.string().trim().min(1).max(n);
 export const Persona = z.object({ id: short(40).regex(/^[a-zA-Z0-9_-]+$/), name: short(30), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), role: z.enum(['viewer','manager']), personality: short(1200), enabled: z.boolean(), system:z.boolean().default(false), sociability:z.number().min(0).max(1).default(0.6), expertise:z.number().min(0).max(1).default(0.5), values:z.string().max(1000).default('즐거운 공동 시청과 스트리머 존중') });
 export const Game = z.object({ id: short(40), name: short(80), genre: short(40), context: short(3000), popularity: z.number().min(0).max(1).default(0.5) });
@@ -15,7 +16,7 @@ export const Settings = z.object({
   discovery:Discovery,
   pointsEnabled:z.boolean().default(true),
   clipBufferEnabled:z.boolean().default(false),autoHighlights:z.boolean().default(false),
-  intervalSeconds: z.number().int().min(5).max(120), maxCalls: z.number().int().min(1).max(1000), chatPace: z.number().int().min(1).max(8),
+  intervalSeconds: z.number().int().min(5).max(120), maxCalls: z.number().int().min(1).max(modelCallLimits.max), chatPace: z.number().int().min(1).max(8),
   managerId: short(40), managerRules: z.string().max(3000), blockedWords: z.array(short(60)).max(100),
   slowModeSeconds: z.number().int().min(0).max(60), spoilerGuard: z.boolean(),
   personas: z.array(Persona).min(1).max(40), games: z.array(Game).min(1).max(100)

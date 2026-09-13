@@ -5,6 +5,7 @@ import {AccessibleDialog} from './AccessibleDialog';
 import {ConnectionPanel} from './ConnectionPanel';
 import type {Game,Settings,State} from './types';
 import './settings-dialog.css';
+import modelCallLimits from '../shared/model-call-limits.json';
 
 // The tabbed settings editor. It owns a private draft of the settings and only
 // commits it when the user saves; personas are intentionally never edited or
@@ -217,11 +218,13 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
                 onChange={e=>update('intervalSeconds',Number(e.target.value))}/>
             </label>
             <label className="set-field">세션 모델 호출 한도
-              <input type="number" min={1} max={1000} value={draft.maxCalls}
+              <input type="number" min={1} max={modelCallLimits.max} step={1} value={draft.maxCalls}
                 onChange={e=>update('maxCalls',Number(e.target.value))}/>
             </label>
           </div>
-          <p className="field-note">관찰 간격이 짧고 호출 한도가 높을수록 ChatGPT 구독 사용량을 더 씁니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
+          <button type="button" className="secondary" disabled={locked||pending}
+            onClick={()=>update('maxCalls',modelCallLimits.generous)}>넉넉하게 · 10만 회</button>
+          <p className="field-note">방송당 1~100만 회까지 설정할 수 있어요. BACKSEAT 자체 한도이며 ChatGPT 계정의 사용 한도를 변경하지는 않습니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
         </>;
 
       case 'manager':
