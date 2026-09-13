@@ -4,19 +4,24 @@ const {pathToFileURL}=require('node:url');
 const {createStudioSession}=require('./session.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
+const {createOverlayInput}=require('./overlay-input.cjs');
 const profile=profileDirectory(process.argv);if(profile)app.setPath('userData',profile);
-let main,overlay,service,studioSession,account,clickThrough=false;
+let main,overlay,service,studioSession,account,overlayInput;
 const preload=join(__dirname,'preload.cjs');
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(service.url+'/'))event.preventDefault();});}
 function trusted(event,mainOnly=false){if(!event.senderFrame?.url.startsWith(service.url+'/')||(mainOnly&&event.sender!==main.webContents))throw new Error('허용되지 않은 창 요청');}
-function through(){if(!overlay||overlay.isDestroyed())return false;clickThrough=!clickThrough;overlay.setIgnoreMouseEvents(clickThrough,{forward:true});for(const win of [main,overlay])if(win&&!win.isDestroyed())win.webContents.send('overlay:state',clickThrough);return clickThrough;}
+function publishThrough(value){for(const win of [main,overlay])if(win&&!win.isDestroyed())win.webContents.send('overlay:state',value);}
+function through(){if(!overlay||overlay.isDestroyed())return false;return overlayInput.toggle();}
 function closeOverlay(){const win=overlay;overlay=null;if(win&&!win.isDestroyed())win.close();}
 async function openOverlay(){
   if(overlay&&!overlay.isDestroyed()){overlay.showInactive();return;}
   const area=screen.getPrimaryDisplay().workArea;
   overlay=new BrowserWindow({width:390,height:650,x:area.x+area.width-415,y:area.y+55,transparent:true,frame:false,alwaysOnTop:true,skipTaskbar:true,resizable:true,hasShadow:false,backgroundColor:'#00000000',webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
-  const created=overlay;created.once('closed',()=>{if(overlay===created)overlay=null;});
-  secure(overlay);overlay.setAlwaysOnTop(true,'screen-saver');overlay.setContentProtection(true);clickThrough=false;await overlay.loadURL(service.url+'/overlay');overlay.setTitle('BACKSEAT Chat Overlay');overlay.showInactive();
+  overlayInput=createOverlayInput(overlay,publishThrough);
+  const created=overlay;const input=overlayInput;created.once('closed',()=>{if(overlay===created)overlay=null;publishThrough(false);});
+  created.on('blur',()=>input.reset());
+  created.webContents.on('did-finish-load',()=>{input.reset();publishThrough(input.state());});
+  secure(overlay);overlay.setAlwaysOnTop(true,'screen-saver');overlay.setContentProtection(true);publishThrough(false);await overlay.loadURL(service.url+'/overlay');overlay.setTitle('BACKSEAT Chat Overlay');overlay.showInactive();
 }
 if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('second-instance',()=>{main?.show();main?.focus();});
@@ -37,6 +42,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     studioSession.setPermissionCheckHandler((contents,permission)=>contents===main.webContents&&['media','display-capture'].includes(permission));
     require('./capture.cjs').attachCapture({session:studioSession,ipcMain,desktopCapturer,main});
     ipcMain.handle('overlay:open',event=>{trusted(event);return openOverlay();});ipcMain.handle('overlay:through',event=>{trusted(event);return through();});ipcMain.handle('overlay:close',event=>{trusted(event);closeOverlay();});
+    ipcMain.on('overlay:interactive',(event,value)=>{if(overlay&&!overlay.isDestroyed()&&event.sender===overlay.webContents&&event.senderFrame===overlay.webContents.mainFrame)overlayInput.interactive(value);});
     globalShortcut.register('CommandOrControl+Shift+F10',through);
     globalShortcut.register('CommandOrControl+Shift+F9',()=>{service.studio.stop();main.webContents.send('studio:panic');});
     await main.loadURL(service.url+'/');main.show();main.on('closed',()=>{closeOverlay();app.quit();});
