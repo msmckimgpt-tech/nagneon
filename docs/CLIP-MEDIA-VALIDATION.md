@@ -33,3 +33,15 @@ MediaRecorder의 길이 미정 Segment·Cluster도 허용한다. 처리 구조�
 검사는 파일이 이 디코더에서 복호화되는지를 확인한다. 모든 손상 탐지나 실제 Chromium 플레이어 재생을 보증하지 않으며, 실제 캡처 타이밍·고해상도 게임 중 부하·오디오 장치 전환은 아직 네이티브 수용 검사가 필요하다. 과거 저장 파일을 자동으로 다시 쓰거나 삭제하지 않는다. 패키지 검사와 main 통합 결과는 아래에 별도로 기록한다. 사용자 앱 적용·Steam 배포·서명된 설치 프로그램 검증은 완료한 것으로 간주하지 않는다.
 
 기존 수집기는 별도 프로세스 조회로 PID29916/생성 시각 `2026-09-13T06:06:54.756327Z`/정확한 Node 실행 파일과 진입점을 확인했다. 1030회 확인 시378개 발언·오류0이며 수집 범위와 종료 시각을 바꾸지 않았다. 원문을 새 테스트에 사용하지 않았다.
+
+## 패키지·통합 결과
+
+제품 커밋 `16135d00c69db73184962d6cc07bb5d4fc6fde1a`를 통합 잠금 아래 `live-capture-integration`에서 다시 검증했다. 통합 소스로 **372 Node 검사 + TypeScript/Vite, 실제 PyAV13검사, HTTP10사례와 런타임 부재, 음성·영상 전체 전송 경로**를 모두 통과한 뒤 main에 fast-forward했다. 잠금 소유권·HEAD·인덱스·수정 파일·원격 main을 전후 확인했으며 외부 push는 하지 않았다. `artifacts/clip-validation-integration-result.json`과 통합 폴더의 `artifacts/clip-validation-integration-*`에 원본 결과가 있다.
+
+최종 패키지는 작업 폴더의 `release/2026-09-13T08-55-50-545Z/app/BACKSEAT-win32-x64`이며 **2,445파일·1,599,500,940바이트**다. 전체 파일 해시를 재확인하고 ASAR에서 추출한 서버 코드가 검증 소스와 같음을 확인했다. Node로 해당 서버를 실행하고 동봉 Python/검사기를 연결하여 정상 음성·영상 저장/조회/HTTP206, 영상 포함 음성 위장422, 인증 없는 요청401을 검증했다. Electron 창이나 사용자 앱은 실행하지 않았다. 따라서 Electron/Chromium 환경에서의 실제 장치·플레이어 수용 검사와는 구분한다.
+
+- ASAR SHA-256: `ae9ee9bf94f42182e159fcbbebc27d9a2d07d0bc55ca06a9619383bba2407b6e`
+- 동봉 검사기 SHA-256: `912945118bf9bf52e2a8dd72625a6185dd2a39de3230bc737d9775f404349953`
+- 원본 결과: `artifacts/packaged-validation/result.json`, `artifacts/validation-package-final-build.log`, 최종 release의 `manifest.json`.
+
+첫 패키지 `08-52-09-002Z`는 부분 업로드 시간 초과 처리를 보완하기 전 소스다. 배포 결과로 채택하지 않았고 최종 소스로 다시 패키징했다. 최종 소스·실패/통과 로그·합성 입력·통합 결과·패키지 무결성 목록을 `artifacts/clip-validation-evidence/manifest.json`에 파일별 SHA-256으로 보존한다. 전체 목표와 실제 앱 적용·Steam 판매 수용 검사는 계속 진행 중이다.
