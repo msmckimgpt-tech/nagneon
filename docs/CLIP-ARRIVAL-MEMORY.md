@@ -40,3 +40,7 @@
 소개를 나중에 공개 대화로 언급했다면 그 발언은 별도의 대화 기억이 된다. 클립을 지웠다는 이유만으로 이미 나눈 모든 관련 발언·클립 댓글·다른 저장소의 의미를 자동 지우는 전역 삭제는 구현하지 않았다. 이 참조의 삭제 동작과 전역 기억 삭제를 혼동하지 않는다. 신규 관객부터 경험을 확정하며 과거 클립 유입자의 기억은 자동 복원하지 않는다.
 
 실행 중인 사용자 앱, 패키지, 설치 프로그램을 교체하지 않았다. 수정된 실행본의 장기 실사용과 Steam 판매 준비는 미완료다.
+
+## 통합 기록
+
+제품 커밋 `48483ebd01ebf9788179a3246f43f0bebc029fab`을 main에 먼저 추가된 시작 오류 복구 `e58da0b5bff13a79d0f67e030b845ccb2fda6a36`와 격리 worktree에서 병합했다. 네 파일의 기존 내용이 유지되는 것을 Git 객체로 확인했다. 병합된 코드 `13b7cdd24d90a1bd023080d0c5d5c32c88624af7`에서 전체 **443개 테스트 및 TypeScript/Vite 빌드**가 통과했다. 모델 검증 대상 소스의 해시도 변하지 않았다. 로그는 양 worktree의 `artifacts/clip-arrival-integration-check.log`, 결과는 개발 worktree의 `artifacts/clip-arrival-integration-result.json`이다. main은 이 검증 코드와 본 기록만 fast-forward한다. 사용자 앱·패키지 교체와 push는 하지 않았다.
