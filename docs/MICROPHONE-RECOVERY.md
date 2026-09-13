@@ -32,3 +32,5 @@
 ## 통합
 
 자체 통합 worktree에서 필수 검사 후 main 상태·인덱스·원격·통합 잠금을 다시 확인하여 통합한다. 실제 결과는 `artifacts/microphone-integration-result.json`, 최종 소스와 Git 상태·증거 목록은 `artifacts/microphone-final-state.json` 및 `artifacts/microphone-evidence-manifest.json`에 기록한다. 푸시와 사용자 앱 재시작은 수행하지 않는다.
+
+제품 커밋 `c4583aeb60f63c1e5bbb314fedcab6308e03696d`은 전용 통합 worktree `G:/dev/ai/00_game_backseat-worktrees/microphone-recovery-integration`의 독립적인 `npm ci` 후 **489개 Node 검사와 TypeScript/Vite 빌드**를 통과했다. 실제 하위 프로세스·HTTP 복구와 클라이언트 핸들러 검증도 이 코드에서 함께 실행했다. 원본은 양 worktree의 `artifacts/microphone-integration-check.log`이며, 통합 실행의 프로세스 보고서도 개발 worktree의 `artifacts/integration-process-evidence/`에 복사했다. 이 코드와 본 기록만 main fast-forward 대상으로 확정했다. 실제 HEAD 및 잠금 해제 결과는 별도 통합 결과 JSON에 남긴다.
