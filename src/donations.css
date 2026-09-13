@@ -1,0 +1,12 @@
+.chat-line.donation{border:1px solid #b28a444d;border-left:3px solid #f8c86c;background:#f8c86c0e;border-radius:8px;padding:12px 10px;margin:7px 0}
+.donation-amount{display:inline-block;margin-left:9px;color:#ffdc9e;font-weight:700;font-size:12px}
+.donation-history{max-width:650px;padding:24px;max-height:85vh;overflow:auto}
+.donation-history>p{line-height:1.6;color:var(--muted,#a5acc0)}
+.donation-history-list{display:grid;gap:12px;margin:20px 0}
+.donation-history-list article{border:1px solid #f8c86c33;background:#f8c86c08;border-radius:12px;padding:16px;overflow-wrap:anywhere}
+.donation-history-list header,.donation-history-list footer{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.donation-history-list header>span{color:#ffdc9e;font-weight:700}
+.donation-history-list small,.donation-history-list time{color:#a5acc0;font-size:12px}
+.donation-history-list header>small{border:1px solid #f8c86c44;border-radius:4px;padding:3px 6px}
+.donation-history-list p{white-space:pre-wrap}
+.donation-toasts .donation-toast p{overflow-wrap:anywhere}

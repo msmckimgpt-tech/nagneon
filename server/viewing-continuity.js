@@ -23,6 +23,7 @@ export class ViewingContinuity {
     const ticket={at,key,soundIds:[...new Set(soundIds)].slice(-40),peerIds:[...new Set(peerIds)].slice(-40),timing};this.checkedAt=at;
     return ticket;
   }
-  unchanged(ticket){return !!this.last&&ticket.at>=this.last.at&&ticket.key===this.last.key&&ticket.soundIds.every(id=>this.heard.has(id))&&ticket.peerIds.every(id=>this.discussed.has(id));}
+  sameExternalInput(ticket){return !!ticket&&!!this.last&&ticket.at>=this.last.at&&ticket.key===this.last.key&&ticket.soundIds.every(id=>this.heard.has(id));}
+  unchanged(ticket){return this.sameExternalInput(ticket)&&ticket.peerIds.every(id=>this.discussed.has(id));}
   acknowledge(ticket){this.last={key:ticket.key,at:ticket.at};for(const [ids,seen] of [[ticket.soundIds,this.heard],[ticket.peerIds,this.discussed]]){for(const id of ids)seen.add(id);while(seen.size>40)seen.delete(seen.values().next().value);}}
 }

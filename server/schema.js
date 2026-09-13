@@ -34,7 +34,7 @@ export const Observation = z.object({
   clipPicks:z.array(z.object({personaId:short(40),title:short(100),reason:short(240),signature:short(160),soundId:z.string().trim().max(80).default(''),speechId:z.string().trim().max(100).default('')})).max(2).default([]),
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
-  positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8)}).default({positive:false,impact:0,reason:'',signature:'',supporters:[]}),
+  positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8),donations:z.array(z.object({personaId:short(40),message:z.string().trim().max(200),anonymous:z.boolean()})).max(2).default([])}).default({positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}),
   messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean() })).max(8)
 });
 export const Frame = z.object({ image: z.string().max(2_800_000).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/).optional(), speech: z.string().max(3000).default('') });

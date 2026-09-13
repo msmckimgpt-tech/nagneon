@@ -1,5 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import rules from '../shared/economy.json' with {type:'json'};
+import {publicDonation} from './chat-attention.js';
 
 const digest=text=>createHash('sha256').update(text).digest('hex');
 const safeKey=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(id)&&!['__proto__','constructor','prototype'].includes(id);
@@ -14,7 +15,7 @@ export class Economy {
   }
   change(fn){const next=structuredClone(this.data);const result=fn(next);next.timeFloor=this.now();this.save(next);this.data=next;return result;}
   ensureWallets(personas){if(personas.some(p=>!this.data.wallets[p.id]))this.change(d=>{for(const p of personas)this.wallet(d,p.id);});}
-  entry(d,kind,amount,text,extra={}){d.ledger.push({id:randomUUID(),at:this.now(),kind,amount,text,...extra});d.ledger=d.ledger.slice(-300);}
+  entry(d,kind,amount,text,extra={}){const entry={id:randomUUID(),at:this.now(),kind,amount,text,...extra};d.ledger.push(entry);d.ledger=d.ledger.slice(-300);return entry;}
   incoming(d,id){return d.purchases.filter(p=>p.status==='pending'&&p.kind==='contract').reduce((sum,p)=>sum+(p.shares?.[id]||0),0);}
   wallet(d,id,at=this.now()){
     if(!safeKey(id))throw new Error('올바른 관객이 아닙니다.');
@@ -27,10 +28,14 @@ export class Economy {
   }
   snapshot(personas){
     const copy=structuredClone(this.data);const wallets={};
-    for(const p of personas){const w=this.wallet(copy,p.id);wallets[p.id]={...w,cap:rules.walletCap,nextRefillAt:w.balance<rules.walletCap-this.incoming(copy,p.id)?w.refillAt+rules.refillSeconds*1000:null};}
+    for(const p of personas){const w=this.wallet(copy,p.id);wallets[p.id]={balance:w.balance,cap:rules.walletCap,nextRefillAt:w.balance<rules.walletCap-this.incoming(copy,p.id)?w.refillAt+rules.refillSeconds*1000:null};}
     const quotes=copy.quotes.map(({floor,...q})=>({...q,status:q.status==='open'&&q.expiresAt<=this.now()?'expired':q.status}));
-    return {balance:copy.balance,wallets,ledger:copy.ledger,quotes,purchases:copy.purchases.map(({fingerprint,shares,...p})=>p),rules};
+    return {balance:copy.balance,wallets,ledger:copy.ledger.map(e=>e.kind==='donation'?publicDonation(e):e),quotes,purchases:copy.purchases.map(({fingerprint,shares,...p})=>p),rules};
   }
+  // Read-only, free streamer lookup. No personality/profile unlock is implied.
+  donationHistory(personas=[]){return this.data.ledger.filter(e=>e.kind==='donation').slice().reverse().map(e=>({
+    ...publicDonation(e),donorId:e.personaId,donorName:e.name||'관객',currentName:personas.find(p=>p.id===e.personaId)?.name||null
+  }));}
   reward({observation,settings,audience,hasInput,paid=false}){
     const m=observation.positiveMoment;
     if(!settings.pointsEnabled||!hasInput||paid||!m?.positive||m.impact<.8||observation.confidence<.75||observation.excitement<.8||!m.signature?.trim()||!m.reason?.trim())return [];
@@ -42,14 +47,21 @@ export class Economy {
     if(rewarded>=rules.hourlyRewardCap)return [];
     return this.change(next=>{
       const donations=[];let remaining=rules.hourlyRewardCap-rewarded;
-      for(const id of [...new Set(m.supporters)].slice(0,8)){
+      const willing=Array.isArray(m.donations)?m.donations.filter(d=>m.supporters.includes(d.personaId)).map(d=>d.personaId):m.supporters;
+      for(const id of [...new Set(willing)].slice(0,8)){
         const p=settings.personas.find(p=>p.id===id&&p.enabled&&p.id!==settings.managerId);const member=audience.data.members[id];
         if(!p||!['active','lurking'].includes(audience.presence[id])||!member||member.seconds<rules.minimumWatchSeconds)continue;
         const w=this.wallet(next,id,now);
         if(now<w.paidUntil||now-w.lastDonationAt<rules.donationCooldownSeconds*1000||w.balance<10||remaining<10)continue;
         const amount=Math.min(w.balance,remaining,Math.round(12+m.impact*12+member.affinity*8));
         w.balance-=amount;w.lastDonationAt=now;next.balance+=amount;remaining-=amount;
-        this.entry(next,'donation',amount,m.reason,{personaId:id,name:p.name});donations.push({personaId:id,name:p.name,amount,reason:m.reason});
+        const intent=m.donations?.find(d=>d.personaId===id);
+        const message=typeof intent?.message==='string'?intent.message.trim().slice(0,200):'';
+        const names=[p.name,p.id,...(member.aliases||[]).map(a=>a.name)];
+        const blocked=settings.blockedWords.some(w=>normalize(message).includes(normalize(w)))||intent?.anonymous===true&&names.some(name=>name&&normalize(message).includes(normalize(name)));
+        // Filtering a message does not expose the private event analysis instead.
+        const entry=this.entry(next,'donation',amount,blocked?'':message,{personaId:id,name:p.name,anonymous:intent?.anonymous===true});
+        donations.push(publicDonation(entry));
         if(donations.length>=2)break;
       }
       if(donations.length){next.lastRewardAt=now;next.moments.push({fingerprint,at:now,amount:donations.reduce((sum,v)=>sum+v.amount,0)});next.moments=next.moments.filter(e=>now-e.at<86400000).slice(-1000);}

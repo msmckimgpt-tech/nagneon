@@ -9,6 +9,7 @@
 // - 신규 관객은 witnessed 가 비고 watchedSeconds=0 이므로 다른 관객의 개인 기억을 자기 지식으로 받지 않는다.
 
 import {conversationRhythm} from './conversation-rhythm.js';
+import {chatAttention} from './chat-attention.js';
 
 const clamp=(v)=>Math.min(1,Math.max(0,v));
 const round=(v)=>Math.round(v*100)/100;
@@ -62,6 +63,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,sp
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[])}:{}),
       chatHistory:witnessed.slice(-35),
+      chatAttention:chatAttention(witnessed,p,{now}),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
       watchTiming:{receivedAt:now,...(viewing?.timing[p.id]||{}),previousAnalysisAgeSeconds:Number.isFinite(joinedAt)&&previous?.at>=joinedAt&&previous.at<=now?Math.floor((now-previous.at)/1000):null},
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null

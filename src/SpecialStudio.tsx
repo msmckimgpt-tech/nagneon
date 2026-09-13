@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Coins,Heart,Brain,Network,Gift,Sparkles} from 'lucide-react';
+import {Coins,Heart,Brain,Network,Sparkles} from 'lucide-react';
 import {api} from './api';
 import catalog from '../shared/economy.json';
 import type {State,Message} from './types';
@@ -16,7 +16,6 @@ function ResultCard({value}:{value:FeatureResult}){
     {value.kind==='relations'&&<><div className="relationship-core"><Heart size={27}/><strong>스트리머 친밀도 {Math.round((value.affinity||0)*100)}%</strong><span>호명 받은 대화 {value.recognized}회</span></div>{!value.peers?.length&&<p>아직 관객끼리 이름을 부른 대화가 없어요. 함께하는 시간이 쌓이면 관계가 드러납니다.</p>}{value.peers?.map(p=><div className="relation-row" key={p.id}><b>{p.name}</b><span>이 관객에게 말함 {p.outgoing}회 →</span><span>이름을 불러줌 {p.incoming}회 ←</span></div>)}</>}
     {value.messages?.map((m,i)=><div className="private-dialogue" key={i}><b>{m.name}</b><p>{m.text}</p></div>)}<p className="field-note">{value.note}</p></div></article>;
 }
-export function DonationToast({economy}:{economy:EconomyState}){const recent=economy.ledger.filter(e=>e.kind==='donation'&&Date.now()-e.at<12000).slice(-2);return <div className="donation-toasts">{recent.map(e=><div className="donation-toast" key={e.id}><Gift size={24}/><div><b>{e.name} · {e.amount}P</b><p>{e.text}</p><small>가상 후원 · 현금 이동 없음</small></div></div>)}</div>;}
 export function SpecialStudio({state,focusMessage,onError}:{state:State;focusMessage:Message|null;onError:(text:string)=>void}){
   const [target,setTarget]=useState(focusMessage?.personaId || state.settings.personas[0].id),[question,setQuestion]=useState('어떤 방송 순간을 가장 좋아하고, 어떤 분위기는 조금 불편해요?'),[result,setResult]=useState<FeatureResult|null>(null),[pending,setPending]=useState(false);
   const [actionKind,setActionKind]=useState('cheer'),[request,setRequest]=useState('오늘 도전한 저에게 각자 한 마디씩 응원해주세요.'),[targets,setTargets]=useState<string[]>([]),[offers,setOffers]=useState<Record<string,number>>({});

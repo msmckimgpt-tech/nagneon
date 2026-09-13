@@ -90,6 +90,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
+  app.get('/api/donations',(_req,res)=>res.json({entries:economy.donationHistory(studio.settings.personas)}));
   app.get('/api/events',(req,res)=>{
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
     const send=(state)=>res.write(`data: ${JSON.stringify(state)}\n\n`);send(studio.state());studio.on('state',send);
