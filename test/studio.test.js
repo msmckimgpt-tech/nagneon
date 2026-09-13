@@ -32,6 +32,15 @@ test('request cap includes failed AI attempts and prevents later model calls',as
   let calls=0;const studio=make(t,{settings:{...defaults,mode:'live',maxCalls:1},provider:{...provider,react:async()=>{calls++;throw new Error('provider failed');}}});studio.start();await assert.rejects(studio.react({speech:'hello'}));
   studio.lastRequest=0;studio.retryAt=0;await assert.rejects(studio.react({speech:'again'}));assert.equal(calls,1);assert.equal(studio.calls,1);
 });
+
+test('expanded call limits pass the old ceiling and enforce the configured boundary',t=>{
+  for(const maxCalls of [1,1000,100000,1000000])assert.equal(Settings.parse({...defaults,maxCalls}).maxCalls,maxCalls);
+  for(const maxCalls of [0,-1,1.5,1000001,Infinity,NaN])assert.equal(Settings.safeParse({...defaults,maxCalls}).success,false);
+  const studio=make(t,{settings:{...defaults,mode:'live',maxCalls:100000}});
+  studio.start();studio.calls=1000;studio.reserveCall();assert.equal(studio.calls,1001);
+  studio.calls=99999;studio.reserveCall();assert.equal(studio.calls,100000);
+  assert.throws(()=>studio.reserveCall(),/한도/);assert.equal(studio.calls,100000);
+});
 test('knowledge tracks observed time with bounded gaps and keeps teachings separate',()=>{
   const k=new Knowledge();k.observe('Test','scene',1000);k.observe('Test','scene',11000);k.observe('Test','new',10000000);k.teach('Test','rule');
   assert.equal(k.get('Test').seconds,70);assert.equal(k.get('Test').observations.length,2);assert.equal(k.get('Test').notes.length,1);assert.ok(k.get('Test',1).familiarity>k.get('Test',0).familiarity);
@@ -51,6 +60,8 @@ test('local server validates cross-origin writes, persists settings, and exposes
   const denied=await fetch(service.url+'/api/start',{method:'POST',headers:{Origin:'https://evil.example','X-Backseat-Client':'studio'}});assert.equal(denied.status,403);
   const headers={'Content-Type':'application/json','X-Backseat-Client':'studio',Authorization:'Bearer '+service.accessToken};
   const invalid=await fetch(service.url+'/api/settings',{method:'PUT',headers,body:JSON.stringify({...state.settings,maxCalls:-1})});assert.equal(invalid.status,400);
+  const expanded=await fetch(service.url+'/api/settings',{method:'PUT',headers,body:JSON.stringify({...state.settings,maxCalls:100000})});assert.equal(expanded.status,200);
+  const updated=await(await fetch(service.url+'/api/state',{headers})).json();assert.equal(updated.settings.maxCalls,100000);
   const start=await fetch(service.url+'/api/start',{method:'POST',headers});assert.equal((await start.json()).running,true);
   const stop=await fetch(service.url+'/api/stop',{method:'POST',headers});assert.equal((await stop.json()).running,false);
 });
