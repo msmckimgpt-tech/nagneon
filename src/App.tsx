@@ -1,6 +1,7 @@
 import {memo,useEffect,useRef,useState,type CSSProperties} from 'react';
 import {Activity,ArrowUpRight,AudioLines,BookOpen,Check,ChevronRight,Clapperboard,Download,Gamepad2,Heart,LayoutDashboard,MessageCircle,Mic,Monitor,MoreHorizontal,Pause,Play,Plus,Radio,Send,Settings2,Shield,SlidersHorizontal,Sparkles,Trash2,Users,Volume2,X} from 'lucide-react';
 import {api} from './api';
+import {DonationBadge} from './DonationBadge';
 import {SpecialStudio} from './SpecialStudio';
 import {DonationToast,DonationHistory} from './Donations';
 import {HotClips} from './HotClips';
@@ -20,7 +21,7 @@ import type {Message,Settings,State} from './types';
 
 const time=(n:number)=>new Date(n).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',hour12:false});
 const ChatLine=memo(function ChatLine({message,moderate,managerId,onInsight}:{message:Message;onInsight?:(message:Message)=>void;moderate?:(action:string,id:string)=>void;managerId:string}){
-  return <div className={'chat-line '+message.kind}><span className="chat-time">{time(message.time)}</span><div><strong style={{color:message.color}}>{message.personaId===managerId&&<Shield size={12}/>} {message.name}</strong>{message.donation&&<span className="donation-amount">{message.donation.amount}P · 응원</span>}<span className="chat-text">{message.transcription?.correction?.text||message.text}</span>{message.transcription?.correction&&<details className="transcript-origin"><summary>음성 교정</summary><p>인식 원문: {message.text}</p><p>맥락으로 추정한 교정이에요.</p></details>}</div>{onInsight&&message.kind==='chat'&&<button className="insight-button icon" title="이 채팅의 속마음 보기" onClick={()=>onInsight(message)}><Sparkles size={13}/></button>}{moderate&&<button className="delete-message icon" title="메시지 삭제" onClick={()=>moderate('delete',message.id)}><X size={12}/></button>}</div>;
+  return <div className={'chat-line '+message.kind}><span className="chat-time">{time(message.time)}</span><div><strong style={{color:message.color}}>{message.personaId===managerId&&<Shield size={12}/>} {message.name}</strong><DonationBadge donation={message.donation}/><span className="chat-text">{message.transcription?.correction?.text||message.text}</span>{message.transcription?.correction&&<details className="transcript-origin"><summary>음성 교정</summary><p>인식 원문: {message.text}</p><p>맥락으로 추정한 교정이에요.</p></details>}</div>{onInsight&&message.kind==='chat'&&<button className="insight-button icon" title="이 채팅의 속마음 보기" onClick={()=>onInsight(message)}><Sparkles size={13}/></button>}{moderate&&<button className="delete-message icon" title="메시지 삭제" onClick={()=>moderate('delete',message.id)}><X size={12}/></button>}</div>;
 });
 export function App(){
   const overlay=location.pathname==='/overlay';const [state,setState]=useState<State|null>(null),[connected,setConnected]=useState(false),[error,setError]=useState('');

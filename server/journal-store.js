@@ -8,7 +8,7 @@ import {JournalData,emptyJournal} from './conversation-journal.js';
 const Index=z.object({version:z.literal(1),revision:z.number().int().nonnegative(),nextOrder:z.number().int().nonnegative(),chunks:z.record(z.string().regex(/^[a-f0-9]{2}$/),z.string().regex(/^[a-f0-9]{64}$/))});
 const emptyIndex=()=>({version:1,revision:0,nextOrder:0,chunks:{}});
 const digest=content=>createHash('sha256').update(content).digest('hex');
-const same=(a,b)=>a.id===b.id&&a.sessionId===b.sessionId&&a.at===b.at&&a.personaId===b.personaId&&a.name===b.name&&a.text===b.text&&a.fictional===b.fictional&&a.title===b.title&&a.pinned===b.pinned&&a.witnesses.join(',')===b.witnesses.join(',')&&JSON.stringify(a.transcription)===JSON.stringify(b.transcription);
+const same=(a,b)=>a.id===b.id&&a.sessionId===b.sessionId&&a.at===b.at&&a.personaId===b.personaId&&a.name===b.name&&a.text===b.text&&a.fictional===b.fictional&&a.title===b.title&&a.pinned===b.pinned&&a.witnesses.join(',')===b.witnesses.join(',')&&JSON.stringify(a.transcription)===JSON.stringify(b.transcription)&&a.kind===b.kind&&a.donation?.amount===b.donation?.amount&&a.donation?.anonymous===b.donation?.anonymous;
 
 // Immutable hash-named buckets + one atomic, backed-up index commit. A source
 // belongs to its UUID prefix bucket, so eviction doesn't rewrite every bucket.
