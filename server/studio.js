@@ -141,9 +141,13 @@ export class Studio extends EventEmitter {
       ...this.queue.filter(m=>(!Number.isFinite(m.expiresAt)||this.now()<m.expiresAt)&&sameViewingVisit(this.audience,m.personaId,m.viewingVisit))
     ].filter(m=>m.advice&&m.adviceRequestId===requestId).length:0;
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits,advicePolicy,adviceRequestId,diagnosticId}={}){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits,advicePolicy,adviceRequestId,diagnosticId,responseStartedAt}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:{positive:obs.positiveMoment.positive,impact:obs.positiveMoment.impact},at:observedAt};
-    let delay=0,admittedHints=this.admittedAdvice(adviceRequestId);this.reactions.reject(diagnosticId,'pace',Math.max(0,obs.messages.length-this.settings.chatPace));
+    // Inference already consumes the first viewer's reaction time. Credit it
+    // once, after filtering; keep spacing between the remaining messages.
+    // Use the request start, never an older captured frame or observation.
+    const responseWait=origin==='live'&&this.settings.mode==='live'&&Number.isFinite(responseStartedAt)?Math.max(0,this.now()-responseStartedAt):0;
+    let delay=0,first=true,admittedHints=this.admittedAdvice(adviceRequestId);this.reactions.reject(diagnosticId,'pace',Math.max(0,obs.messages.length-this.settings.chatPace));
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
       if(origin==='live'&&Number.isFinite(expiresAt)&&this.now()>=expiresAt){this.reactions.reject(diagnosticId,'expired');continue;}
       const p=this.settings.personas.find(p=>p.id===m.personaId && p.enabled);
@@ -157,6 +161,7 @@ export class Studio extends EventEmitter {
         admittedHints++;
       }
       delay+=600+this.random()*1600;
+      if(first){delay=Math.max(0,delay-responseWait);first=false;}
       this.reactions.admit(diagnosticId);
       this.queue.push({...m,origin,chatDriven,...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
@@ -248,6 +253,7 @@ export class Studio extends EventEmitter {
         let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};
         this.reserveCall();if(!directed)diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
+        const responseStartedAt=this.now();
         const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         this.reactions.generated(diagnosticId,result.observation.messages.length);
         if(epoch!==this.epoch||!this.running){diagnosticOutcome='stopped';return {skipped:'stopped'};}
@@ -262,13 +268,13 @@ export class Studio extends EventEmitter {
           // A chat opportunity is not a fresh visual observation, achievement,
           // donation trigger, clip pick or evidence of changed preferences.
           this.reactions.reject(diagnosticId,'pace',Math.max(0,eligibleMessages.length-1));
-          this.accept({...observation,messages:eligibleMessages.slice(0,1)},capturedAt,true,'live',{diagnosticId,chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
+          this.accept({...observation,messages:eligibleMessages.slice(0,1)},capturedAt,true,'live',{diagnosticId,responseStartedAt,chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
           this.viewing.acknowledge(viewing);this.failures=0;this.retryAt=0;return {ok:true};
         }
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){diagnosticOutcome='transcription-review';this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
         const chatDriven=!speech.trim()&&!directed&&this.viewing.sameExternalInput(viewing);
-        this.accept({...observation,messages:eligibleMessages},capturedAt,!!directed,directed?'directed':'live',{diagnosticId,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
+        this.accept({...observation,messages:eligibleMessages},capturedAt,!!directed,directed?'directed':'live',{diagnosticId,responseStartedAt,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
         const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
         for(const d of donations)this.publishMessage(donationMessage(d));
         if(this.autonomy&&!directed){

@@ -27,8 +27,10 @@ export class ReactionDiagnostics {
     const pending=new Map();for(const m of queue)if(m.diagnosticId)pending.set(m.diagnosticId,(pending.get(m.diagnosticId)||0)+1);
     for(const row of this.rows){const left=pending.get(row.id)||0;if(row.pending>left){this.reject(row.id,'cleared',row.pending-left);row.pending=left;}}
     const rows=structuredClone(this.rows),latencies=rows.filter(r=>r.generated!==null).map(r=>r.modelMs).filter(Number.isFinite).sort((a,b)=>a-b);
+    const firstChatWaits=rows.filter(r=>r.delivered>0&&Number.isFinite(r.firstDeliveryMs)&&Number.isFinite(r.modelMs)).map(r=>Math.max(0,r.firstDeliveryMs-r.modelMs)).sort((a,b)=>a-b);
     const summary={attempts:this.total,retained:rows.length,modelSilent:rows.filter(r=>r.generated===0&&r.state==='accepted').length,generated:0,delivered:0,pending:0,rejected:{},outcomes:{},modelP50Ms:latencies.length?latencies[Math.floor((latencies.length-1)*.5)]:null,modelP95Ms:latencies.length?latencies[Math.ceil(latencies.length*.95)-1]:null};
     for(const row of rows){summary.outcomes[row.state]=(summary.outcomes[row.state]||0)+1;summary.generated+=row.generated||0;summary.delivered+=row.delivered;summary.pending+=row.pending;for(const [reason,n] of Object.entries(row.rejected))summary.rejected[reason]=(summary.rejected[reason]||0)+n;}
+    Object.assign(summary,{firstChatSamples:firstChatWaits.length,firstChatWaitP50Ms:firstChatWaits.length?firstChatWaits[Math.floor((firstChatWaits.length-1)*.5)]:null,firstChatWaitP95Ms:firstChatWaits.length?firstChatWaits[Math.ceil(firstChatWaits.length*.95)-1]:null});
     return {version:1,since:this.since,exportedAt:this.now(),limit:LIMIT,retention:'current broadcast; retained after stop until the next start or app exit',scope:'live reactions only; counts and durations, no conversation or media content',summary,skips:{...this.skips},requests:rows};
   }
 }

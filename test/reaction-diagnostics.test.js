@@ -44,6 +44,19 @@ test('retention is bounded, snapshots are independent and old completions cannot
  let at=0;const d=new ReactionDiagnostics(()=>at);const old=d.begin({text:'PRIVATE',hasSpeech:true});d.reset();const current=d.begin();d.generated(old,8);d.finish(old,'accepted');assert.equal(d.row(current).generated,null);
  for(let i=0;i<125;i++){const id=d.begin();at+=10;d.generated(id,0);d.finish(id,'accepted');}d.skip('PRIVATE');d.skip('busy');let r=d.snapshot();assert.equal(r.limit,120);assert.equal(r.requests.length,120);assert.equal(r.summary.attempts,126);assert.equal(r.summary.modelP95Ms,10);assert.deepEqual(r.skips,{busy:1});r.requests[0].generated=99;assert.equal(d.snapshot().requests[0].generated,0);assert.ok(!JSON.stringify(r).includes('PRIVATE'));
 });
+test('first-chat wait measures delivered responses only, separating inference from delivery',()=>{
+ let at=100000;const d=new ReactionDiagnostics(()=>at);
+ assert.equal(d.snapshot().summary.firstChatWaitP50Ms,null);
+ for(const [model,wait] of [[8000,0],[600,800],[10000,2500]]){
+  const id=d.begin();at+=model;d.generated(id,1);d.admit(id);at+=wait;d.delivered(id);d.finish(id,'accepted');
+ }
+ const silent=d.begin();at+=15000;d.generated(silent,0);d.finish(silent,'accepted');
+ const error=d.begin();at+=90000;d.finish(error,'error');
+ const pending=d.begin();d.generated(pending,1);d.admit(pending);
+ const summary=d.snapshot([{diagnosticId:pending}]).summary;
+ assert.equal(summary.firstChatSamples,3);assert.equal(summary.firstChatWaitP50Ms,800);assert.equal(summary.firstChatWaitP95Ms,2500);
+ d.reset();assert.equal(d.snapshot().summary.firstChatSamples,0);assert.equal(d.snapshot().summary.firstChatWaitP95Ms,null);
+});
 test('a previous broadcast finishing late cannot add a skip to the new broadcast diagnostics',async t=>{
  let release;const f=fixture(t,()=>new Promise(r=>release=r));const old=f.s.react({speech:'old private conversation'});
  f.s.stop();f.s.start();release(result());assert.equal((await old).skipped,'stopped');

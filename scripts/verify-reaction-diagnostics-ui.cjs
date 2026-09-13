@@ -31,10 +31,12 @@ app.whenReady().then(async()=>{try{
  await until(`!!document.querySelector('.reaction-diagnostics summary')`);await js(`document.querySelector('.reaction-diagnostics summary').click()`);
  await until(`document.querySelector('.reaction-diagnostics').textContent.includes('모델 호출 2회')`);
  assert.equal(await js(`document.querySelector('.reaction-diagnostics').textContent.includes('표시 1개')&&document.querySelector('.reaction-diagnostics').textContent.includes('중복: 1개')`),true);
+ assert.equal(await js(`document.querySelector('.reaction-diagnostics').textContent.includes('응답 완료 후 첫 채팅 전달 대기')&&document.querySelector('.reaction-diagnostics').textContent.includes('(1회)')`),true);
  report.checks.push('manager diagnostics loads real endpoint metrics and separates silence, delivery and filters');
  mark('metrics-loaded');const download=join(base,'download.json');const saved=new Promise((done,fail)=>studioSession.once('will-download',(_event,item)=>{mark('download-started');item.setSavePath(download);item.once('done',(_e,state)=>state==='completed'?done():fail(Error(state)));}));
  await js(`document.querySelector('.reaction-diagnostics a[download]').click()`);mark('download-clicked');await saved;mark('download-saved');
  const exported=JSON.parse(readFileSync(download,'utf8'));assert.equal(exported.summary.generated,3);assert.equal(exported.summary.delivered,1);assert.equal(exported.summary.modelSilent,1);
+ assert.equal(exported.summary.firstChatSamples,1);assert.ok(exported.summary.firstChatWaitP50Ms>=0);
  report.checks.push('download link saves authenticated JSON containing the actual metadata');
  await js(`window.actualFetch=window.fetch;window.fetch=(url,...args)=>String(url).includes('/api/diagnostics/reactions')?Promise.resolve(new Response(JSON.stringify({error:'합성 진단 연결 오류'}),{status:409,headers:{'Content-Type':'application/json'}})):actualFetch(url,...args);void 0`);
  await button('새로 확인');await until(`document.querySelector('.reaction-diagnostics [role=alert]')?.textContent==='합성 진단 연결 오류'`);mark('refresh-failure-visible');
