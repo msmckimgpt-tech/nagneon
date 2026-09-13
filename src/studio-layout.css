@@ -1,0 +1,58 @@
+/* Keep the broadcast surface and composer together at desktop window sizes.
+   Context panels scroll independently so incoming chat never moves the stage. */
+@media (min-width: 951px) {
+  .studio-workspace {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .studio-workspace > .topbar { height: 52px; flex-shrink: 0; }
+  .studio-workspace > main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    padding: 18px 24px 12px;
+    overflow-y: auto;
+  }
+  .studio-workspace .page-heading { flex-shrink: 0; margin-bottom: 14px; }
+  .studio-workspace .page-heading h1 { font-size: 22px; }
+  .studio-workspace .page-heading .eyebrow { display: none; }
+  .studio-workspace .page-heading p { font-size: 11px; margin: 4px 0 0; }
+  .studio-workspace .stats-row { flex-shrink: 0; margin-bottom: 16px; }
+  .studio-workspace .stat { padding: 10px 14px; }
+  .studio-workspace .stat b { font-size: 22px; margin: 6px 0 0; }
+  .studio-workspace .stat em { display: none; }
+  .studio-workspace .studio-grid { flex: 1; min-height: 340px; grid-template-rows: minmax(0, 1fr); }
+  .studio-workspace .stage-column {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .studio-workspace .stage {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 100%;
+    min-height: 340px;
+  }
+  .studio-workspace .stage .preview { flex: 1; min-height: 0; aspect-ratio: auto; }
+  .studio-workspace .stage .panel-heading,
+  .studio-workspace .stage-controls,
+  .studio-workspace .stage-column > :not(.stage),
+  .studio-workspace .chat-panel > :not(.chat-scroll) { flex-shrink: 0; }
+  .studio-workspace .chat-panel { height: 100%; min-height: 0; max-height: none; }
+  .studio-workspace .chat-scroll { overscroll-behavior: contain; }
+  .studio-workspace .pinned { max-height: 112px; overflow-y: auto; }
+  .studio-workspace > main > footer { flex-shrink: 0; margin: 10px 0 0; padding: 0; }
+}
+@media (min-width: 951px) and (max-height: 720px) {
+  .studio-workspace .chat-room-label { padding: 8px 14px; }
+  .studio-workspace .pinned { margin: 8px 12px 4px; padding: 8px 10px; max-height: 74px; }
+  .studio-workspace .pinned p { line-height: 1.5; margin: 3px 0 0; }
+}
+@media (min-width: 951px) and (max-width: 1100px) {
+  .studio-workspace .stage-controls .control span { display: none; }
+}
