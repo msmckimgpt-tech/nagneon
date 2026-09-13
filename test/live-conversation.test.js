@@ -5,6 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Studio} from '../server/studio.js';
+import {Audience} from '../server/audience.js';
 import {startServer} from '../server/index.js';
 import {defaults} from '../shared/defaults.js';
 import {Settings} from '../server/schema.js';
@@ -14,7 +15,7 @@ import {SpeechOutbox} from '../src/speech-flow.ts';
 const observation=(messages=[])=>({game:'Synthetic',scene:'합성 장면',confidence:.8,excitement:.2,messages});
 const chat=(text,personaId='momo')=>({personaId,text,kind:'chat',spoiler:false});
 const input=(s,text,id=randomUUID())=>({id,sessionId:s.sessionId,text});
-function studio(t,react){let now=100000;const s=new Studio({settings:{...defaults,mode:'live',lurkRatio:0,slowModeSeconds:0,chatPace:8},now:()=>now,random:()=>.5,provider:{status:()=>({configured:true}),react}});clearInterval(s.timer);s.start();t.after(()=>s.close());return {s,advance:()=>{now+=20000;}};}
+function studio(t,react){let now=100000;const s=new Studio({settings:{...defaults,mode:'live',lurkRatio:0,slowModeSeconds:0,chatPace:8},audience:new Audience(undefined,()=>{},()=>.5),now:()=>now,random:()=>.5,provider:{status:()=>({configured:true}),react}});clearInterval(s.timer);s.start();t.after(()=>s.close());return {s,advance:()=>{now+=20000;}};}
 
 test('punctuation, laughter and minor ending changes cannot repeat a recent long observation',()=>{
   const at=100000,history=[{...chat('눈이 정말 많이 쌓였네요 ㅋㅋ'),time:at}];
@@ -32,6 +33,8 @@ test('shared short cheers remain possible, while one person cannot spam the same
 
 test('live acceptance filters paraphrases in the same batch and across frames',async t=>{
   const {s,advance}=studio(t,async()=>({observation:observation([chat('눈이 정말 많이 쌓였네요 ㅋㅋ'),chat('눈이 정말 많이 쌓였네!','pop'),chat('ㅋㅋㅋ','gg')])}));
+  // This checks repetition while the same viewers stay; departures have their
+  // own coverage and must not randomly remove this test's second-frame speaker.
   await s.react({image:'snow-frame-one'});assert.equal(s.queue.length,2);advance();s.pump();s.pump();advance();await s.react({image:'snow-frame-two'});assert.equal(s.queue.filter(m=>m.text.startsWith('눈이')).length,0);assert.ok(s.queue.some(m=>m.text==='ㅋㅋㅋ'));
 });
 

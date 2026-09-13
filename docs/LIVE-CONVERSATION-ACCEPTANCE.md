@@ -63,4 +63,6 @@
 
 작업 경로는 `G:/dev/ai/00_game_backseat-worktrees/live-conversation-acceptance`, 브랜치는 `codex/live-conversation-acceptance`, 시작 커밋은 `52a0953e77c11bed945ac35e95c15b031174cf3a`다. 변경 범위는 조용한 대화 조건·채팅 지침·연결 코드·관련 회귀 검사와 이 문서뿐이다. 사용자 원본 앱이나 다른 작업자의 실행 환경에는 적용하지 않았다.
 
+첫 통합 검사에서는 559개 중 기존 `live acceptance filters paraphrases in the same batch and across frames` 하나가 실패했다. 이 테스트의 Studio 난수는 고정됐지만 기본 Audience의 별도 난수는 고정되지 않아, 두 번째 프레임 전에 대상 관객이 확률적으로 자리를 비울 수 있었다. `artifacts/presence-fixture-reproduction.json`은 동일 코드에서 이탈 시 웃음 채팅 없음, 머무를 때 웃음 채팅 허용을 각각 재현한다. 관객 이탈을 금지하도록 제품을 바꾸지 않고 해당 테스트의 Audience 생성기에도 고정 난수를 주입했다. 실패 원본은 `artifacts/integration-first-failure.json`과 통합 폴더 `artifacts/check-first-failure.log`에 남긴다. 이 후속 변경은 테스트와 문서뿐이므로 실제 실행한 패키지의 제품 소스는 동일하다.
+
 검증한 변경은 작업 브랜치에 커밋·push한 뒤, 통합 잠금 아래 별도 `live-conversation-acceptance-integration` worktree에서 의존성 설치와 전체 검사를 다시 수행한다. 통합 결과와 정확한 원격 커밋은 `artifacts/live-integration-result.json`, 실행·무결성·저널 및 CI 증거의 해시는 `artifacts/live-acceptance-result.json`에 남긴다. `main`과 작업·통합 브랜치의 원격 커밋이 일치하고 CI 성공까지 확인해야 이 단계의 게시 완료로 본다.
