@@ -325,48 +325,4 @@ namespace Backseat.Installer
         }
     }
 
-    // Named mutex keyed to the exact (normalized, lowercased) install root. Used
-    // to serialise install/uninstall/recover/launch for one root; the launcher
-    // holds it for the whole child lifetime, and install/uninstall fail fast when
-    // it is already held.
-    internal sealed class RootMutex : IDisposable
-    {
-        private readonly Mutex _m;
-        private bool _held;
-
-        public RootMutex(string root)
-        {
-            string key = PathSafety.TrimTrailingSep(root).ToLowerInvariant();
-            string name = "Backseat.Installer." + Hashing.Sha256Bytes(Encoding.Unicode.GetBytes(key)).Substring(0, 40);
-            bool createdNew;
-            _m = new Mutex(false, name, out createdNew);
-        }
-
-        public bool TryAcquire(int milliseconds)
-        {
-            try { _held = _m.WaitOne(milliseconds); }
-            catch (AbandonedMutexException) { _held = true; } // prior holder crashed; we own it now
-            return _held;
-        }
-
-        public bool TryAcquire(TimeSpan t)
-        {
-            return TryAcquire((int)t.TotalMilliseconds);
-        }
-
-        public void Release()
-        {
-            if (_held)
-            {
-                try { _m.ReleaseMutex(); } catch { }
-                _held = false;
-            }
-        }
-
-        public void Dispose()
-        {
-            Release();
-            if (_m != null) _m.Dispose();
-        }
-    }
 }

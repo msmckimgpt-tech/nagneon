@@ -12,6 +12,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Text;
 using System.Threading;
 
 namespace Backseat.Installer.Tests
@@ -25,6 +28,7 @@ namespace Backseat.Installer.Tests
         private static int Main(string[] args)
         {
             _fixtureRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fixtures");
+            if (args.Length == 1 && args[0].StartsWith("--mutex-child-", StringComparison.Ordinal)) return MutexChild(args[0]);
             if (args.Length == 1 && args[0] == "--crash-before-first-journal")
             {
                 // The child can only touch a fixed directory beside its own binary.
@@ -64,6 +68,8 @@ namespace Backseat.Installer.Tests
             try { DeleteLockBatchTests(); } catch (Exception e) { Blew("DeleteLockBatchTests", e); }
             try { ReparseTests(); } catch (Exception e) { Blew("ReparseTests", e); }
             try { MutexTests(); } catch (Exception e) { Blew("MutexTests", e); }
+            try { MutexProcessTests(); } catch (Exception e) { Blew("MutexProcessTests", e); }
+            try { MutexSecurityTests(); } catch (Exception e) { Blew("MutexSecurityTests", e); }
             try { AllVersionsTests(); } catch (Exception e) { Blew("AllVersionsTests", e); }
             try { HashingTests(); } catch (Exception e) { Blew("HashingTests", e); }
 
@@ -477,10 +483,15 @@ namespace Backseat.Installer.Tests
         private static void MutexTests()
         {
             Section("RootMutex cross-thread contention");
-            string root = "C:\\Games\\BK-" + "mtx";
+            string root = Path.Combine(_fixtureRoot, "mutex-basic");
             using (var m = new RootMutex(root))
             {
                 Ok(m.TryAcquire(0), "acquire on main thread");
+                string name = "Global\\Backseat.Installer." + Hashing.Sha256Bytes(System.Text.Encoding.Unicode.GetBytes(PathSafety.TrimTrailingSep(root).ToLowerInvariant())).Substring(0, 40);
+                bool globalFound = false;
+                try { using (var opened = Mutex.OpenExisting(name)) globalFound = true; }
+                catch (WaitHandleCannotBeOpenedException) { }
+                Ok(globalFound, "same-root lock is published in the cross-session namespace");
                 bool otherGot = true;
                 var t = new Thread(delegate ()
                 {
@@ -498,6 +509,142 @@ namespace Backseat.Installer.Tests
             {
                 Ok(m3.TryAcquire(0), "reacquire after release");
                 m3.Release();
+            }
+        }
+
+        private static string LegacyMutexName(string root)
+        {
+            return "Backseat.Installer." + Hashing.Sha256Bytes(Encoding.Unicode.GetBytes(PathSafety.TrimTrailingSep(root).ToLowerInvariant())).Substring(0, 40);
+        }
+
+        private static int MutexChild(string mode)
+        {
+            string root = Path.Combine(_fixtureRoot, "mutex-process");
+            Console.WriteLine("mutex fixture child: " + mode + ", session=" + Process.GetCurrentProcess().SessionId);
+            if (mode == "--mutex-child-global" || mode == "--mutex-child-legacy")
+            {
+                string name = (mode == "--mutex-child-global" ? "Global\\" : "") + LegacyMutexName(root);
+                using (var native = new Mutex(false, name))
+                {
+                    bool acquired = native.WaitOne(0); if (acquired) native.ReleaseMutex();
+                    return acquired ? ExitCodes.Success : ExitCodes.Busy;
+                }
+            }
+            if (mode != "--mutex-child-root" && mode != "--mutex-child-other" && mode != "--mutex-child-crash") return ExitCodes.Usage;
+            using (var mutex = new RootMutex(mode == "--mutex-child-other" ? root + "-other" : root))
+            {
+                if (!mutex.TryAcquire(0)) return ExitCodes.Busy;
+                if (mode == "--mutex-child-crash") Environment.Exit(ExitCodes.CrashFault);
+                return ExitCodes.Success;
+            }
+        }
+
+        private static int RunMutexChild(string mode)
+        {
+            var start = new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tests.exe"), "--mutex-child-" + mode);
+            start.UseShellExecute = false; start.CreateNoWindow = true; start.RedirectStandardOutput = true; start.RedirectStandardError = true;
+            using (Process child = Process.Start(start))
+            {
+                if (!child.WaitForExit(15000)) throw new Exception("mutex fixture child exceeded deadline");
+                Console.Write(child.StandardOutput.ReadToEnd()); string error = child.StandardError.ReadToEnd();
+                if (error.Length > 0) throw new Exception("mutex fixture child error: " + error);
+                return child.ExitCode;
+            }
+        }
+
+        private static bool AcquireElsewhere(string root)
+        {
+            bool acquired = false; Exception failure = null;
+            var thread = new Thread(delegate () { try { using (var mutex = new RootMutex(root)) acquired = mutex.TryAcquire(0); } catch (Exception e) { failure = e; } });
+            thread.Start(); if (!thread.Join(10000)) throw new Exception("mutex fixture thread exceeded deadline");
+            if (failure != null) throw failure; return acquired;
+        }
+
+        private static void MutexProcessTests()
+        {
+            Section("Global and legacy root locks with actual child processes");
+            Console.WriteLine("mutex fixture parent session=" + Process.GetCurrentProcess().SessionId);
+            string root = Path.Combine(_fixtureRoot, "mutex-process"), name = LegacyMutexName(root);
+            using (var mutex = new RootMutex(root))
+            {
+                Ok(mutex.TryAcquire(0), "parent owns the root lock pair");
+                Ok(RunMutexChild("global") == ExitCodes.Busy, "independent Global namespace client is blocked");
+                Ok(RunMutexChild("legacy") == ExitCodes.Busy, "legacy client in this session is blocked");
+                Ok(RunMutexChild("root") == ExitCodes.Busy, "another upgraded process is blocked");
+                Ok(RunMutexChild("other") == ExitCodes.Success, "different install root remains independent");
+                Ok(!AcquireElsewhere(root.ToUpperInvariant() + "\\"), "case and trailing separator use the same root pair");
+                Ok(mutex.TryAcquire(0), "repeat acquisition on one object is idempotent");
+                bool wrongThreadRefused = false;
+                var t = new Thread(delegate () { try { mutex.Release(); } catch (SynchronizationLockException) { wrongThreadRefused = true; } });
+                t.Start(); t.Join(); Ok(wrongThreadRefused, "another thread cannot release or clear the owner flag");
+                mutex.Release(); Ok(AcquireElsewhere(root), "one release leaves no recursive ownership behind");
+            }
+            using (var old = new Mutex(false, name))
+            using (var globalObserver = new Mutex(false, "Global\\" + name))
+            {
+                old.WaitOne();
+                try
+                {
+                    Ok(RunMutexChild("root") == ExitCodes.Busy, "legacy owner blocks the upgraded process");
+                    bool abandoned = false, acquired;
+                    try { acquired = globalObserver.WaitOne(0); } catch (AbandonedMutexException) { abandoned = true; acquired = true; }
+                    Ok(acquired && !abandoned, "failure to get legacy lock releases Global without abandonment");
+                    if (acquired) globalObserver.ReleaseMutex();
+                }
+                finally { old.ReleaseMutex(); }
+            }
+            using (var globalOnly = new Mutex(false, "Global\\" + name))
+            {
+                globalOnly.WaitOne(); try { Ok(RunMutexChild("root") == ExitCodes.Busy, "Global-only owner blocks upgraded process"); }
+                finally { globalOnly.ReleaseMutex(); }
+            }
+            using (var globalObserver = new Mutex(false, "Global\\" + name))
+            using (var legacyObserver = new Mutex(false, name))
+            {
+                Ok(RunMutexChild("crash") == ExitCodes.CrashFault, "owning child really exits with both locks held");
+                using (var recovered = new RootMutex(root)) Ok(recovered.TryAcquire(0), "abandoned Global and legacy locks can be acquired for state revalidation");
+                Ok(RunMutexChild("root") == ExitCodes.Success, "normal acquisition succeeds after abandonment recovery");
+            }
+            using (var invalid = new RootMutex(root))
+            {
+                bool range = false; try { invalid.TryAcquire(TimeSpan.FromMilliseconds(-2)); } catch (ArgumentOutOfRangeException) { range = true; }
+                Ok(range, "invalid timeout is rejected before acquisition");
+            }
+        }
+
+        private static void MutexSecurityTests()
+        {
+            Section("Per-user kernel object permissions; no weaker fallback");
+            string root = NewFixtureDir("mutex-acl"), name = LegacyMutexName(root);
+            using (WindowsIdentity current = WindowsIdentity.GetCurrent())
+            using (var mutex = new RootMutex(root))
+            using (var opened = Mutex.OpenExisting("Global\\" + name, MutexRights.ReadPermissions))
+            {
+                var security = opened.GetAccessControl(); bool userGranted = false, limited = true;
+                var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+                foreach (MutexAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+                {
+                    if (!rule.IdentityReference.Equals(current.User) && !rule.IdentityReference.Equals(system)) limited = false;
+                    if (rule.IdentityReference.Equals(current.User) && rule.AccessControlType == AccessControlType.Allow && (rule.MutexRights & MutexRights.FullControl) == MutexRights.FullControl) userGranted = true;
+                }
+                Ok(userGranted, "account SID has FullControl on the created Global object");
+                Ok(limited && security.AreAccessRulesProtected, "new Global object grants only account and SYSTEM rights");
+            }
+            string deniedRoot = NewFixtureDir("mutex-denied");
+            var denied = new MutexSecurity();
+            using (WindowsIdentity current = WindowsIdentity.GetCurrent()) denied.AddAccessRule(new MutexAccessRule(current.User, MutexRights.FullControl, AccessControlType.Deny));
+            bool created;
+            using (var obstruction = new Mutex(false, "Global\\" + LegacyMutexName(deniedRoot), out created, denied))
+            {
+                bool refused = false; try { using (var mutex = new RootMutex(deniedRoot)) mutex.TryAcquire(0); } catch (EngineError e) { refused = e.Code == ExitCodes.Busy; }
+                Ok(refused, "inaccessible Global object refuses instead of falling back to Local");
+            }
+            string collisionRoot = NewFixtureDir("mutex-collision");
+            using (var obstruction = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\" + LegacyMutexName(collisionRoot)))
+            {
+                bool refused = false; try { using (var mutex = new RootMutex(collisionRoot)) mutex.TryAcquire(0); } catch (EngineError e) { refused = e.Code == ExitCodes.Busy; }
+                Ok(refused, "wrong object type in Global refuses instead of using another name");
+                obstruction.Set(); Ok(obstruction.WaitOne(0), "refusal leaves the existing object intact");
             }
         }
 

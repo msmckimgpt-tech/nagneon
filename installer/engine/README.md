@@ -7,8 +7,9 @@ status; executable fixtures in artifacts are not the BACKSEAT app.
 
 ## Current acceptance
 
-The latest source has **231 file-only engine checks and 301 application checks
-plus TypeScript/Vite passing**, including late-uninstall retry controls. See
+The latest source has **253 file-only engine checks and 301 application checks
+plus TypeScript/Vite passing**, including late-uninstall retry controls and
+Global/legacy mutex cooperation. See docs/INSTALLER-GLOBAL-MUTEX.md and
 docs/UNINSTALL-RETRY-CONTROLS.md. The native NSIS/publication runs below are
 historical evidence that predates the bootstrap and removal-order changes;
 they must be rerun against the new engine before general release.
@@ -135,8 +136,11 @@ reading state, then holds it through the launched child's lifetime.
    The engine suite has 231 passing checks. See docs/UNINSTALL-RETRY-CONTROLS.md.
    Real NSIS/HKCU/Start Menu retry acceptance and untested post-deletion
    combinations still remain; this is not a multi-resource atomic transaction.
-3. Image-section races, hostile concurrent path swaps, Windows short aliases and
-   simultaneous Windows sessions. The root mutex is currently session-local.
+3. The root mutex now holds Global and legacy Local names with account/SYSTEM
+   ACLs. Real child-process contention and abandoned ownership passed, but all
+   tests ran in one session. Verify multiple logon/RDP sessions, mixed privilege,
+   older Local-only engines in other sessions, image-section/path-swap races and
+   Windows short aliases. See docs/INSTALLER-GLOBAL-MUTEX.md.
 4. Long paths, disk exhaustion, corrupted control backups, reparse/mount variants,
    interruption during staging/control restore, visible NSIS
    UI, new Windows/runtime dependencies, signing and Steam review.

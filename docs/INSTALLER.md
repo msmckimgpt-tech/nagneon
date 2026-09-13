@@ -57,6 +57,8 @@ NSIS는 각 파일을 전용 임시 폴더에 추출하고 C# 엔진을 호출�
 
 ## C# 엔진 진행 · 2026-09-13
 
+[설치 루트의 세션 공통 잠금](INSTALLER-GLOBAL-MUTEX.md)을 추가했다. Global과 구버전 호환 Local 잠금, 계정/SYSTEM ACL, 획득 실패·프로세스 중단 처리를 검증했다. 최신 엔진253개와 앱301개/빌드가 통과했다. 모든 하위 프로세스 검사는 세션1에서 수행했으며 실제 다른 로그인 세션과 NSIS 수용 검증은 남아 있다.
+
 추가로 [제거 실패 후 재시도 파일 보존](UNINSTALL-RETRY-CONTROLS.md)을 적용했다. 기존에는 게시 정리 실패 시 제거 프로그램이 이미 사라졌다. 이제 상태·백업·launcher·uninstaller를 마지막까지 함께 잠가 보존한다. 파일 기반 엔진231개 검사와 앱301개/빌드를 통과했으나, 이 변경의 실제 NSIS·HKCU·Start Menu 수용은 아직 검증하지 않았으므로 일반 배포 차단은 유지한다.
 
 첫 WSL Claude 작업은 정상 종료했고 `artifacts/claude-engine-output.txt`, `claude-engine-tests.log`(74개), `claude-engine-realrun.log`를 남겼다. 그 이후의 실제 수용 결과와 현재 한계는 위 최신 절이 우선한다.
