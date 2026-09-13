@@ -23,3 +23,5 @@ WSL Ubuntu-24.04의 `/usr/local/bin/claude`는 Claude Code 2.1.185로 실행됐�
 `artifacts/resume-check.log`에서 기존 545개 Node 검사와 TypeScript/Vite 빌드 통과를 확인했다. 이 변경은 사용자의 재허용과 실제 관측을 문서화하며 제품 소스나 배포 바이너리를 수정하지 않는다. 프로젝트 지침에 따라 별도 통합 worktree에서 필수 검사를 다시 실행하고 작업 브랜치와 main을 원격에 게시한다.
 
 다음 실제 검증은 생성/클립 디코딩 중 종료와 임시 미디어 정리, 화면·시스템 출력·마이크·오버레이의 연결/해제, Steam 게임과 Just Chatting의 연속 대화 품질이다. 기존 설치 복구·서명·판매 조건은 [판매 준비 기준](RELEASE-GATES.md)에 유지한다.
+
+후속 작업에서 Claude Code 검토 완료를 확인했고, 실제 Electron 종료 시 임시 화면 파일이 남는 문제를 재현·수정했다. 정확한 배포 모듈 검증과 남은 범위는 [AI 요청 중 정상 종료](NATIVE-GRACEFUL-SHUTDOWN.md)에 기록한다.

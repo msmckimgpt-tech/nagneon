@@ -28,6 +28,7 @@ import {SeasonsData,emptySeasons} from './seasons-schema.js';
 import {ConversationJournal,emptyJournal} from './conversation-journal.js';
 import {JournalStore} from './journal-store.js';
 import {World,WorldData,migrateWorld} from './world.js';
+import {RequestLifetime,ownProviderRequests} from './request-lifetime.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
@@ -38,6 +39,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const clipInspector=new ClipInspector(runtime.clips);
   const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
+  const requests=new RequestLifetime();provider=ownProviderRequests(provider,requests);let closing;
   const stores=[];
   const useStore=(name,schema,initial)=>{
     if(!persist)return {data:initial(),save:()=>{}};
@@ -72,6 +74,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status()});
   app.disable('x-powered-by');
+  app.use((_req,res,next)=>requests.controller.signal.aborted?res.status(503).json({error:'앱을 종료하고 있습니다.'}):next());
   app.use((req,res,next)=>{
     const host=req.headers.host || '';
     if(host!==expectedHost)return res.status(403).json({error:'올바른 로컬 앱 연결만 허용됩니다.'});
@@ -206,7 +209,19 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:async()=>{clearInterval(health);probe.cancel();studio.close();const clipsClosed=clipInspector.close(),speechClosed=speech.close(),activityClosed=studio.communityActivity.yield(),perceptionClosed=studio.clipPerception.close();sound.close();server.closeAllConnections();await Promise.all([clipsClosed,speechClosed,activityClosed,perceptionClosed,new Promise(r=>server.close(r))]);}};
+  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:()=>{
+    if(closing)return closing;
+    clearInterval(health);
+    // Start every cleanup even if another one fails, and keep the event loop
+    // alive until all owned requests have left their cleanup/finally blocks.
+    const invoke=fn=>{try{return Promise.resolve(fn());}catch(error){return Promise.reject(error);}};
+    const tasks=[requests.close(),invoke(()=>probe.cancel()),invoke(()=>studio.close()),invoke(()=>clipInspector.close()),invoke(()=>speech.close()),invoke(()=>studio.communityActivity.yield()),invoke(()=>studio.clipPerception.close()),invoke(()=>sound.close()),invoke(()=>new Promise((done,fail)=>{server.close(error=>error?fail(error):done());server.closeAllConnections();}))];
+    closing=Promise.allSettled(tasks).then(results=>{
+      const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);
+      if(errors.length)throw new AggregateError(errors,'앱 종료 정리를 완료하지 못했습니다.');
+    });
+    return closing;
+  }};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);
