@@ -29,6 +29,10 @@ Windows 게시 호출은 `WindowsUninstallHost`로 옮겼다. 기본 `Engine()`�
 
 앱 필수 `npm run check`는 **301개 Node 검사 + TypeScript/Vite 통과**(`uninstall-controls-check.log`). 배포 엔진15개 C# 소스의 Windows x64/GUI subsystem 컴파일도 성공했다(`uninstall-controls-engine/result.json`, `compiler-result.json`); 생성한 엔진 실행 파일은 실행하지 않았다.
 
+제품 커밋 `d2023fd919a0f166ee0f3d2de94b8b0023c8f683`을 별도 `live-capture-integration` worktree에서 **앱301개/빌드 + 엔진231개**로 다시 검증하고, 통합 잠금·HEAD·인덱스·원격 확인 후 main에 fast-forward했다. 해당 worktree의 `artifacts/uninstall-controls-integration-check.log`, `uninstall-controls-integration-unit.log`와 이 작업의 `artifacts/uninstall-controls-integration-result.json`이 원본이다. 외부 push는 하지 않았다.
+
+작업 폴더 `G:/dev/ai/00_game_backseat-worktrees/uninstall-retry-controls`의 `artifacts/uninstall-controls-evidence/manifest.json`에 변경 전후 소스·컴파일 결과·시험 성공/실패 원본·통합 결과의 파일별 SHA256을 보존한다. 실패한 첫 검사를 통과 기록으로 대체하지 않았다.
+
 HKCU·Start Menu와 프로세스 목록은 이 시험에서 메모리 안의 대역을 사용했다. 실제 Windows 게시 API의 실패를 유도한 시험은 아니다. `.exe`라는 이름의 fixture는 합성 파일이며 NSIS 제거 프로그램을 실제 실행한 것이 아니다. 반면 상태 검증, 루트 mutex, Windows 파일 잠금·삭제 예약·취소, 파일 내용, 시험 프로세스 중단은 실제 구현을 실행했다. 사용자 프로필, 대화, 녹음, Steam 저장 자료는 시험 데이터가 아니다.
 
 ## 남은 기준

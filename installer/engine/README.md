@@ -7,6 +7,12 @@ status; executable fixtures in artifacts are not the BACKSEAT app.
 
 ## Current acceptance
 
+The latest source has **231 file-only engine checks and 301 application checks
+plus TypeScript/Vite passing**, including late-uninstall retry controls. See
+docs/UNINSTALL-RETRY-CONTROLS.md. The native NSIS/publication runs below are
+historical evidence that predates the bootstrap and removal-order changes;
+they must be rerun against the new engine before general release.
+
 The parent ran isolated Windows transactions after the bounded Claude audit
 finished (session23220, exit0). Current evidence:
 
