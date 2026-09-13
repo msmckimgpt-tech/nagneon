@@ -49,3 +49,7 @@
 이 배포 ASAR의 서버·갤러리·클립 코드와 **번들 공식 Codex / Python / 코덱**을 사용했다. `artifacts/gallery-voice-Op5yat/result.json`은 실제 Astra low 한 번의 갤러리 댓글·추천, 정상/손상 WebM HTTP 경계, 두 파일의 해시, 서버 재시작과 삭제를 확인한다. 실제 모델 댓글 2개, 추천 2개이며 모델 호출 10.842초다. 이는 합성 게시글 응답이며 외부 갤러리에 글을 쓴 결과가 아니다.
 
 `artifacts/second-review-final-delivered-LX8evM/result.json`은 동일 배포본의 실제 Whisper medium·YAMNet/small을 준비하고, 소유 마이크 인식기 중단 후 같은 방송의 복구·짧은 한국어 네 발언 전달을 확인했다. 소유 워커 종료도 확인했다. 합성 음원과 Node 서버를 이용했으며 Electron 창·마이크·게임·사용자 앱을 시작하거나 조작하지 않았다. 이 단계의 실제 Astra 호출은 합성 대화 4회 + 갤러리 1회다.
+
+## 통합 기록
+
+제품/검증 도구 커밋 `55d7c6ae3368f6ed694810dc51f034ec6b456006`를 별도 `second-user-test-integration` worktree에서 검증했다. 자체 `npm ci` 이후 **519개 검사와 TypeScript/Vite 빌드**, 통합 소스와 실제 검증한 배포본 **69개 소스 일치**가 통과했다. 원본은 두 worktree의 `artifacts/second-review-integration-check.log`, 전체 절차는 개발 worktree의 `artifacts/second-review-integration-result.json`이다. 이 증거 문서만 추가한 뒤 main에 fast-forward하며 푸시·사용자 앱 교체·네이티브 실행은 하지 않는다.
