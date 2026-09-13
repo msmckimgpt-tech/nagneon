@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {conversationRhythm} from '../server/conversation-rhythm.js';
 import {liveViewerContext} from '../server/viewer-context.js';
 import {Studio} from '../server/studio.js';
+import {Audience} from '../server/audience.js';
 import {OpenAIProvider} from '../server/provider.js';
 import {Settings} from '../server/schema.js';
 import {defaults} from '../shared/defaults.js';
@@ -54,7 +55,10 @@ test('fictional questions keep provenance and do not assign subsequent real spee
 });
 
 test('real Studio assembles the new listening context and provider keeps it separate from special responses',async t=>{
-  let now=100000,args;const s=new Studio({settings:{...defaults,mode:'live',lurkRatio:0,chatPace:8},now:()=>now,random:()=>.5,provider:{status:()=>({configured:true}),react:async request=>{args=request;return {observation:{game:'Synthetic',scene:'',confidence:0,excitement:0,messages:[]}};}}});clearInterval(s.timer);t.after(()=>s.close());s.start();
+  // Studio and Audience have independent random sources. Keep this viewer
+  // present for a context-assembly test even if ambient randomness selects away.
+  const audience=new Audience(undefined,()=>{},()=>.5);
+  let now=100000,args;const s=new Studio({audience,settings:{...defaults,mode:'live',lurkRatio:0,chatPace:8},now:()=>now,random:()=>.5,provider:{status:()=>({configured:true}),react:async request=>{args=request;return {observation:{game:'Synthetic',scene:'',confidence:0,excitement:0,messages:[]}};}}});clearInterval(s.timer);t.after(()=>s.close());s.start();
   s.addMessage('new','어떤 목표인가요?');now+=1000;s.addMessage('streamer','깃발에 도착하면 돼요.','streamer');now+=20000;await s.react({speech:'제가 이어서 이야기하자면 이제'});
   assert.equal(args.viewerContext.new.conversationRhythm.questionThreads[0].followingStreamerSpeech[0].text,'깃발에 도착하면 돼요.');assert.equal(args.viewerContext.new.conversationRhythm.turn,'possibly-continuing');assert.equal(s.queue.length,0);
   const p=new OpenAIProvider({}),live=p.payload(args),special=p.payload({...args,special:{kind:'interview'}}),off=p.payload({...args,offStream:true});

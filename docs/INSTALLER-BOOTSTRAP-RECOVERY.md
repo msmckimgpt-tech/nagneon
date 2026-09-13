@@ -34,6 +34,8 @@
 
 해당 시험은 HTTP 조기 응답/통신 실패를 즉시 관찰하고, 단계별 제한 시간과 실패 시 정리를 갖추도록 보완했다. 합성 통신 오류를 주입한 실행은 약 1.6초 안에 코드1과 정확한 `SYNTHETIC_LOCAL_AUDIO_TRANSPORT_FAILURE`로 종료했다(`speech-transport-failure-injection.log`). 실패를 재시도하거나 통과 처리하지 않는다. 이후 전체 검사가 통과했으며 음성 제품 코드 변경은 없다.
 
+첫 통합 검사에서는 별개의 대화 문맥 시험이 대상 관객의 무작위 이탈로 실패했다. `Studio.random`만 고정되고 `Audience.random`은 고정되지 않은 시험 구성의 문제였다. 전역 난수를 0으로 강제한 별도 시험 프로세스에서 동일 실패를 재현하고, 해당 문맥 시험에만 난수가 고정된 `Audience`를 주입했다. 제품의 참여/이탈 확률이나 검증 단언은 변경하지 않았다. `conversation-random-before-fix.log`와 `conversation-random-after-fix.log`, 통합 worktree의 `installer-bootstrap-integration-check.log`에 근거를 보존한다.
+
 ## 남은 수용 기준
 
 이 결과는 **프로세스 중단으로 남은 빈 제어 폴더의 재시도**에 대한 것이다. 전원 차단이나 파일시스템의 디렉터리 항목 내구성을 검증한 결과가 아니다. 첫 원자적 저널 쓰기 도중 부분 임시 파일이 남은 경우는 자동 복구하지 않는다. 소유 근거 없는 파일을 이름만 보고 지우지 않는다.
