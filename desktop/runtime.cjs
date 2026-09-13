@@ -3,9 +3,11 @@ const {existsSync}=require('node:fs');
 
 function packagedRuntime(resources){
   const speech=join(resources,'speech');
+  const microphone=join(speech,'microphone-model');
+  const accurate=existsSync(join(microphone,'manifest.json'));
   const runtime={
     codexBin:join(resources,'codex','bin','codex.exe'),
-    speech:{python:join(speech,'python','python.exe'),worker:join(speech,'speech_worker.py'),model:join(speech,'model')},
+    speech:{python:join(speech,'python','python.exe'),worker:join(speech,'speech_worker.py'),model:accurate?microphone:join(speech,'model'),modelName:accurate?'medium':'small'},
     clips:{python:join(speech,'python','python.exe'),worker:join(speech,'clip_inspector.py')},
     sound:{python:join(speech,'python','python.exe'),worker:join(resources,'sound','sound_worker.py'),model:join(resources,'sound','model'),speechModel:join(speech,'model')}
   };
