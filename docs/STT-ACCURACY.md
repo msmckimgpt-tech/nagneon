@@ -37,4 +37,8 @@
 
 ## 적용 상태
 
-main에 코드를 통합하고 검증된 모델을 `G:/dev/ai/00_game_backseat/.models/microphone`에 설치하는 것이 이번 적용 범위다. 외부 push, 설치 EXE 재생성, 사용자 앱 재시작은 수행하지 않는다. 실행 중인 프로세스에는 아직 반영되지 않으며 사용자가 앱을 정상 재실행해야 한다. 그 뒤 실제 발언의 품질과 CPU 부하에서의 지연을 확인해야 한다. [사용자 테스트 제한](USER-TEST-COLLECTION.md)을 유지한다.
+구현 `163c9f6`, 최신 main의 관객 개성 개선까지 통합한 검증 커밋 `8121476`. `server/provider.js` 충돌은 이번 교정 제한과 새 `individualityInstructions`를 함께 보존해 해결했다. 통합 코드에서 `npm run check`: **Node 455통과 + TypeScript/Vite 통과** (`integration-check.log`), Python 7통과 (`python-tests.log`). 원자적 저장소 통합 잠금으로 main의 HEAD/인덱스/미커밋 상태를 재확인하고 fast-forward한다. 외부 push는 하지 않는다.
+
+검증된 모델은 `G:/dev/ai/00_game_backseat/.models/microphone`에 실제 설치했다. `main-model-install.json`의 `changed:true`, 재검증 실행 `main-model-reapply.json`의 `changed:false`를 확인했고 기존 모델을 교체하거나 삭제하지 않았다. 증거 SHA-256 목록은 `accuracy-evidence-sha256.json`이다. 실제 HTTP 모델 선택/전사/채팅 전달 4건은 1,425~1,661ms였다.
+
+설치 EXE 재생성과 사용자 앱 재시작은 수행하지 않는다. 실행 중인 프로세스에는 아직 반영되지 않으며 사용자가 앱을 정상 재실행해야 한다. 그 뒤 실제 발언의 품질과 CPU 부하에서의 지연을 확인해야 한다. [사용자 테스트 제한](USER-TEST-COLLECTION.md)을 유지한다.
