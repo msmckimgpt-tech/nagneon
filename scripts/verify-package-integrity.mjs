@@ -18,6 +18,7 @@ sourceFiles.push('server/world.js','server/audience-autonomy.js','server/audienc
 sourceFiles.push('server/speech-inbox.js','server/chat-quality.js');
 sourceFiles.push('server/transcript-correction.js');
 sourceFiles.push('server/conversation-rhythm.js');
+sourceFiles.push('desktop/overlay-input.cjs','shared/model-call-limits.json');
 for(const file of sourceFiles)if(digest(extractFile(join(folder,'resources/app.asar'),file))!==digest(await readFile(resolve(file))))failures.push('App source differs: '+file);
 if(await hashFile(join(folder,'resources/speech/speech_worker.py'))!==await hashFile('scripts/speech_worker.py'))failures.push('Speech worker differs');
 if(await hashFile(join(folder,'resources/sound/sound_worker.py'))!==await hashFile('scripts/sound_worker.py'))failures.push('Sound worker differs');

@@ -60,3 +60,11 @@
 이번7회는8.910~18.951초, 입력12,233~23,161토큰이었다. 발언 지연의 완전한 해결이나 장기 자연스러움의 합격으로 표현하지 않는다. 직접 질문과 성공에는 반응하고 침묵이 필요한 합성 상황에는 멈춘 것을 확인한 범위다. 실제 게임 화면·물리 마이크·네이티브 UI를 이번에 검사하지 않았다. 다음 사용자 방송에서 질문 반복, 설명 끼어들기, 웃음/문장 리듬, 호명 응답을 다시 확인해야 한다.
 
 사용 중인 앱이나 원본 데이터는 수정·재시작하지 않았다. main 통합 후 기존 `Start-Backseat.cmd`를 사용자가 다시 실행하면 같은 개발 프로필에 반영된다. 패키지/통합 증거는 아래 후속 기록과 해당 작업 트리의 `artifacts/latest-package.json`을 기준으로 구분한다.
+
+## 통합 결과
+
+제품 `d433662` 이후 다른 작업의 호출 한도 확대(`443439a`)와 오버레이 조작 개선(`dfb7331`)이 main에 먼저 들어와, 이를 별도 통합 트리에 보존하여 병합했다. **최종 `d834326`에서274개 검사와 TypeScript/Vite 빌드 통과**, main fast-forward와 변경9개 파일의 바이트 일치 확인. `artifacts/chat-culture-final-integration-result.json`이 통합 기록이고 통합 트리의 `artifacts/chat-culture-final-integration-check-r2.log`가 검사 원본이다. 원격 push·사용자 앱 재시작 없음.
+
+보존한 중간 실패: 최초 통합은 main 변경을 감지하여 공유 폴더를 수정하기 전에 중단했다. 다음 검사는 npm PowerShell shim이 `& npm`의 인수를 잘못 재구성해 `Unknown command: pm`으로 제품 검사 이전에 끝났다. 동일한 npm CLI를 검증된 Node 경로로 실행하여 복구했다. `chat-culture-final-integration-check.log`는 이 실행 오류이며274개 통과 기록과 구분한다.
+
+`release/2026-09-13T05-03-00-839Z`는 말투 변경만 포함한 중간 패키지로, 동시 추가된 호출 한도/오버레이 변경을 포함하지 않는다. `artifacts/chat-culture-intermediate-package.json`에 별도 표시했다. 통합본의 배포 검사는 후속 기록을 따른다.
