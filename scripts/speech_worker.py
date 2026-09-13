@@ -24,7 +24,7 @@ class MicrophoneWhisper(WhisperModel):
 def recognize(model, samples):
     duration = len(samples) / 16000
     frames = 800 if 0 < duration <= 6.5 else 3000
-    options = dict(language='ko', beam_size=1, vad_filter=True, condition_on_previous_text=False)
+    options = dict(language='ko', beam_size=3, vad_filter=True, condition_on_previous_text=False)
     fallback = False
     try:
         model.encoder_frames = frames
@@ -113,12 +113,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--download-only', action='store_true')
     parser.add_argument('--model-path', type=Path)
+    parser.add_argument('--model-name', default='small')
     parser.add_argument('--offline', action='store_true')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     model = MicrophoneWhisper(str(args.model_path) if args.model_path else 'small', device='cpu', compute_type='int8', download_root=None if args.model_path else str(root / '.models'), local_files_only=args.offline, cpu_threads=4)
     emit = lambda value: print(json.dumps(value, ensure_ascii=False), flush=True)
-    emit({'ready': True, 'model': 'small', 'device': 'cpu/int8'})
+    emit({'ready': True, 'model': args.model_name, 'device': 'cpu/int8'})
     if not args.download_only:
         serve(model, sys.stdin, emit)
 

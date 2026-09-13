@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {LocalSpeech} from '../server/local-speech.js';
-function setup(){const c=new EventEmitter();c.stdin=new PassThrough();c.stdout=new PassThrough();c.stderr=new PassThrough();c.kill=()=>c.emit('close');const sent=[];c.stdin.on('data',b=>sent.push(JSON.parse(String(b))));const speech=new LocalSpeech({python:process.execPath},()=>c);speech.start();c.stdout.write('{"ready":true}\n');return {speech,c,sent,emit:value=>c.stdout.write(JSON.stringify(value)+'\n')};}
+function setup(runtime={}){const c=new EventEmitter();c.stdin=new PassThrough();c.stdout=new PassThrough();c.stderr=new PassThrough();c.kill=()=>c.emit('close');const sent=[];let launch;c.stdin.on('data',b=>sent.push(JSON.parse(String(b))));const speech=new LocalSpeech({python:process.execPath,...runtime},(python,args,options)=>{launch={python,args,options};return c;});speech.start();c.stdout.write('{"ready":true}\n');return {speech,c,sent,launch,emit:value=>c.stdout.write(JSON.stringify(value)+'\n')};}
+test('explicit runtime model wins over the installed default and launches offline',()=>{
+  const {speech,launch,emit}=setup({model:'explicit-small-model',modelName:'small'});
+  assert.equal(launch.args[launch.args.indexOf('--model-path')+1],'explicit-small-model');
+  assert.equal(launch.args[launch.args.indexOf('--model-name')+1],'small');assert.ok(launch.args.includes('--offline'));assert.equal(launch.options.env.HF_HUB_OFFLINE,'1');
+  emit({ready:true,model:'small'});assert.equal(speech.model,'small');speech.close();
+});
 test('a cancelled recognition error cannot reject a newer request',async()=>{
   const {speech,sent,emit}=setup();const old=new AbortController();const first=speech.transcribe(Buffer.from('first'),old.signal);old.abort();await assert.rejects(first,/취소/);
   const second=speech.transcribe(Buffer.from('second'),new AbortController().signal);emit({id:sent[0].id,error:'late failure of cancelled audio'});assert.equal(speech.pending.id,sent[1].id);emit({id:sent[1].id,text:'두 번째 음성'});assert.equal((await second).text,'두 번째 음성');speech.close();

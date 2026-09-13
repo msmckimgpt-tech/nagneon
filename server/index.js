@@ -35,7 +35,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   if(provider.check)await provider.check();
   const speech=new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
   const clipInspector=new ClipInspector(runtime.clips);
-  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,audioError:speech.error});
+  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
   const stores=[];
   const useStore=(name,schema,initial)=>{

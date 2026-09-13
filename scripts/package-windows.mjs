@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {packager} from '@electron/packager';
 import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
+import {installMicrophoneModel} from './lib/microphone-model.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
@@ -79,6 +80,9 @@ await writeFile(join(speechTarget,'manifest.json'),JSON.stringify(speechManifest
 await cp(join(root,'scripts/speech_worker.py'),join(resources,'speech/speech_worker.py'));
 await cp(join(root,'scripts/clip_inspector.py'),join(resources,'speech/clip_inspector.py'));
 await cp(join(root,'third-party/whisper'),join(speechTarget,'licenses/whisper'),{recursive:true});
+const accurateModel=join(root,'.models/microphone');
+const accurateStat=await lstat(accurateModel).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+if(accurateStat)await installMicrophoneModel(accurateModel,join(speechTarget,'microphone-model'));
 const payload=[];for(const file of await files(speechTarget))payload.push({path:file,sha256:await hash(join(speechTarget,file))});
 await writeFile(join(speechTarget,'payload-manifest.json'),JSON.stringify(payload,null,2));
 

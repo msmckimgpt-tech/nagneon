@@ -27,6 +27,18 @@ test('contextual correction admits close Korean spelling and spacing while prese
   assert.equal(admitTranscriptCorrection(raw,proposed(raw)),false);
 });
 
+test('unchanged sentence context cannot subsidize a meaning-changing word replacement',()=>{
+  for(const [before,after] of [
+    ['힘을 하려면 또 밥을 먹고 해야 하니까','게임을 하려면 또 밥을 먹고 해야 하니까'],
+    ['바뀌어서 들리지는 않나 보네요.','벗겨서 들리지는 않나 보네요.'],
+    ['그렇습니다','네, 감사합니다'],
+  ]){
+    assert.equal(admitTranscriptCorrection(before,proposed(after)),false);
+    assert.equal(admitTranscriptCorrection('오늘 방송에서 '+before+' 라고 말씀드렸어요.',proposed('오늘 방송에서 '+after+' 라고 말씀드렸어요.')),false);
+  }
+  assert.equal(admitTranscriptCorrection(raw,proposed(corrected)),true);
+});
+
 test('one audience call annotates microphone text without overwriting the original or duplicating retries',async t=>{
   let payload;const {s,calls}=make(t,{react:args=>{payload=args;return observation([{messageId:args.transcriptCandidates[0].messageId,...proposed(corrected)}]);}});
   const input=receive(s);assert.equal(s.messages[0].text,raw);await s.react({});

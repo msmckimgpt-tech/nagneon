@@ -14,6 +14,13 @@ export function admitTranscriptCorrection(original,proposal){
   if(requestsAdvice(original,'on-request')!==requestsAdvice(corrected,'on-request'))return false;
   if(/[?？]/.test(original)!==/[?？]/.test(corrected))return false;
   if(Math.min(left.length,right.length)/Math.max(left.length,right.length)<.7)return false;
-  const a=left.normalize('NFD'),b=right.normalize('NFD');
-  return distance(a,b)<=Math.max(1,Math.floor(Math.max(a.length,b.length)*.32));
+  // Matching context must not pay for rewriting the one meaningful word:
+  // a long sentence previously let "힘" become "게임" at high confidence.
+  // Compare the changed syllables, while allowing close spelling repairs
+  // such as "자바" -> "잡아" (two decomposed Hangul edits).
+  let start=0,endLeft=left.length,endRight=right.length;
+  while(start<endLeft&&start<endRight&&left[start]===right[start])start++;
+  while(endLeft>start&&endRight>start&&left[endLeft-1]===right[endRight-1]){endLeft--;endRight--;}
+  const a=left.slice(start,endLeft).normalize('NFD'),b=right.slice(start,endRight).normalize('NFD');
+  return distance(a,b)<=Math.max(2,Math.floor(Math.max(a.length,b.length)*.32));
 }

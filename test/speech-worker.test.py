@@ -51,6 +51,7 @@ class SpeechWorkerTests(unittest.TestCase):
             text, policy = worker.recognize(model, np.zeros(int(seconds*16000)))
             self.assertEqual(text, '안녕하세요')
             self.assertEqual(model.calls[0][0], frames)
+            self.assertEqual(model.calls[0][1]['beam_size'], 3)
             self.assertEqual(model.encoder_frames, 3000)
             self.assertEqual(policy['fallback'], False)
             self.assertEqual('temperature' in model.calls[0][1], seconds <= 6.5)
