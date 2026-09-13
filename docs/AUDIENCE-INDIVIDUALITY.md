@@ -58,3 +58,5 @@ Computer Use 중단 지침을 유지한다. 네이티브 앱이나 사용자 실
 생성된 원래 이름과 저장 이름이 모두 같았고 여섯 이름이 중복되지 않았다. 사회성은 .16~.84, 숙련도는 .25~.75로 구성됐고 제시된 수치와 일치했다. 숫자가 다양하다는 이유로 대화 품질을 판정하지 않았으며 실제 답변에서 각자의 선택이 나타나는지도 확인했다.
 
 그룹의 같은 질문에는 토리와 납작콩이 각자의 관심으로 답했다. 새 게임을 켜겠다는 말에는 모루가 '뭐 켜실 거예요?'라고 짧게 물었고, 집중하겠다는 말에는 응답이 없었다. 세 호출 모두 실제 일반 관객 네 명이 모델 입력에 있었다. 원본에서 후원·클립·음성 교정 제안은 최종 18회 모두 비어 있었다. 작은 합성 표본에서 확인한 결과이며 장기 자연스러움이나 지연 합격으로 확대하지 않는다.
+
+제품 커밋 `c48ffdf6129e15fcfe485cdebe0579d465928627`은 전용 통합 worktree `G:/dev/ai/00_game_backseat-worktrees/audience-individuality-integration`에서 자체 `npm ci` 후 전체 **449개 테스트와 TypeScript/Vite 빌드**가 통과했다. 원격 main과 로컬 main이 작업 기준에서 변하지 않았으며, 인덱스·작업 폴더가 깨끗한 것을 다시 확인한 뒤 이 코드와 본 기록만 fast-forward했다. 원본은 양 worktree의 `artifacts/individuality-integration-check.log`, 작업 결과는 개발 worktree의 `artifacts/individuality-integration-result.json`이다. 푸시·패키지 교체·사용자 앱 재시작은 하지 않았다.
