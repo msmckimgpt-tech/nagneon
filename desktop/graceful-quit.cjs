@@ -7,7 +7,12 @@ function installGracefulQuit(app,close,{onError=error=>console.error('BACKSEAT ì
     event.preventDefault();
     if(quitting)return;
     quitting=true;
-    pending=Promise.resolve().then(close).then(()=>{
+    pending=Promise.resolve().then(close).then(async()=>{
+      // A fast drain can finish in the will-quit microtask checkpoint, before
+      // Electron resets its native is_quitting_ flag after preventDefault().
+      // Quit() ignores reentrant calls while that flag is set. Leave the event
+      // callback completely before issuing the final, fully drained quit.
+      await new Promise(resolve=>setImmediate(resolve));
       finished=true;app.quit();
     },error=>{
       // Do not report a failed drain as a successful, clean exit.

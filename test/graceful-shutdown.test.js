@@ -60,3 +60,17 @@ test('native cleanup failure is reported with an unsuccessful exit',async()=>{
   const app=appFixture(),errors=[];const shutdown=installGracefulQuit(app,()=>{throw Error('synthetic failure');},{onError:error=>errors.push(error.message)});
   app.quit();await shutdown.pending;assert.deepEqual(errors,['synthetic failure']);assert.deepEqual(app.exits,[1]);
 });
+
+test('a fast cleanup waits until the native quit event unwinds before retrying',async()=>{
+  const app=new EventEmitter();let nativeQuitting=false;const exits=[];
+  app.quit=()=>{
+    if(nativeQuitting)return;
+    nativeQuitting=true;const event={prevented:false,preventDefault(){this.prevented=true;}};
+    app.emit('will-quit',event);
+    // Electron's C++ observer resets its flag after the JS callback's
+    // microtasks. A promise-only retry can still be inside that observer.
+    if(event.prevented)setImmediate(()=>{nativeQuitting=false;});else exits.push(0);
+  };
+  const shutdown=installGracefulQuit(app,()=>Promise.resolve());app.quit();await shutdown.pending;
+  assert.deepEqual(exits,[0]);
+});
