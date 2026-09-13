@@ -13,3 +13,12 @@ test('old successful audio and unknown IDs do not resolve the current recognizer
 });
 test('worker startup failures invalidate readiness and reject the pending request',async()=>{const {speech,emit}=setup();const job=speech.transcribe(Buffer.from('current'),new AbortController().signal);emit({error:'model unavailable'});await assert.rejects(job,/model unavailable/);assert.equal(speech.ready,false);assert.throws(()=>speech.transcribe(Buffer.from('next'),new AbortController().signal),/model unavailable/);speech.close();});
 test('worker close releases pending request without leaving a timeout rejection',async()=>{const {speech,c}=setup();const job=speech.transcribe(Buffer.from('current'),new AbortController().signal);c.emit('close');await assert.rejects(job,/종료/);assert.equal(speech.pending,null);assert.equal(speech.ready,false);});
+test('a failed audio job keeps the worker ready and the next result includes latency evidence',async()=>{
+  const {speech,sent,emit}=setup();
+  const failed=speech.transcribe(Buffer.from('invalid'),new AbortController().signal);
+  emit({id:sent[0].id,error:'로컬 음성 인식에 실패했습니다.'});await assert.rejects(failed,/실패/);
+  assert.equal(speech.ready,true);assert.equal(speech.pending,null);
+  const next=speech.transcribe(Buffer.from('valid'),new AbortController().signal);
+  const timing={encoderWindowMs:8000,fallback:false,decodeMs:10,recognitionMs:1200,cuesMs:5,processingMs:1215};
+  emit({id:sent[1].id,text:'다음 발언',timing});assert.deepEqual(await next,{text:'다음 발언',cues:undefined,timing});speech.close();
+});

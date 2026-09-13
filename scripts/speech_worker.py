@@ -2,28 +2,52 @@
 import argparse
 import base64
 import json
+import io
 from pathlib import Path
 import sys
-import tempfile
+import time
 import av
 import numpy as np
 from faster_whisper import WhisperModel
+from faster_whisper.audio import decode_audio
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--download-only', action='store_true')
-parser.add_argument('--model-path', type=Path)
-parser.add_argument('--offline', action='store_true')
-args = parser.parse_args()
-root = Path(__file__).resolve().parent.parent
-model = WhisperModel(str(args.model_path) if args.model_path else 'small', device='cpu', compute_type='int8', download_root=None if args.model_path else str(root / '.models'), local_files_only=args.offline, cpu_threads=4)
-print(json.dumps({'ready': True, 'model': 'small', 'device': 'cpu/int8'}), flush=True)
-if args.download_only:
-    sys.exit(0)
+class MicrophoneWhisper(WhisperModel):
+    # faster-whisper 1.2.1 pads every encoder input to 3000 frames (30s).
+    # CT2 4.8.2 supports shorter inputs. Keep all audio plus at least 1s
+    # of padding; never shorten an unbounded/long upload or change the model.
+    encoder_frames = 3000
+
+    def encode(self, features):
+        return super().encode(features[..., :self.encoder_frames])
+
+
+def recognize(model, samples):
+    duration = len(samples) / 16000
+    frames = 800 if 0 < duration <= 6.5 else 3000
+    options = dict(language='ko', beam_size=1, vad_filter=True, condition_on_previous_text=False)
+    fallback = False
+    try:
+        model.encoder_frames = frames
+        # A low-confidence short pass gets the original 30s context and the
+        # original temperature fallback, rather than repeated short decodes.
+        segments, info = model.transcribe(samples, **options, **({'temperature': 0.0} if frames < 3000 else {}))
+        segments = list(segments)
+        if frames < 3000 and ((not segments and info.duration_after_vad > .2) or any(
+                s.avg_logprob < -1 or s.compression_ratio > 2.4 or s.no_speech_prob >= .65
+                for s in segments)):
+            fallback = True
+            model.encoder_frames = 3000
+            segments, info = model.transcribe(samples, **options)
+            segments = list(segments)
+        text = ' '.join(s.text.strip() for s in segments if s.no_speech_prob < .65)
+        return text[:3000], {'encoderWindowMs': frames * 10, 'fallback': fallback}
+    finally:
+        model.encoder_frames = 3000
 
 def voice_cues(path, text):
     """Acoustic descriptors, deliberately not an emotion/identity classifier."""
     frames = []
-    with av.open(str(path)) as container:
+    with av.open(path) as container:
         resampler = av.AudioResampler(format='flt', layout='mono', rate=8000)
         for frame in container.decode(audio=0):
             for out in resampler.resample(frame):
@@ -51,18 +75,53 @@ def voice_cues(path, text):
             'pitchVariation': variation, 'charactersPerSecond': rate,
             'delivery': ('큰 음량' if db > -20 else '작은 음량' if db < -36 else '보통 음량') + (' · 빠른 발화' if rate > 6 else '') + (' · 음높이 변화 큼' if variation and variation > .25 else ''),
             'confidence': 'low', 'caveat': '마이크 설정과 잡음의 영향을 받는 음성 단서이며 감정 판정이 아님'}
-for line in sys.stdin:
-    path = None
+def process_job(model, job):
+    started = time.perf_counter()
+    audio = base64.b64decode(job['audio'], validate=True)
+    samples = decode_audio(io.BytesIO(audio))
+    decoded = time.perf_counter()
+    text, policy = recognize(model, samples)
+    recognized = time.perf_counter()
+    # Descriptors are optional; their failure must not discard recognized speech.
     try:
-        job = json.loads(line)
-        with tempfile.NamedTemporaryFile(prefix='backseat-audio-', suffix='.webm', delete=False) as file:
-            path = Path(file.name)
-            file.write(base64.b64decode(job['audio'], validate=True))
-        segments, info = model.transcribe(str(path), language='ko', beam_size=1, vad_filter=True, condition_on_previous_text=False)
-        text = ' '.join(s.text.strip() for s in segments if s.no_speech_prob < 0.65)
-        print(json.dumps({'id': job['id'], 'text': text[:3000], 'cues': voice_cues(path, text)}, ensure_ascii=False), flush=True)
+        cues = voice_cues(io.BytesIO(audio), text)
     except Exception:
-        print(json.dumps({'error': '로컬 음성 인식에 실패했습니다.'}, ensure_ascii=False), flush=True)
-    finally:
-        if path is not None:
-            path.unlink(missing_ok=True)
+        cues = None
+    finished = time.perf_counter()
+    return {'id': job['id'], 'text': text, 'cues': cues,
+            'timing': {**policy, 'decodeMs': round((decoded - started) * 1000),
+                       'recognitionMs': round((recognized - decoded) * 1000),
+                       'cuesMs': round((finished - recognized) * 1000),
+                       'processingMs': round((finished - started) * 1000)}}
+
+
+def serve(model, lines, emit):
+    for line in lines:
+        job = {}
+        try:
+            job = json.loads(line)
+            if not isinstance(job, dict):
+                job = {}
+                raise ValueError('Invalid job')
+            emit(process_job(model, job))
+        except Exception:
+            # Job errors must not be mistaken for fatal model startup errors.
+            emit({'id': job.get('id'), 'error': '로컬 음성 인식에 실패했습니다.'})
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--download-only', action='store_true')
+    parser.add_argument('--model-path', type=Path)
+    parser.add_argument('--offline', action='store_true')
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parent.parent
+    model = MicrophoneWhisper(str(args.model_path) if args.model_path else 'small', device='cpu', compute_type='int8', download_root=None if args.model_path else str(root / '.models'), local_files_only=args.offline, cpu_threads=4)
+    emit = lambda value: print(json.dumps(value, ensure_ascii=False), flush=True)
+    emit({'ready': True, 'model': 'small', 'device': 'cpu/int8'})
+    if not args.download_only:
+        serve(model, sys.stdin, emit)
+
+
+if __name__ == '__main__':
+    main()

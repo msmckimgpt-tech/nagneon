@@ -8,12 +8,15 @@ import {admitTranscriptCorrection} from '../server/transcript-correction.js';
 import {ConversationJournal,emptyJournal} from '../server/conversation-journal.js';
 import {JournalStore} from '../server/journal-store.js';
 import {Studio} from '../server/studio.js';
+import {Audience} from '../server/audience.js';
 import {defaults} from '../shared/defaults.js';
 
 const raw='몬스터를 자바서 퀘스트를 끝내는 거예요.',corrected='몬스터를 잡아서 퀘스트를 끝내는 거예요.';
 const proposed=text=>({text,confidence:.98,reason:'몬스터를 잡는다는 문맥의 음운이 비슷한 오인식'});
 const observation=(transcriptCorrections=[])=>({game:'Synthetic',scene:'합성 테스트',confidence:.8,excitement:.2,transcriptCorrections,messages:[{personaId:'momo',text:'오 하나 끝났네요 ㅎㅎ',kind:'chat',spoiler:false}]});
-function make(t,{react,journal,enabled=true}={}){let calls=0;const s=new Studio({settings:{...defaults,mode:'live',lurkRatio:0,contextualTranscription:enabled},now:()=>100000,random:()=>.5,journal,provider:{status:()=>({configured:true}),react:async args=>{calls++;return {observation:await react(args)};}}});clearInterval(s.timer);s.start();t.after(()=>s.close());return {s,calls:()=>calls};}
+// Correction behavior must not depend on random audience eligibility. Studio
+// and Audience own separate random sources; include all present test viewers.
+function make(t,{react,journal,enabled=true}={}){let calls=0;const s=new Studio({audience:new Audience(undefined,()=>{},()=>.5),settings:{...defaults,mode:'live',lurkRatio:0,chatPace:8,contextualTranscription:enabled},now:()=>100000,random:()=>.5,journal,provider:{status:()=>({configured:true}),react:async args=>{calls++;return {observation:await react(args)};}}});clearInterval(s.timer);s.start();t.after(()=>s.close());return {s,calls:()=>calls};}
 const receive=(s,text=raw,source='microphone')=>{const body={id:randomUUID(),sessionId:s.sessionId,text,source};return {body,...s.receiveSpeech(body)};};
 
 test('contextual correction admits close Korean spelling and spacing while preserving intent',()=>{
