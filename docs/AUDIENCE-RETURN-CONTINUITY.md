@@ -45,3 +45,5 @@
 | 모델 응답 완료 전 퇴장 | 모델이 답을 만들었어도 실제 공개·대기 채팅에는 없음 |
 
 전체 최종 응답을 읽었으며 불필요한 유입·후원·핫클립·음성 교정은 없었다. 검토 자료는 `artifacts/return-review-input.json`, 판단과 한계는 `artifacts/return-model-review.json`에 남겼다. 각 호출은 약 8.2~11.7초였으며, 합성 시계와 사건을 사용했으므로 실제 방송 지연이나 장기 자연스러움의 합격 근거로 사용하지 않는다. 사용자 실행본 교체는 하지 않았다. 최종 main 통합은 별도 worktree에서 필수 검사를 다시 통과한 뒤 기록한다.
+
+최종 후보 `ca87f55040681f563c1b4aa3fcb07f612ed24c4f`는 전용 통합 worktree `G:/dev/ai/00_game_backseat-worktrees/audience-return-integration`에서 독립적인 `npm ci` 후 **471개 테스트와 TypeScript/Vite 빌드**를 통과했다. 병행 음성 개선 20개 파일의 Git blob이 기준 main과 동일함을 확인했고, 코드와 본 기록을 통합 대상으로 확정했다. 원본은 양 worktree의 `artifacts/return-integration-check.log`이며, 실제 main fast-forward 및 잠금 해제 결과는 개발 worktree의 `artifacts/return-integration-result.json`에 별도 기록한다. 푸시·새 패키지 교체·사용자 앱 재시작은 수행하지 않는다.
