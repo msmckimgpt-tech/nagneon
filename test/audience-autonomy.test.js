@@ -23,6 +23,25 @@ function start(service){service.studio.configure({...service.studio.settings,mod
 async function meet(service){return service.studio.autonomy.arrive(randomUUID());}
 const raw=s=>JSON.parse(readFileSync(join(s.dataDir,'world.json'),'utf8'));
 
+test('first meeting waits behind an active observation without a charge or duplicate generation',async t=>{
+  let release,calls=0;const service=await open(t,{provider:fake(async args=>{calls++;return args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r);})});start(service);
+  const s=service.studio,observation=s.react({speech:'게임을 시작할게요.'});while(!release)await turn();
+  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});while(!s.autonomy.waiting)await turn();
+  assert.equal(raw(service).economy.balance,60);assert.equal(raw(service).autonomy.receipts[requestId],undefined);assert.equal(s.autonomy.snapshot().waiting,true);
+  const duplicate=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(duplicate.status,'pending');assert.equal(duplicate.queued,true);
+  assert.equal((await req(service,'audience/arrive',{requestId:randomUUID()})).status,409);
+  release(result());await observation;const receipt=await(await meeting).json();assert.equal(receipt.status,'completed');assert.equal(calls,2);assert.equal(raw(service).economy.balance,10);assert.equal(s.settings.personas.filter(p=>!p.system).length,1);assert.equal(s.autonomy.snapshot().pending,false);
+  const retry=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(retry.personaId,receipt.personaId);assert.equal(calls,2);
+});
+
+test('stopping while a first meeting waits cancels the wait with no charge and leaves the ID retryable',async t=>{
+  let release;const service=await open(t,{provider:fake(async args=>args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r))});start(service);
+  const s=service.studio,observation=s.react({speech:'조금 기다려주세요.'});while(!release)await turn();
+  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});while(!s.autonomy.waiting)await turn();
+  s.stop();const response=await meeting;assert.equal(response.status,409);assert.equal(raw(service).economy.balance,60);assert.equal(s.autonomy.snapshot().pending,false);assert.equal(s.listenerCount('state'),0);assert.equal(raw(service).autonomy.receipts[requestId],undefined);
+  release(result());await observation;s.start();const receipt=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(receipt.status,'completed');assert.equal(raw(service).economy.balance,10);
+});
+
 test('fresh profile has no hidden waiting audience; settings/API cannot create or edit one',async t=>{
   const service=await open(t);const initial=await(await req(service,'state')).json();
   assert.equal(initial.settings.personas.filter(p=>!p.system).length,0);assert.deepEqual(raw(service).autonomy.retired,{});

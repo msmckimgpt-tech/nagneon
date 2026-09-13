@@ -15,6 +15,7 @@ import {SoundScene} from './sound-scene.js';
 import { ConversationJournal } from './conversation-journal.js';
 import {AudienceAutonomy} from './audience-autonomy.js';
 import {Ambient} from './ambient.js';
+import {requestsAdvice} from './advice-intent.js';
 
 export class Studio extends EventEmitter {
   constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
@@ -103,6 +104,7 @@ export class Studio extends EventEmitter {
   presentWitnesses(){if(this.settings.mode!=='live')return [];return this.settings.personas.filter(p=>p.enabled&&['active','lurking'].includes(this.audience.presence[p.id])&&this.audience.data.members[p.id]?.joinedAt>=this.startedAt).map(p=>p.id);}
   async react({image,speech=''}){
     if(!this.running)throw new Error('방송을 먼저 시작하세요.');if(this.busy)return {skipped:'busy'};
+    if(this.autonomy?.waiting)return {skipped:'audience-arrival'};
     if(this.now()<this.retryAt)return {skipped:'backoff'};
     if(this.now()-this.lastRequest<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
@@ -116,7 +118,7 @@ export class Studio extends EventEmitter {
       }else{
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
-        const adviceRequested=/훈수|도와|힌트|어떻게|공략|막혔|help/i.test(speech)&&!/(훈수|힌트|공략).*(그만|금지|하지|싫)|그만.*훈수/i.test(speech)&&this.settings.adviceMode!=='never';
+        const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
         this.tickAudience();const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0);
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};

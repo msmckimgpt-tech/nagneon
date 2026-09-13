@@ -30,7 +30,9 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=stream;pictureRef.current=options.picture;setPicture(options.picture);setOutputStream(stream.getAudioTracks().length?stream:null);if(options.systemAudio&&!stream.getAudioTracks().length)errorRef.current('Windows 출력 소리를 받지 못했습니다. 소리 연결을 다시 선택해주세요.');for(const track of stream.getAudioTracks())track.onended=()=>{if(screenStream.current===stream)stopSound();};
       const capture=document.createElement('video');capture.muted=true;capture.srcObject=stream;captureVideo.current=capture;await capture.play();
       if(ticket!==captureEpoch.current)return;
-      const v=video.current;if(v){v.srcObject=stream;await v.play();}if(ticket!==captureEpoch.current)return;setSharing(options.picture);stream.getVideoTracks()[0].onended=()=>{if(screenStream.current===stream)stopScreen();};
+      // The tab's preview can disappear while play() is pending. Only the
+      // independent capture player owns sharing; preview teardown is harmless.
+      const v=video.current;if(v){v.srcObject=stream;void v.play().catch(()=>{});}if(ticket!==captureEpoch.current)return;setSharing(options.picture);stream.getVideoTracks()[0].onended=()=>{if(screenStream.current===stream)stopScreen();};
     }catch(e){if(ticket===captureEpoch.current){stopScreen();errorRef.current(e instanceof Error?e.message:'화면 공유를 시작하지 못했습니다.');}}
   }
   function frame(){const v=captureVideo.current;if(!pictureRef.current||!screenStream.current||!v?.videoWidth)return undefined;const canvas=document.createElement('canvas');canvas.width=Math.min(1280,v.videoWidth);canvas.height=Math.round(v.videoHeight*canvas.width/v.videoWidth);canvas.getContext('2d')!.drawImage(v,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',0.65);}

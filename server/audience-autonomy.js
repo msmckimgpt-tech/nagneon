@@ -10,7 +10,27 @@ export class AudienceAutonomy {
   constructor(studio,world){this.studio=studio;this.world=world;this.lastTick=0;this.nextCheck=0;this.lastSaved=0;this.seconds=world.data.autonomy.broadcastSeconds;this.pending=null;}
   start(){this.lastTick=this.studio.now();this.lastSaved=this.lastTick;this.nextCheck=this.lastTick+60000;}
   stop(){if(this.seconds!==this.world.data.autonomy.broadcastSeconds)this.world.change(d=>{d.autonomy.broadcastSeconds=this.seconds;});}
-  snapshot(){return {pending:!!this.pending,price:ARRIVAL_PRICE,broadcastSeconds:Math.floor(this.seconds),maxViewers:39};}
+  snapshot(){return {pending:!!(this.pending||this.waiting),waiting:!!this.waiting&&!this.pending,price:ARRIVAL_PRICE,broadcastSeconds:Math.floor(this.seconds),maxViewers:39};}
+  async requestArrival(requestId){
+    z.string().uuid().parse(requestId);const s=this.studio;
+    if(this.world.data.autonomy.receipts[requestId])return this.arrive(requestId);
+    if(this.waiting){if(this.waiting===requestId)return {id:requestId,status:'pending',queued:true};throw new Error('먼저 요청한 관객과의 만남을 기다려주세요.');}
+    if(!s.busy)return this.arrive(requestId);
+    if(!s.running||s.settings.mode!=='live'||this.pending)throw new Error('실제 AI 방송에서 현재 만남이 끝난 뒤 요청해주세요.');
+    // A user click may race the regular observation timer. Wait for that one
+    // response without charging, and keep the next observation from overtaking.
+    const signal=s.controller.signal;this.waiting=requestId;s.publish();
+    try{
+      await new Promise((resolve,reject)=>{
+        const cleanup=()=>{clearTimeout(timer);s.removeListener('state',check);signal.removeEventListener('abort',abort);};
+        const abort=()=>{cleanup();reject(new Error('방송이 끝나 첫 만남 대기를 취소했습니다. 포인트는 사용하지 않았습니다.'));};
+        const check=()=>{if(signal.aborted||!s.running){abort();return;}if(!s.busy){cleanup();resolve();}};
+        const timer=setTimeout(()=>{cleanup();reject(new Error('현재 응답 대기가 길어 첫 만남을 취소했습니다. 포인트는 사용하지 않았습니다.'));},95000);
+        s.on('state',check);signal.addEventListener('abort',abort,{once:true});check();
+      });
+      return await this.arrive(requestId);
+    }finally{this.waiting=null;s.publish();}
+  }
   configure(input){
     const s=this.studio;
     // Old clients may echo the public roster, but cannot use it as a write API.
@@ -80,7 +100,7 @@ export class AudienceAutonomy {
     const s=this.studio,now=s.now();this.seconds+=Math.min(2,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;
     if(now-this.lastSaved>=60000){this.world.change(d=>{d.autonomy.broadcastSeconds=this.seconds;});this.lastSaved=now;}
     if(now<this.nextCheck)return;this.nextCheck=now+60000;
-    if(s.busy||this.pending||s.calls>=s.settings.maxCalls||s.settings.personas.length>=40||now-this.world.data.autonomy.lastArrivalAt<300000)return;
+    if(s.busy||this.pending||this.waiting||s.calls>=s.settings.maxCalls||s.settings.personas.length>=40||now-this.world.data.autonomy.lastArrivalAt<300000)return;
     // No catch-up bursts after suspend, no waiting character pool. Rates are
     // simulation choices: a 3% chance/minute after ten minutes of actual uptime.
     const used=new Set(Object.values(this.world.data.autonomy.receipts).filter(r=>r.status==='completed').map(r=>r.source.clipId));

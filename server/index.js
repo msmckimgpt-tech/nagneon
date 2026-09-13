@@ -95,7 +95,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.put('/api/settings',(req,res)=>{studio.configure(req.body);res.json(studio.state());});
   app.post('/api/audience/arrive',async(req,res)=>{
     const {requestId}=z.object({requestId:z.string().uuid()}).strict().parse(req.body);
-    const {source,...receipt}=await studio.autonomy.arrive(requestId);res.json(receipt);
+    const {source,...receipt}=await studio.autonomy.requestArrival(requestId);res.json(receipt);
   });
   app.put('/api/audience/:id/note',(req,res)=>res.json(studio.autonomy.note(z.string().max(40).parse(req.params.id),z.object({text:z.string().max(2000)}).strict().parse(req.body).text)));
   app.delete('/api/audience/:id',(req,res)=>res.json(studio.autonomy.remove(z.string().max(40).parse(req.params.id))));
