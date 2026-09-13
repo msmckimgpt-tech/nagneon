@@ -53,7 +53,7 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Public context excludes everyone's personal memories. Each speaking persona
 // receives its own memory and only chat/previous frames after its latest entry.
 // Packets still share one model call; this is provenance, not secret isolation.
-export function liveViewerContext(audience,personas,history,previous,{journal,speech='',sound,now=Date.now()}={}){
+export function liveViewerContext(audience,personas,history,previous,{journal,speech='',sound,now=Date.now(),viewing}={}){
   const packets={};
   for(const p of personas){
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
@@ -63,6 +63,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,sp
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[])}:{}),
       chatHistory:witnessed.slice(-35),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
+      watchTiming:{receivedAt:now,...(viewing?.timing[p.id]||{}),previousAnalysisAgeSeconds:Number.isFinite(joinedAt)&&previous?.at>=joinedAt&&previous.at<=now?Math.floor((now-previous.at)/1000):null},
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null
     };
   }

@@ -32,7 +32,7 @@ test('shared short cheers remain possible, while one person cannot spam the same
 
 test('live acceptance filters paraphrases in the same batch and across frames',async t=>{
   const {s,advance}=studio(t,async()=>({observation:observation([chat('눈이 정말 많이 쌓였네요 ㅋㅋ'),chat('눈이 정말 많이 쌓였네!','pop'),chat('ㅋㅋㅋ','gg')])}));
-  await s.react({});assert.equal(s.queue.length,2);advance();s.pump();s.pump();advance();await s.react({});assert.equal(s.queue.filter(m=>m.text.startsWith('눈이')).length,0);assert.ok(s.queue.some(m=>m.text==='ㅋㅋㅋ'));
+  await s.react({image:'snow-frame-one'});assert.equal(s.queue.length,2);advance();s.pump();s.pump();advance();await s.react({image:'snow-frame-two'});assert.equal(s.queue.filter(m=>m.text.startsWith('눈이')).length,0);assert.ok(s.queue.some(m=>m.text==='ㅋㅋㅋ'));
 });
 
 test('HTTP speech arrives while visual AI is blocked, cancels stale analysis and retries exactly once',async t=>{

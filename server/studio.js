@@ -19,6 +19,7 @@ import {requestsAdvice} from './advice-intent.js';
 import {SpeechInbox} from './speech-inbox.js';
 import {repeatedChat} from './chat-quality.js';
 import {admitTranscriptCorrection} from './transcript-correction.js';
+import {ViewingContinuity,SCREEN_REACTION_TTL_MS} from './viewing-continuity.js';
 
 export class Studio extends EventEmitter {
   constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
@@ -28,10 +29,10 @@ export class Studio extends EventEmitter {
     this.clips=clips||new Clips({now});this.clipFeatures=new ClipFeatures(this,this.clips);
     this.training=new TrainingRun({now});this.trainingMessages=[];this.director=new Director(this,{data:directorData,save:saveDirector});
     this.seasons=new StorySeasons(this,{data:seasonsData,save:saveSeasons});
-    this.sound=new SoundScene(this);this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
+    this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
   }
-  resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.ambient?.reset();this.sound?.stop();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
+  resetCounters(){this.speechInbox=new SpeechInbox();this.liveReaction=null;this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy,lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
   receiveSpeech({id,sessionId,text,source='keyboard'}){
@@ -109,17 +110,18 @@ export class Studio extends EventEmitter {
     }
     if(action==='clear'){this.journal.forget(this.messages.map(m=>m.id));this.speechInbox.clear();this.messages=[];this.queue=[];this.log('채팅 비우기');}this.publish();
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other'){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:obs.positiveMoment,at:observedAt};
     let delay=0;
     for(const m of obs.messages.slice(0,this.settings.chatPace)){
+      if(origin==='live'&&Number.isFinite(expiresAt)&&this.now()>=expiresAt)continue;
       const p=this.settings.personas.find(p=>p.id===m.personaId && p.enabled);
       const blocked=this.settings.blockedWords.some(w=>m.text.normalize('NFKC').toLocaleLowerCase().includes(w.normalize('NFKC').toLocaleLowerCase()));
       const recent=[...this.messages.slice(-60),...this.queue];
       const duplicate=origin==='live'?repeatedChat(m,recent,this.now()):recent.some(x=>x.text===m.text);
       if(!p || blocked || duplicate || (m.spoiler&&this.settings.spoilerGuard)){if(p&&!duplicate)this.log(`매니저: ${p.name} 메시지 보류`);continue;}
       delay+=600+this.random()*1600;
-      this.queue.push({...m,origin,createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.queue.push({...m,origin,...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
@@ -127,7 +129,9 @@ export class Studio extends EventEmitter {
   startTraining(id){if(this.running||this.busy)throw new Error('방송과 관객 응답을 종료한 뒤 연습하세요.');this.training.start(id,this.settings.personas.filter(p=>p.id!==this.settings.managerId));this.trainingMessages=[];this.pump();this.publish();return this.state().training;}
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
-  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
+  pump(){if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running)return;const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
+    const count=this.queue.length;this.queue=this.queue.filter(m=>m.origin!=='live'||!Number.isFinite(m.expiresAt)||now<m.expiresAt);if(this.queue.length!==count)this.publish();
+    const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0)return;
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled))return;this.lastSpeaker.set(m.personaId,now);try{this.addMessage(m.personaId,m.text,m.kind);}catch(error){this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
   reserveCall(){if(this.calls>=this.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다. 방송을 종료하고 한도를 확인하세요.');this.calls++;}
@@ -139,12 +143,33 @@ export class Studio extends EventEmitter {
     if(this.autonomy?.waiting)return {skipped:'audience-arrival'};
     const speechBatch=speech?{text:speech,ids:[]}:this.speechInbox.batch();speech=speechBatch.text;
     if(this.now()<this.retryAt)return {skipped:'backoff'};
-    if(this.now()-this.lastRequest<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
+    if(this.now()-Math.max(this.lastRequest,this.viewing.checkedAt)<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
     const epoch=this.epoch,directed=this.director.context()||this.seasons.context(),directorSerial=this.director.serial,seasonSerial=this.seasons.serial;
+    let viewing;
+    if(this.settings.mode==='live'){
+      this.tickAudience();if(this.autonomy?.waiting)return {skipped:'audience-arrival'};const witnesses=this.presentWitnesses();
+      const soundIds=this.sound.events.filter(e=>!e.silent&&this.now()-e.endedAt<30000&&e.witnesses.some(id=>witnesses.includes(id))).map(e=>e.id);
+      // A fresh, witnessed address to another viewer is conversation input even
+      // on a paused game. Ordinary cheers do not continually wake themselves.
+      const peerIds=this.messages.filter(m=>m.kind==='chat'&&!m.fictional&&m.time<=this.now()&&this.now()-m.time<60000&&witnesses.includes(m.personaId)&&this.settings.personas.some(p=>p.id!==m.personaId&&witnesses.includes(p.id)&&m.time>=this.audience.data.members[p.id].joinedAt&&m.text.includes(p.name))).slice(-40).map(m=>m.id);
+      viewing=this.viewing.observe({image,people:witnesses.map(id=>({id,joinedAt:this.audience.data.members[id].joinedAt})),soundIds,peerIds,scope:this.settings.category+':'+this.settings.gameId,at:this.now()});
+      if(!image)this.knowledge.lastSeen=null;
+      const ambient=this.autonomy&&!directed?this.ambient.snapshot():null;
+      if(!speech.trim()&&!directed&&!ambient?.active&&this.viewing.unchanged(viewing)){
+        // Identical current pixels still count as watching. Do not resurrect a
+        // forgotten record or infer viewing while the image is disconnected.
+        try{if(image&&this.knowledge.lastSeen&&this.observation?.confidence>=.7&&this.settings.category==='gaming'){
+          const game=this.settings.games.find(g=>g.id===this.settings.gameId);
+          this.knowledge.observe(this.settings.gameId==='auto'?this.observation.game:game.name,this.observation.scene,viewing.at,game.popularity,witnesses);this.publish();
+        }}catch(error){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);this.publish();throw error;}
+        this.failures=0;this.retryAt=0;if(this.lastError){this.lastError='';this.publish();}
+        return {skipped:'unchanged-input'};
+      }
+    }
     const operation={controller:new AbortController(),hasSpeech:!!speech||!!directed,superseded:false};this.liveReaction=operation;
     const signal=AbortSignal.any([this.controller.signal,operation.controller.signal]);
-    this.lastRequest=this.now();this.busy=true;this.lastError='';this.publish();
+    this.lastRequest=viewing?.at??this.now();this.busy=true;this.lastError='';this.publish();
     try{
       if(speech&&!speechBatch.ids.length&&!(this.messages.at(-1)?.kind==='streamer'&&this.messages.at(-1)?.text===speech)){this.queue=this.queue.filter(m=>m.origin!=='live');this.addMessage('streamer',speech,'streamer');}
       if(this.settings.mode==='rehearsal'){
@@ -155,11 +180,11 @@ export class Studio extends EventEmitter {
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
         const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
-        this.tickAudience();const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0);
+        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0);
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses(),capturedAt=this.lastRequest;
-        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,speech,sound:this.sound,now:capturedAt});
+        const personalContext=liveViewerContext(audience,eligiblePersonas,this.messages,this.observation,{journal:this.journal,speech,sound:this.sound,now:capturedAt,viewing});
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
         this.reserveCall();const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image,speech,viewerKnowledge,adviceRequested,...personalContext,transcriptCandidates,directed,ambient:this.autonomy&&!directed?this.ambient.context(speech):null,voiceCues:this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
@@ -168,7 +193,7 @@ export class Studio extends EventEmitter {
         if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial))return {skipped:'episode-ended'};
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
-        this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live');
+        this.accept({...result.observation,messages:result.observation.messages.filter(m=>audience.eligible.includes(m.personaId) )},capturedAt,!!directed,directed?'directed':'live',operation.hasSpeech?{}:{expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
         const donations=this.economy.reward({observation:result.observation,settings:this.settings,audience:this.audience,hasInput:!!image||!!speech,paid:!!directed});
         for(const d of donations)this.log(`${d.name}의 가상 후원 ${d.amount}P · ${d.reason}`);if(donations.length)this.publish();
         if(this.autonomy&&!directed){
@@ -179,6 +204,7 @@ export class Studio extends EventEmitter {
         }
         if(!directed&&this.settings.category!=='just-chatting'&&image&&result.observation.confidence>=0.7){this.knowledge.observe(game.id==='auto'?result.observation.game:game.name,result.observation.scene,capturedAt,game.popularity,witnesses);this.publish();}
       }
+      if(viewing&&!directed)this.viewing.acknowledge(viewing);
       this.speechInbox.acknowledge(speechBatch.ids);this.failures=0;this.retryAt=0;return {ok:true};
     }catch(error){if(operation.superseded&&epoch===this.epoch)return {skipped:'superseded'};if(epoch===this.epoch){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);}throw error;}
     finally{if(this.liveReaction===operation)this.liveReaction=null;if(epoch===this.epoch){this.busy=false;this.publish();}}
