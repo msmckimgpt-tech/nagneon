@@ -1,0 +1,17 @@
+{
+  "welcomePoints":60,
+  "walletCap":200,
+  "initialWallet":80,
+  "refillSeconds":60,
+  "donationCooldownSeconds":600,
+  "momentCooldownSeconds":90,
+  "hourlyRewardCap":240,
+  "minimumWatchSeconds":60,
+  "prices":{"thought":15,"profile":30,"relations":25,"interview":40},
+  "actions":{
+    "cheer":{"label":"응원 합창","base":18,"prompt":"이번 순간에 맞춰 짧고 개성 있게 응원한다."},
+    "debate":{"label":"관점 바꾸기 토론","base":28,"prompt":"관객끼리 서로 다른 관점으로 짧게 의견을 주고받는다. 개인 비난은 하지 않는다."},
+    "roleplay":{"label":"한 장면 역할극","base":32,"prompt":"요청한 가상의 역할로 한 번의 채팅 연기를 한다. 실제 신분이나 실제 사건으로 주장하지 않는다."},
+    "custom":{"label":"자유로운 채팅 부탁","base":35,"prompt":"합의한 부탁을 이번 채팅에서 한 번 수행한다. 외부 앱 조작이나 현실의 행동을 했다고 주장하지 않는다."}
+  }
+}

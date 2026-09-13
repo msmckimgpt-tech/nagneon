@@ -1,0 +1,11 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {CodexProvider} from '../server/codex-provider.js';
+import {Settings} from '../server/schema.js';
+import {defaults} from '../shared/defaults.js';
+const p=new CodexProvider();await p.check();
+const image='data:image/jpeg;base64,'+(await readFile('artifacts/vision-fixture.jpg')).toString('base64');
+const settings=Settings.parse({...defaults,mode:'live'});const start=Date.now();
+const result=await p.react({settings,image,speech:'화면에 보이는 게임 제목과 현재 체력 수치를 scene에 적고, 그 상황에 반응해줘.',history:[],previous:null},new AbortController().signal);
+await writeFile('artifacts/vision-result.json',JSON.stringify({latencyMs:Date.now()-start,...result},null,2));
+console.log(JSON.stringify(result));
+if(!/20\s*[/／]\s*100|20.*100/.test(result.observation.scene))throw new Error('Expected exact visible HP values not recognized');

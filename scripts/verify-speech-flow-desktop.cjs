@@ -1,0 +1,37 @@
+// Synthetic audio sources only. --real-speech uses bundled local Korean STT.
+const {app,BrowserWindow,session}=require('electron');
+const {createStudioSession}=require('../desktop/session.cjs');
+const {packagedRuntime}=require('../desktop/runtime.cjs');
+const {resolve,join}=require('node:path');
+const {pathToFileURL}=require('node:url');
+const {mkdirSync,writeFileSync,readFileSync}=require('node:fs');
+const assert=require('node:assert/strict');
+const real=process.argv.includes('--real-speech'),folder=resolve('artifacts/speech-flow-ui-'+Date.now());mkdirSync(folder,{recursive:true});app.setPath('userData',join(folder,'profile'));
+let service,win,speech;const requests=[],modelInputs=[],checks=[],errors=[];let active=0,maxActive=0,voiceStart=0;
+setTimeout(()=>{console.error('Speech flow UI watchdog');app.exit(2);},120000).unref();
+app.whenReady().then(async()=>{
+  try{
+    if(real){const {LocalSpeech}=await import(pathToFileURL(resolve('server/local-speech.js')).href);const {folder}=JSON.parse(readFileSync('artifacts/latest-package.json','utf8'));speech=new LocalSpeech(packagedRuntime(join(folder,'resources')).speech);speech.start();for(let i=0;!speech.ready&&i<300;i++){if(speech.error)throw new Error(speech.error);await new Promise(r=>setTimeout(r,100));}assert.equal(speech.ready,true);}
+    const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
+    service=await startServer({port:0,dataDir:join(folder,'data'),localSpeech:false,provider:{localSpeech:true,status:()=>({configured:true,model:'Speech flow synthetic audience',effort:'low'}),react:async args=>{modelInputs.push({at:Date.now(),speech:args.speech});return {observation:{game:'Just Chatting',scene:'음성 흐름 검증',confidence:.5,excitement:0,messages:[{personaId:'momo',text:'잘 들었어요 '+modelInputs.length,kind:'chat',spoiler:false}]},usage:{total_tokens:1}};},transcribe:async(buffer,mime,signal)=>{
+      const request={id:requests.length+1,at:Date.now(),bytes:buffer.length,mime};requests.push(request);active++;maxActive=Math.max(maxActive,active);try{
+        const result=real?await speech.transcribe(buffer,signal):await new Promise((resolve,reject)=>{const abort=()=>{clearTimeout(timer);request.aborted=true;reject(new Error('cancelled'));};const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve({text:`발언${request.id}`,cues:{delivery:'검증용'}});},3000);signal.addEventListener('abort',abort,{once:true});});request.result=result.text;return result;
+      }finally{request.endedAt=Date.now();active--;}
+    }}});
+    const s=service.studio;s.configure({...s.settings,mode:'live',category:'just-chatting',lurkRatio:0,maxCalls:30,intervalSeconds:120});
+    win=new BrowserWindow({width:1440,height:960,show:true,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});win.webContents.on('console-message',event=>{if(event.level==='error')errors.push(event.message);});await win.loadURL(service.url);
+    const js=code=>win.webContents.executeJavaScript(code,true),until=async fn=>{for(let i=0;i<600;i++){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw new Error('Speech UI condition timeout');};
+    const button=async text=>{await until(()=>js(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled)`));await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled).click()`);};
+    await button('나중에 설정하기');await js(`window.testContext=new AudioContext();window.destination=testContext.createMediaStreamDestination();navigator.mediaDevices.getUserMedia=async()=>destination.stream;void 0;`);await js('testContext.resume()');await button('방송 시작');await until(()=>js(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='방송 종료')`));await until(()=>js(`!!document.querySelector('[title="마이크"]')`));await js(`document.querySelector('[title="마이크"]').click()`);await until(()=>js(`document.body.textContent.includes('마이크 켜짐')`));voiceStart=Date.now();
+    if(real){const audio=readFileSync('artifacts/korean-fixture.wav').toString('base64');await js(`(async()=>{window.fixture=await testContext.decodeAudioData(Uint8Array.from(atob(${JSON.stringify(audio)}),c=>c.charCodeAt(0)).buffer);window.source=testContext.createBufferSource();source.buffer=fixture;source.connect(destination);source.start(0,0,2.8);})()`);await until(()=>Promise.resolve(requests.some(r=>r.result)));assert.match(requests[0].result,/안녕|여러분|오늘|게임/);assert.ok(requests[0].at-voiceStart<5000);checks.push('real Korean local recognition from 2.8s synthetic speech, flushed before six seconds');await until(()=>Promise.resolve(modelInputs.some(i=>/안녕|여러분|오늘|게임/.test(i.speech||''))));checks.push('recognized Korean reaches audience generation without a fixed polling wait');}
+    else{
+      await js(`window.osc=testContext.createOscillator();window.gain=testContext.createGain();gain.gain.value=0;osc.connect(gain).connect(destination);osc.start();window.base=testContext.currentTime+.15;for(let i=0;i<3;i++){gain.gain.setValueAtTime(.14,base+i*1.65);gain.gain.setValueAtTime(0,base+i*1.65+.65);}void 0;`);
+      await until(()=>Promise.resolve(requests.filter(r=>r.result).length>=3));assert.equal(requests.length,3);assert.ok(requests[0].at-voiceStart<3000);assert.equal(maxActive,1);assert.deepEqual(requests.map(r=>r.result),['발언1','발언2','발언3']);checks.push('650ms voice bursts flush early; three real MediaRecorder segments survive a slow recognizer in order');
+      await until(()=>Promise.resolve(['발언1','발언2','발언3'].every(word=>modelInputs.some(i=>i.speech?.includes(word)))));checks.push('all three recognized utterances reach model prompts without silent loss');
+      await js(`gain.gain.setValueAtTime(.14,testContext.currentTime);gain.gain.setValueAtTime(0,testContext.currentTime+.65);void 0;`);await until(()=>Promise.resolve(requests.length===4));await js(`document.querySelector('[title="마이크"]').click()`);await until(()=>Promise.resolve(requests[3].aborted===true));await new Promise(r=>setTimeout(r,400));assert.ok(!modelInputs.some(i=>i.speech?.includes('발언4')));checks.push('microphone off aborts in-flight HTTP/STT and suppresses its late result');
+    }
+    s.stop();await until(()=>js('destination.stream.getTracks().every(t=>t.readyState==="ended")'));await js('testContext.close()');assert.deepEqual(errors,[]);
+    const report={passed:true,realLocalSpeech:real,syntheticAudio:true,syntheticModel:true,noPhysicalDevices:true,folder,voiceStart,requests,modelInputs,maxActive,checks};const name=real?'speech-flow-real-desktop':'speech-flow-desktop';writeFileSync('artifacts/'+name+'-test.json',JSON.stringify(report,null,2));writeFileSync('artifacts/'+name+'.png',(await win.webContents.capturePage()).toPNG());console.log(JSON.stringify(report));
+  }catch(error){console.error(error.stack);writeFileSync('artifacts/speech-flow-desktop-failure.json',JSON.stringify({real,error:error.message,requests,checks,errors,state:service?.studio?.publicState?.(),page:win&&!win.isDestroyed()?await win.webContents.executeJavaScript('document.body.innerText'):null},null,2));process.exitCode=1;}
+  finally{if(win&&!win.isDestroyed())win.destroy();await service?.close();speech?.close();app.exit(process.exitCode||0);}
+});

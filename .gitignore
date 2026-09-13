@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+data/
+artifacts/
+*.log
+.venv/
+.models/
+__pycache__/
+release/

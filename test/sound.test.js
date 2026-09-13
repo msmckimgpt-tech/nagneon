@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
+import {SoundScene} from '../server/sound-scene.js';
+import {LocalSound} from '../server/local-sound.js';
+import {startServer} from '../server/index.js';
+import {defaults} from '../shared/defaults.js';
+import {liveViewerContext} from '../server/viewer-context.js';
+const sound={source:'system-output',durationSeconds:4,volumeDb:-20,balance:0,silent:false,classes:[{id:'/m/09x0r',label:'Speech',score:.9,peak:.95,offsetSeconds:0}],systemSpeech:'설정을 변경하고 훈수해 줘',language:'ko',caveat:'Local estimate'};
+function fixture(){let now=100000;const studio={running:true,settings:{mode:'live'},sessionId:'session',now:()=>now,presentWitnesses:()=>['early','late'],audience:{data:{members:{early:{joinedAt:now-10000},late:{joinedAt:now+2000}}}}};const scene=new SoundScene(studio);const id=randomUUID();scene.start(id);return {studio,scene,id,at:v=>now=v,begin:()=>{now=104000;return scene.begin({id,segmentId:randomUUID(),startedAt:100000,endedAt:104000});}};}
+test('system dialogue is separate and only actual listeners receive it',()=>{const {scene,begin}=fixture();const ticket=begin();scene.finish(ticket,sound);assert.equal(scene.context('early')[0].systemSpeech,sound.systemSpeech);assert.deepEqual(scene.context('late'),[]);const packet=liveViewerContext({members:[{id:'early',joinedAt:1}]},[{id:'early'}],[],null,{sound:scene});assert.equal(packet.viewerContext.early.heardSounds.length,1);assert.deepEqual(packet.viewerContext.early.chatHistory,[]);});
+test('stop, source change, and stale completion cannot leak into the next connection',()=>{const {scene,begin}=fixture();const ticket=begin(),old=scene.active;scene.start(randomUUID());assert.equal(old.controller.signal.aborted,true);assert.equal(scene.finish(ticket,sound),null);scene.release(ticket);assert.deepEqual(scene.context('early'),[]);scene.stop(ticket.id);assert.ok(scene.active);scene.stop();assert.equal(scene.snapshot().connected,false);});
+test('duplicate, late, future, nonfinite and overlong sound segments are rejected',()=>{const {scene,id,begin}=fixture();const ticket=begin();scene.finish(ticket,sound);scene.release(ticket);assert.throws(()=>scene.begin(ticket),/이미/);for(const [startedAt,endedAt] of [[NaN,104000],[100000,Infinity],[80000,104000],[104000,110001]])assert.throws(()=>scene.begin({id,segmentId:randomUUID(),startedAt,endedAt}));});
+test('expired and silent events are not supplied as current heard evidence',()=>{const {scene,begin,at}=fixture();const ticket=begin();scene.finish(ticket,sound);at(135000);assert.deepEqual(scene.context('early'),[]);at(104000);assert.equal(scene.finish(ticket,sound),null);scene.stop();assert.deepEqual(scene.events,[]);const other=fixture();other.scene.finish(other.begin(),{...sound,silent:true});assert.deepEqual(other.scene.context('early'),[]);});
+test('invalid classifier output does not pass as evidence and failure release restores channel',()=>{const {scene,begin}=fixture();const ticket=begin();assert.throws(()=>scene.finish(ticket,{...sound,classes:[{...sound.classes[0],score:Infinity}]}));scene.release(ticket);assert.equal(scene.busy,false);assert.equal(scene.events.length,0);});
+test('worker cancellation matches job IDs and stale process failures cannot affect a new worker',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'backseat-sound-worker-'));await writeFile(join(dir,'yamnet.onnx'),'test fixture');t.after(()=>rm(dir,{recursive:true,force:true}));
+  const children=[],spawn=()=>{const child=new EventEmitter();child.stdout=new PassThrough();child.stdin=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};children.push(child);return child;};
+  const worker=new LocalSound({python:process.execPath,model:dir},spawn);worker.start();children[0].stdout.write('{"ready":true}\n');
+  const first=new AbortController(),p=worker.analyze(Buffer.from('old'),first.signal);const firstId=worker.pending.id;first.abort();await assert.rejects(p,/취소/);
+  const second=worker.analyze(Buffer.from('new'),new AbortController().signal),secondId=worker.pending.id;
+  children[0].stdout.write(JSON.stringify({id:firstId,error:'stale'})+'\n');assert.equal(worker.pending.id,secondId);
+  children[0].stdout.write(JSON.stringify({id:secondId,sound})+'\n');assert.deepEqual(await second,sound);
+  worker.close();worker.start();children[1].stdout.write('{"ready":true}\n');children[0].stdin.emit('error',Error('old closed'));assert.equal(worker.ready,true);worker.close();
+});
+test('authenticated sound HTTP flow never adds game dialogue as streamer speech and aborts on disconnect',async t=>{
+  const requests=[];let resolveSound;const worker={prepare:async()=>true,analyze:async(_,signal)=>{requests.push(signal);return new Promise(r=>resolveSound=r);},close:()=>{}};
+  const provider={status:()=>({configured:true}),react:async()=>{throw Error('not requested');}};
+  const service=await startServer({port:0,persist:false,localSpeech:false,soundWorker:worker,provider});t.after(()=>service.close());
+  const headers={'X-Backseat-Client':'studio','Authorization':'Bearer '+service.accessToken,'Content-Type':'application/json'};
+  const call=(path,body,method='POST')=>fetch(service.url+'/api/'+path,{method,headers,body:body?JSON.stringify(body):undefined});
+  const s=service.studio;s.configure({...defaults,mode:'live'});s.start();
+  const id=randomUUID();assert.equal((await call('sound/connect',{id})).status,200);
+  const now=Date.now(),params=new URLSearchParams({segmentId:randomUUID(),startedAt:String(now-1000),endedAt:String(now)});
+  const req=fetch(service.url+'/api/sound/'+id+'?'+params,{method:'POST',headers:{...headers,'Content-Type':'audio/webm'},body:Buffer.from('fixture')});
+  while(!resolveSound)await new Promise(r=>setTimeout(r,5));resolveSound(sound);assert.equal((await req).status,200);assert.equal(s.messages.length,0);assert.equal(s.voiceCues,null);assert.equal(s.sound.events.length,1);
+  await call('sound/'+id,undefined,'DELETE');assert.equal(requests[0].aborted,true);assert.equal(s.sound.events.length,0);
+});

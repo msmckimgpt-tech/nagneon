@@ -1,0 +1,13 @@
+{
+  "name": "YAMNet ONNX",
+  "repository": "audiomagic/yamnet-onnx",
+  "revision": "f25b741c2f0bdc6d7e6db24b5fddda23347dbafd",
+  "upstream": "Google YAMNet v1",
+  "license": "Apache-2.0; AudioSet labels CC-BY-4.0",
+  "files": [
+    {"name":"yamnet.onnx","bytes":16093355,"sha256":"d3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e"},
+    {"name":"yamnet_class_map.csv","bytes":14096,"gitBlob":"9c07d818a6fba1a31c2950732c2fe49a16687c5a"},
+    {"name":"LICENSE","bytes":11358,"gitBlob":"d645695673349e3947e8e5ae42332d0ac3164cd7"},
+    {"name":"README.md","bytes":5069,"gitBlob":"29946f2e89dc4728e514d68af9676962f10b23c7"}
+  ]
+}

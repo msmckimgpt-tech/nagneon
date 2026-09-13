@@ -1,0 +1,40 @@
+// Isolated Electron UI acceptance; synthetic model, no microphone or screen devices.
+const {app,BrowserWindow,session}=require('electron');
+const {createStudioSession}=require('../desktop/session.cjs');
+const {pathToFileURL}=require('node:url');
+const {resolve}=require('node:path');
+const {mkdirSync,writeFileSync}=require('node:fs');
+const assert=require('node:assert/strict');
+const folder=resolve('artifacts/seasons-renderer-'+Date.now());mkdirSync(folder,{recursive:true});app.setPath('userData',resolve(folder,'profile'));
+let service,win;const checks=[],errors=[];let serial=0;
+// The test deliberately closes every window before reopening a fresh server.
+app.on('window-all-closed',()=>{});
+setTimeout(()=>{console.error('Seasons UI watchdog');app.exit(2);},120000).unref();
+app.whenReady().then(async()=>{
+  try{
+    const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
+    const boot=async()=>{
+      service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,provider:{status:()=>({configured:true,model:'Synthetic seasons test',effort:'low'}),react:async args=>({observation:{game:'Just Chatting',scene:'synthetic scene',confidence:1,excitement:.5,messages:args.settings.personas.slice(0,2).map(p=>({personaId:p.id,text:`${args.special?.kind||'live'} · ${p.name}의 회차 대화 ${++serial}`,kind:'chat',spoiler:false}))},usage:{total_tokens:1}})}});
+      win=new BrowserWindow({width:1460,height:980,show:true,title:'BACKSEAT 시즌 UI 검증',webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
+      win.webContents.on('console-message',(_event,level,message)=>{if(level===3&&!message.includes('Autofill'))errors.push(message);});await win.loadURL(service.url);
+    };
+    await boot();service.studio.configure({...service.studio.settings,mode:'live',lurkRatio:0,category:'just-chatting',intervalSeconds:120});
+    const js=code=>win.webContents.executeJavaScript(code,true);
+    const until=async(code)=>{for(let i=0;i<160;i++){if(await js(code))return;await new Promise(r=>setTimeout(r,70));}throw new Error('UI timeout: '+code);};
+    const button=async text=>{await until(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled&&b.getClientRects().length)`);await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled&&b.getClientRects().length).click()`);};
+    const fill=async(label,value)=>{await until(`!!document.querySelector('textarea[aria-label='+${JSON.stringify(JSON.stringify(label))}+']')`);return js(`(()=>{const el=document.querySelector('textarea[aria-label='+${JSON.stringify(JSON.stringify(label))}+']');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`);};
+    await button('나중에 설정하기');await button('방송 놀이터');await button('이어지는 방송');await until(`!!document.querySelector('.season-create')`);assert.equal(await js(`document.querySelectorAll('.season-template').length`),3);
+    await fill('시즌 설정','관객들이 우리 우주선의 크루가 되는 긴 여행');await js(`Array.from(document.querySelectorAll('.season-template')).find(b=>b.textContent.includes('별빛 원정대')).click()`);await button('시즌 서가에 놓기');await until(`!!document.querySelector('.season-book')`);let id=service.studio.seasons.data.seasons[0].id;assert.equal(service.studio.calls,0);checks.push('three authored templates and durable draft through UI without calls');
+    await button('AI 방송 시작');await button('이 회차 열기');await fill('시즌 진행 멘트','저는 오늘 우주선 선장입니다');await button('첫 장면 열기 · 1회');await until(`document.querySelector('[aria-label="시즌 채팅"]')?.textContent.includes('season-stage')`);assert.equal(service.studio.seasons.get(id).chapters[0].stage,0);
+    writeFileSync('artifacts/seasons-desktop-stage.png',(await win.webContents.capturePage()).toPNG());await button('여기서 쉬어가기');await until(`document.body.textContent.includes('멈춘 장면에서 이어가기')`);assert.equal(service.studio.seasons.active,null);checks.push('live cast, first act and pause retain chapter progress');
+    service.studio.stop();win.destroy();await service.close();await boot();await button('방송 놀이터');await button('이어지는 방송');await until(`!!document.querySelector('.season-stage')`);assert.equal(service.studio.running,false);assert.equal(service.studio.seasons.get(id).chapters[0].stage,0);await button('AI 방송 시작');await button('멈춘 장면에서 이어가기');
+    for(let stage=1;stage<3;stage++){await fill('시즌 진행 멘트','함께 정하는 다음 항로 '+stage);await button('다음 장면 열기 · 1회');await until(`document.querySelector('.episode-steps li.current')?.textContent.startsWith('${stage+1}')`);}await button('미지의 신호를 따라가자');await until(`document.querySelector('.season-stage h2')?.textContent.includes('고요한 별의 도서관')`);assert.equal(service.studio.seasons.get(id).chapters[1].node,'signal');checks.push('full server restart resumes exact act; selected branch opens a different chapter');
+    await js(`document.querySelector('.season-chronicle').open=true`);await button('회차 핫클립 남기기');await until(`document.body.textContent.includes('핫클립에 회차를 남겼어요')`);assert.equal(service.studio.clips.data[0].source,'season-chapter');checks.push('completed chapter becomes a fictional hotclip');
+    await button('이 회차 열기');for(let stage=0;stage<3;stage++){await button(stage?'다음 장면 열기 · 1회':'첫 장면 열기 · 1회');await until(`document.querySelector('.episode-steps li.current')?.textContent.startsWith('${stage+1}')`);}await button('별빛 갈라로 향하기');
+    await until(`document.querySelector('.season-stage h2')?.textContent.includes('은하의 마지막 앙코르')`);await button('이 회차 열기');for(let stage=0;stage<3;stage++){await button(stage?'다음 장면 열기 · 1회':'첫 장면 열기 · 1회');await until(`document.querySelector('.episode-steps li.current')?.textContent.startsWith('${stage+1}')`);}await button('피날레 · 기념품 남기기');await until(`document.querySelector('.season-keepsake')?.textContent.includes('별빛 원정대 휘장')`);assert.equal(service.studio.seasons.get(id).status,'completed');assert.equal(service.studio.economy.data.balance,60);checks.push('nine acts, two explicit choices and finale keepsake with no points leakage');
+    service.studio.addMessage('momo','이번 우주 여행 다음엔 어떤 별을 가볼까요');await js(`document.querySelector('.season-inbox summary').click()`);await button('관객에게 기획 맡기기');await until(`!!document.querySelector('.season-invite')`);assert.equal(service.studio.seasons.data.proposals[0].source.type,'public-chat');await button('내일 다시 보기');await until(`!document.querySelector('.season-invite')`);await button('미뤄둔 초대장 1개 보기');await until(`!!document.querySelector('.season-invite')`);await button('시즌으로 간직하기');await until(`document.querySelectorAll('.season-book').length===2`);assert.equal(service.studio.seasons.active,null);checks.push('source-linked audience invitation, snooze, recall and acceptance without auto performance');
+    win.setSize(900,780);await until(`innerWidth<1000`);assert.equal(await js('document.documentElement.scrollWidth<=innerWidth+1'),true);assert.equal(await js(`Array.from(document.querySelectorAll('.season-auto input,.season-cast input')).every(e=>!!e.closest('label')||!!e.getAttribute('aria-label'))`),true);checks.push('900px layout and labelled control structure');
+    writeFileSync('artifacts/seasons-desktop-narrow.png',(await win.webContents.capturePage()).toPNG());assert.deepEqual(errors,[]);const report={passed:true,syntheticModel:true,noUserDevices:true,folder,checks};writeFileSync('artifacts/seasons-desktop-test.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+  }catch(error){console.error(error.stack);if(win&&!win.isDestroyed())writeFileSync('artifacts/seasons-desktop-failure.png',(await win.webContents.capturePage()).toPNG());writeFileSync('artifacts/seasons-desktop-failure.json',JSON.stringify({error:error.message,checks,errors},null,2));process.exitCode=1;}
+  finally{if(win&&!win.isDestroyed())win.destroy();await service?.close();app.exit(process.exitCode||0);}
+});

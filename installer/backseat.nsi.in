@@ -1,0 +1,155 @@
+; Per-user UI/extraction only. Owned filesystem, shortcut and HKCU operations
+; are performed by the verified C# engine. No install-root deletes in NSIS.
+Unicode true
+ManifestDPIAware true
+SetCompressor /SOLID lzma
+!include "MUI2.nsh"
+!include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!include "x64.nsh"
+!define APP_NAME "@APP_NAME@"
+!define APP_ID "@APP_ID@"
+!define APP_VERSION "@APP_VERSION@"
+!define BUILD_ID "@BUILD_ID@"
+!define BUILD_MODE "@BUILD_MODE@"
+!define INSTALL_SUBDIR "@INSTALL_SUBDIR@"
+!define UNINSTALLER_NAME "@UNINSTALLER_NAME@"
+!define BACKSEAT_SRC "@BACKSEAT_SRC@"
+!define REG_UNINSTALL_KEY "@REG_UNINSTALL_KEY@"
+!define ENABLE_TEST_INSTALL @ENABLE_TEST_INSTALL@
+Name "${APP_NAME} ${APP_VERSION}"
+OutFile "@OUTFILE@"
+RequestExecutionLevel user
+InstallDir "$LOCALAPPDATA\Programs\${INSTALL_SUBDIR}"
+BrandingText "${APP_NAME} · 개발 배포 / unsigned"
+ShowInstDetails show
+ShowUninstDetails show
+Var StageDir
+Var ReportPath
+Var DiagnosticPath
+Var ExitCode
+Var EngineOutput
+Var Params
+Var Operation
+!define MUI_ABORTWARNING
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "Korean"
+!insertmacro MUI_LANGUAGE "English"
+
+!macro INIT_CONTEXT
+  SetShellVarContext current
+  SetRegView 64
+  ${IfNot} ${RunningX64}
+    MessageBox MB_OK|MB_ICONSTOP "Windows x64 환경이 필요합니다." /SD IDOK
+    SetErrorLevel 3
+    Abort
+  ${EndIf}
+  !if ${ENABLE_TEST_INSTALL} != 1
+    MessageBox MB_OK|MB_ICONSTOP "설치 트랜잭션 검증 전인 개발 빌드입니다." /SD IDOK
+    SetErrorLevel 10
+    Abort
+  !endif
+!macroend
+
+Function .onInit
+  !insertmacro INIT_CONTEXT
+FunctionEnd
+Function un.onInit
+  !insertmacro INIT_CONTEXT
+FunctionEnd
+
+; /REPORT= is a diagnostic destination, never an installation data path.
+; The normal app profile, recordings and account credentials are not touched.
+!macro REPORT_PATH OP
+  StrCpy $Operation "${OP}"
+  InitPluginsDir
+  StrCpy $ReportPath "$PLUGINSDIR\result.json"
+  ${GetParameters} $Params
+  ClearErrors
+  ${GetOptions} $Params "/REPORT=" $DiagnosticPath
+  ${If} $DiagnosticPath == ""
+    CreateDirectory "$LOCALAPPDATA\BACKSEAT Installer Reports\${BUILD_MODE}"
+    StrCpy $DiagnosticPath "$LOCALAPPDATA\BACKSEAT Installer Reports\${BUILD_MODE}\${OP}-${BUILD_ID}.json"
+  ${EndIf}
+!macroend
+
+!macro ENGINE_RESULT
+  Pop $ExitCode
+  Pop $EngineOutput
+  ${If} $ExitCode == "error"
+  ${OrIf} $ExitCode == "timeout"
+    StrCpy $ExitCode 7
+  ${EndIf}
+  ; The engine result must be fresh in this process's private directory. A
+  ; report from an older installation cannot satisfy the success check.
+  ${If} ${FileExists} "$ReportPath"
+    ClearErrors
+    CopyFiles /SILENT "$ReportPath" "$DiagnosticPath"
+    ${If} ${Errors}
+      DetailPrint "진단 보고서 저장 실패: $DiagnosticPath"
+      ${If} $ExitCode == 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "작업은 완료되었지만 진단 보고서를 저장하지 못했습니다.$\r$\n$DiagnosticPath" /SD IDOK
+        SetErrorLevel 7
+        Quit
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  ${If} $ExitCode != 0
+    DetailPrint "작업을 완료하지 못했습니다. 오류 코드: $ExitCode"
+    DetailPrint "$EngineOutput"
+    DetailPrint "진단 보고서: $DiagnosticPath"
+    MessageBox MB_OK|MB_ICONSTOP "작업을 완료하지 못했습니다 (코드 $ExitCode). 실행 중인 앱을 종료하거나 진단 보고서를 확인한 뒤 다시 시도하세요.$\r$\n$DiagnosticPath" /SD IDOK
+    SetErrorLevel $ExitCode
+    Quit
+  ${EndIf}
+  IfFileExists "$ReportPath" +4
+    MessageBox MB_OK|MB_ICONSTOP "설치 결과 보고서를 확인할 수 없습니다.$\r$\n$ReportPath" /SD IDOK
+    SetErrorLevel 7
+    Quit
+  DetailPrint "작업 완료. 진단 보고서: $DiagnosticPath"
+  SetErrorLevel 0
+!macroend
+
+Section "${APP_NAME}" MainInstall
+  !insertmacro REPORT_PATH "install"
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  ClearErrors
+  File /oname=InstallEngine.exe "InstallEngine.exe"
+  File /oname=request.json "install-request.json"
+  WriteUninstaller "$PLUGINSDIR\new-uninstaller.exe"
+  IfErrors extract_failed
+  StrCpy $StageDir "$PLUGINSDIR\payload"
+  !include "install-files.generated.nsh"
+  SetOutPath "$PLUGINSDIR"
+  DetailPrint "전체 파일을 검증하고 설치 상태를 저장합니다."
+  nsExec::ExecToStack '"$PLUGINSDIR\InstallEngine.exe" install "$PLUGINSDIR\request.json" "$StageDir" "$INSTDIR" "$PLUGINSDIR\new-uninstaller.exe" "$ReportPath"'
+  !insertmacro ENGINE_RESULT
+  Goto install_done
+  extract_failed:
+    MessageBox MB_OK|MB_ICONSTOP "설치 파일을 완전히 추출하지 못했습니다. 설치 대상은 변경하지 않았습니다." /SD IDOK
+    SetErrorLevel 3
+    Quit
+  install_done:
+SectionEnd
+
+Section "Uninstall"
+  !insertmacro REPORT_PATH "uninstall"
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  ClearErrors
+  File /oname=InstallEngine.exe "InstallEngine.exe"
+  IfErrors un_extract_failed
+  nsExec::ExecToStack '"$PLUGINSDIR\InstallEngine.exe" uninstall "$INSTDIR" "${APP_ID}" "$ReportPath"'
+  !insertmacro ENGINE_RESULT
+  Goto un_done
+  un_extract_failed:
+    SetErrorLevel 3
+    Quit
+  un_done:
+SectionEnd

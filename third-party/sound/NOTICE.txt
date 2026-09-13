@@ -1,0 +1,21 @@
+BACKSEAT local system sound perception
+
+YAMNet v1: Google / TensorFlow Models
+https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+
+ONNX conversion: Audio Magic (audiomagic/yamnet-onnx)
+Pinned revision: f25b741c2f0bdc6d7e6db24b5fddda23347dbafd
+https://huggingface.co/audiomagic/yamnet-onnx
+The converter reports a TensorFlow-to-ONNX format conversion with unchanged weights.
+This is a third-party conversion, not an official Google ONNX release.
+The converter's README.md and Apache-2.0 LICENSE accompany the model.
+
+AudioSet class labels: Google AudioSet
+https://research.google.com/audioset/
+CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+yamnet_class_map.csv is copied unchanged from the pinned conversion repository.
+BACKSEAT separately displays Korean translations for selected labels in its UI.
+
+BACKSEAT changes: local Windows output capture, bounded decoding, sound scores,
+separate game-dialogue transcription, and contextual spectator prompts.
+No model weights have been fine-tuned by BACKSEAT.
