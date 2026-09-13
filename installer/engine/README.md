@@ -114,9 +114,14 @@ reading state, then holds it through the launched child's lifetime.
 
 ## Remaining gates before general release
 
-1. First-install power loss between creating an empty control directory and
-   writing its journal. Test first-install faults, not only update faults.
-   Managed file flush does not separately fsync directory entries.
+1. The empty control-directory interruption gap now permits a retry without
+   deleting anything. The file-only suite has 140 passing checks, including an
+   actual child-process interruption and preservation of unknown data/junctions.
+   See docs/INSTALLER-BOOTSTRAP-RECOVERY.md for current evidence and limits.
+   Partial initial-journal temporary writes still fail closed. Test the remaining
+   first-install faults and actual power loss; managed file flush does not
+   separately fsync directory entries. Earlier full installation evidence above
+   predates this change; external publication/NSIS tests have not been rerun.
 2. Late publication/metadata failures during uninstall; locks and read-only
    metadata are tested before deletion, not every post-deletion combination.
 3. Image-section races, hostile concurrent path swaps, Windows short aliases and

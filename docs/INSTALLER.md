@@ -34,7 +34,9 @@ staging의 재귀 삭제를 없애고 매니페스트에 있는 파일과 비어
 
 현재 원본으로 영구 단위 **104개**(실제 junction 포함, 건너뜀 없음), 별도 Windows 거부/보존 **51개**, 트랜잭션 **18개**, 실제 NSIS **4개**, 생성기 **16개**가 통과했다. `latest-installer-unit-test.json`, `latest-installer-guards-test.json`, `latest-installer-transaction-test.json`, `latest-installer-nsis-test.json`과 `installer-ownership-*-current.log`, `installer-guards-current.log`, `installer-ownership-builder-final.log`가 최신 근거다. 거부 시험은 대상 전체 해시와 외부 TEST 등록의 전후 상태를 비교한다. 실제 전체 앱 설치는 별도 수용하며 이 작은 시험 결과로 대체하지 않는다.
 
-**남은 우선순위:** 최초 설치의 저널 이전 전원 중단, 제거 도중 늦은 게시/메타데이터 실패, 경로 동시 교체·다중 Windows 세션, 긴 경로·디스크 부족·손상 백업·보이는 설치 UI다. 전체 제품 설치/실행/제거는 위 별도 시험이 통과했다. 알 수 없는 staging 파일을 보존한 뒤 같은 빌드를 다시 설치할 때는 현재 명시적으로 거부한다. 앱 화면 선택창의 시각 문제, 새 Windows/서명/상용 연동/Steam 검토도 남아 기본 배포 차단을 유지한다. `installer/engine/README.md`에 한계를 기록했다.
+**후속 수정:** [최초 설치의 빈 제어 폴더 복구](INSTALLER-BOOTSTRAP-RECOVERY.md)에서 저널 직전 프로세스 중단을 실제 재현하고 빈 `.backseat`만 남은 경우의 재시도를 허용했다. 최신 파일 기반 엔진 단위 검사는 **140개 통과**이며 위 외부 게시/전체 설치 시험은 이 변경 전 소스의 근거다. 이번에는 화면·앱 조작 중단을 유지하며 실제 NSIS/전체 설치를 재실행하지 않았다.
+
+**남은 우선순위:** 최초 저널의 부분 쓰기/전원 중단, 제거 도중 늦은 게시/메타데이터 실패, 경로 동시 교체·다중 Windows 세션, 긴 경로·디스크 부족·손상 백업·보이는 설치 UI다. 알 수 없는 staging 파일을 보존한 뒤 같은 빌드를 다시 설치할 때는 현재 명시적으로 거부한다. 앱 화면 선택창의 시각 문제, 새 Windows/서명/상용 연동/Steam 검토도 남아 기본 배포 차단을 유지한다. `installer/engine/README.md`에 한계를 기록했다.
 
 ## NSIS 연결 검증 · 2026-09-13
 

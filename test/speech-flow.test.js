@@ -41,8 +41,22 @@ test('emoji and mixed Korean speech drain within the wire limit without splittin
 test('cancelled microphone request cannot update voice cues and releases the studio audio lock',async()=>{
   let release;const s=new Studio({settings:{...defaults,mode:'live'},provider:{localSpeech:true,status:()=>({configured:true}),transcribe:(_buffer,_mime,signal)=>new Promise(r=>release=()=>r({text:'늦은 음성',cues:{delivery:'late',aborted:signal.aborted}}))}});s.start();const controller=new AbortController(),job=s.transcribe(Buffer.from('sample'),'audio/wav',controller.signal);controller.abort();release();assert.deepEqual(await job,{text:''});assert.equal(s.voiceCues,null);assert.equal(s.audioBusy,false);s.close();
 });
-test('aborting the HTTP audio request propagates cancellation to the recognizer',async()=>{
+test('aborting the HTTP audio request propagates cancellation to the recognizer',{timeout:15000},async t=>{
   let begun,aborted;const started=new Promise(r=>begun=r),cancelled=new Promise(r=>aborted=r);
   const service=await startServer({port:0,persist:false,localSpeech:false,provider:{status:()=>({configured:true}),localSpeech:true,transcribe:(_b,_m,signal)=>new Promise((_resolve,reject)=>{begun();signal.addEventListener('abort',()=>{aborted();reject(new Error('cancelled'));},{once:true});})}});
-  try{service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();const controller=new AbortController();const response=fetch(service.url+'/api/audio',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'audio/wav'},body:Buffer.from('audio'),signal:controller.signal});await started;controller.abort();await assert.rejects(response,/abort/i);await Promise.race([cancelled,new Promise((_,reject)=>setTimeout(()=>reject(new Error('server did not cancel')),1500))]);await turn();assert.equal(service.studio.audioBusy,false);}finally{await service.close();}
+  const controller=new AbortController();
+  const deadline=async(promise,label,ms=5000)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label)),ms);})]);}finally{clearTimeout(timer);}};
+  try{
+    service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();
+    // Observe transport failure immediately. Waiting only for the recognizer
+    // would hang forever if fetch rejects or HTTP validation refuses the body.
+    const outcome=fetch(service.url+'/api/audio',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'audio/wav'},body:Buffer.from('audio'),signal:AbortSignal.any([controller.signal,t.signal])})
+      .then(response=>({response}),error=>({error}));
+    await deadline(Promise.race([started,outcome.then(result=>{throw result.error||new Error(`audio request returned HTTP ${result.response.status} before recognition started`);})]),'recognizer did not start');
+    controller.abort();
+    const result=await deadline(outcome,'client request did not abort');
+    assert.match(result.error?.message||'',/abort/i);
+    await deadline(cancelled,'server did not cancel',1500);
+    await turn();assert.equal(service.studio.audioBusy,false);
+  }finally{controller.abort();await service.close();}
 });

@@ -5,6 +5,8 @@ import {createHash} from 'node:crypto';
 if(process.platform!=='win32')throw Error('Run installer engine unit tests on Windows');
 const base=resolve('artifacts','installer-unit-'+new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(base);
 const fixtures=join(base,'fixtures');await mkdir(fixtures);await mkdir(join(fixtures,'junction-target'));await symlink(join(fixtures,'junction-target'),join(fixtures,'jx'),'junction');
+await mkdir(join(fixtures,'bootstrap-junction'));await mkdir(join(fixtures,'bootstrap-junction-target'));
+await symlink(join(fixtures,'bootstrap-junction-target'),join(fixtures,'bootstrap-junction','.backseat'),'junction');
 const names=(await readdir('installer/engine')).filter(n=>n.endsWith('.cs')&&n!=='Program.cs').sort();
 const sources=await Promise.all([...names.map(n=>join('installer/engine',n)),'test/installer/EngineTests.cs'].map(async file=>({file:resolve(file),sha256:createHash('sha256').update(await readFile(file)).digest('hex')})));
 async function run(file,args,log){let output='';const code=await new Promise((done,fail)=>{const p=spawn(file,args,{windowsHide:true,stdio:['ignore','pipe','pipe']});p.stdout.on('data',b=>output+=b);p.stderr.on('data',b=>output+=b);p.once('error',fail);p.once('close',done);});await writeFile(join(base,log),output);return {code,output};}

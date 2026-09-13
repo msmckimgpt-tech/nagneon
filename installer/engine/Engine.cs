@@ -109,7 +109,6 @@ namespace Backseat.Installer
             }
 
             EnsureOwnedOrClaimable(store, id, root, report);
-            store.EnsureControlDir();
 
             InstalledState prior = store.ReadState();
 
@@ -563,8 +562,9 @@ namespace Backseat.Installer
             }
         }
 
-        private void EnsureOwnedOrClaimable(StateStore store, Identity id, string root, OpReport report)
+        internal void EnsureOwnedOrClaimable(StateStore store, Identity id, string root, OpReport report)
         {
+            PathSafety.AssertNoReparseInChain(root, new HashSet<string>());
             if (!Directory.Exists(root))
             {
                 Directory.CreateDirectory(root);
@@ -573,10 +573,25 @@ namespace Backseat.Installer
             }
             if (PathSafety.IsReparsePoint(root))
                 throw EngineError.Ownership("install root is a reparse point; refusing");
-            if (Directory.GetFileSystemEntries(root).Length == 0)
+            string[] entries = Directory.GetFileSystemEntries(root);
+            if (entries.Length == 0)
             {
                 report.Step("claimed-empty-root");
                 return;
+            }
+            // A first journal creates its parent before the atomic file write.
+            // Process interruption in that gap leaves this exact empty shell.
+            // Reuse it without deleting or trusting any contents. Any extra file,
+            // directory, partial write or reparse point still requires ownership.
+            if (entries.Length == 1 && SamePath(entries[0], store.ControlDir) &&
+                Directory.Exists(store.ControlDir))
+            {
+                PathSafety.AssertNoReparseInChain(store.ControlDir, new HashSet<string>());
+                if (Directory.GetFileSystemEntries(store.ControlDir).Length == 0)
+                {
+                    report.Step("reclaimed-empty-bootstrap-root");
+                    return;
+                }
             }
             InstalledState st = store.ReadState();
             if (st == null)

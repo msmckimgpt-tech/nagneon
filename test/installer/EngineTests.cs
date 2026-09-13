@@ -10,6 +10,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
@@ -24,6 +25,17 @@ namespace Backseat.Installer.Tests
         private static int Main(string[] args)
         {
             _fixtureRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fixtures");
+            if (args.Length == 1 && args[0] == "--crash-before-first-journal")
+            {
+                // The child can only touch a fixed directory beside its own binary.
+                // No Engine.Install/Recover call: no registry or shortcut publication.
+                string crashRoot = Path.Combine(_fixtureRoot, "bootstrap-crash-child");
+                var crashStore = new StateStore(crashRoot);
+                new Engine().EnsureOwnedOrClaimable(crashStore, Identity.ExpectedFor("test"), crashRoot,
+                    new OpReport("unit-bootstrap", crashRoot));
+                crashStore.EnsureControlDir();
+                Environment.Exit(ExitCodes.CrashFault);
+            }
             if (args.Length != 1 || !string.Equals(Path.GetFullPath(args[0]), _fixtureRoot, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Expected the fixture directory beside this test binary");
             Directory.CreateDirectory(_fixtureRoot);
@@ -38,6 +50,7 @@ namespace Backseat.Installer.Tests
             try { RequestParseTests(); } catch (Exception e) { Blew("RequestParseTests", e); }
             try { StateJournalRoundTripTests(); } catch (Exception e) { Blew("StateJournalRoundTripTests", e); }
             try { StateStoreFsTests(); } catch (Exception e) { Blew("StateStoreFsTests", e); }
+            try { FirstInstallBootstrapTests(); } catch (Exception e) { Blew("FirstInstallBootstrapTests", e); }
             try { DeleteLockBatchTests(); } catch (Exception e) { Blew("DeleteLockBatchTests", e); }
             try { ReparseTests(); } catch (Exception e) { Blew("ReparseTests", e); }
             try { MutexTests(); } catch (Exception e) { Blew("MutexTests", e); }
@@ -269,11 +282,105 @@ namespace Backseat.Installer.Tests
             state.UninstallerName = identity.UninstallerName; state.ExeName = identity.ExeName; state.Publisher = identity.Publisher;
             state.Current = journal.Target; state.LastTxnId = journal.TxnId;
             store.CommitState(state); Ok(File.Exists(store.StatePath), "state committed");
+            var ownedReport = new OpReport("unit-bootstrap", root);
+            new Engine().EnsureOwnedOrClaimable(store, identity, root, ownedReport);
+            Ok(ownedReport.Steps.Contains("validated-existing-ownership"), "committed install still requires validated ownership");
+            Throws(delegate { new Engine().EnsureOwnedOrClaimable(store, Identity.ExpectedFor("production"), root,
+                new OpReport("unit-bootstrap", root)); }, "another product identity cannot claim an installed root");
             state.LastTxnId = "txn-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"; store.CommitState(state);
             Ok(File.Exists(store.BakPath), "commit keeps previous valid state");
             Eq(store.ReadState().LastTxnId, state.LastTxnId, "latest state restored");
             store.DeleteJournal(); Ok(!store.HasJournal(), "owned journal deleted");
             Eq(File.ReadAllText(store.JournalPath + ".tmp"), "user temporary file", "journal cleanup preserves unowned temporary file");
+        }
+
+        private static void FirstInstallBootstrapTests()
+        {
+            Section("First-install interrupted before journal; file-only ownership gate");
+            var engine = new Engine(); Identity identity = Identity.ExpectedFor("test");
+            string empty = NewFixtureDir("bootstrap-empty"); var emptyReport = new OpReport("unit-bootstrap", empty);
+            engine.EnsureOwnedOrClaimable(new StateStore(empty), identity, empty, emptyReport);
+            Ok(emptyReport.Steps.Contains("claimed-empty-root"), "ordinary empty install root remains claimable");
+            string root = Path.Combine(_fixtureRoot, "bootstrap-crash-child");
+            var store = new StateStore(root);
+            string executable = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tests.exe");
+            var start = new ProcessStartInfo(executable, "--crash-before-first-journal");
+            start.UseShellExecute = false; start.CreateNoWindow = true;
+            using (Process child = Process.Start(start))
+            {
+                if (!child.WaitForExit(15000)) throw new Exception("bootstrap child did not exit in time");
+                Ok(child.ExitCode == ExitCodes.CrashFault, "child actually interrupted before initial journal");
+            }
+            Ok(Directory.Exists(store.ControlDir) && Directory.GetFileSystemEntries(store.ControlDir).Length == 0,
+                "interruption leaves exactly an empty control directory");
+            Ok(!store.HasJournal() && !store.HasState(), "interruption has no claimed transaction or committed state");
+            var report = new OpReport("unit-bootstrap", root);
+            engine.EnsureOwnedOrClaimable(store, identity, root, report);
+            Ok(report.Steps.Contains("reclaimed-empty-bootstrap-root"), "retry accepts empty bootstrap shell");
+            var journal = BootstrapJournal(root);
+            store.WriteJournal(journal);
+            Eq(store.ReadJournal().TxnId, journal.TxnId, "retry publishes a valid initial journal");
+            Ok(!Directory.Exists(Path.Combine(root, "app")), "retry does not stage payload before journaling");
+            store.DeleteJournal();
+            engine.EnsureOwnedOrClaimable(store, identity, root, new OpReport("unit-bootstrap", root));
+            Ok(true, "empty bootstrap shell is reusable after another interruption");
+
+            string[] reserved = { "note.txt", "pending.json.write-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "pending.json", "state.json", "state.json.bak" };
+            foreach (string name in reserved)
+            {
+                string occupied = NewFixtureDir("bootstrap-occupied"); var occupiedStore = new StateStore(occupied);
+                occupiedStore.EnsureControlDir(); string file = Path.Combine(occupiedStore.ControlDir, name);
+                File.WriteAllText(file, "Unowned data, including a possible partial write");
+                string before = Hashing.Sha256File(file);
+                Throws(delegate { engine.EnsureOwnedOrClaimable(occupiedStore, identity, occupied, new OpReport("unit-bootstrap", occupied)); },
+                    "nonempty control directory refused: " + name);
+                Eq(Hashing.Sha256File(file), before, "refusal preserves file bytes: " + name);
+                Ok(Directory.GetFileSystemEntries(occupiedStore.ControlDir).Length == 1, "refusal creates no extra metadata: " + name);
+            }
+
+            string nested = NewFixtureDir("bootstrap-nested"); var nestedStore = new StateStore(nested);
+            Directory.CreateDirectory(Path.Combine(nestedStore.ControlDir, "notes"));
+            Throws(delegate { engine.EnsureOwnedOrClaimable(nestedStore, identity, nested, new OpReport("unit-bootstrap", nested)); },
+                "empty nested user directory is still unowned");
+            Ok(Directory.Exists(Path.Combine(nestedStore.ControlDir, "notes")), "nested user directory preserved");
+
+            string extra = NewFixtureDir("bootstrap-extra"); var extraStore = new StateStore(extra);
+            extraStore.EnsureControlDir(); string note = Path.Combine(extra, "note.txt"); File.WriteAllText(note, "keep me");
+            Throws(delegate { engine.EnsureOwnedOrClaimable(extraStore, identity, extra, new OpReport("unit-bootstrap", extra)); },
+                "empty control directory does not claim other root contents");
+            Eq(File.ReadAllText(note), "keep me", "root note preserved");
+
+            string controlFile = NewFixtureDir("bootstrap-control-file"); var fileStore = new StateStore(controlFile);
+            File.WriteAllText(fileStore.ControlDir, "not a directory");
+            Throws(delegate { engine.EnsureOwnedOrClaimable(fileStore, identity, controlFile, new OpReport("unit-bootstrap", controlFile)); },
+                "control name occupied by regular file is refused");
+            Eq(File.ReadAllText(fileStore.ControlDir), "not a directory", "control-name file preserved");
+
+            string junction = Path.Combine(_fixtureRoot, "bootstrap-junction"); var junctionStore = new StateStore(junction);
+            Throws(delegate { engine.EnsureOwnedOrClaimable(junctionStore, identity, junction, new OpReport("unit-bootstrap", junction)); },
+                "empty control junction cannot be claimed");
+            Ok(PathSafety.IsReparsePoint(junctionStore.ControlDir), "control junction itself preserved");
+            Ok(Directory.GetFileSystemEntries(Path.Combine(_fixtureRoot, "bootstrap-junction-target")).Length == 0,
+                "control junction target not written");
+            string throughJunction = Path.Combine(_fixtureRoot, "jx", "must-not-create");
+            Throws(delegate { engine.EnsureOwnedOrClaimable(new StateStore(throughJunction), identity, throughJunction,
+                new OpReport("unit-bootstrap", throughJunction)); }, "missing root through ancestor junction refused");
+            Ok(!Directory.Exists(Path.Combine(_fixtureRoot, "junction-target", "must-not-create")), "ancestor junction target preserved");
+        }
+
+        private static Journal BootstrapJournal(string root)
+        {
+            Identity id = Identity.ExpectedFor("test"); var journal = new Journal();
+            journal.TxnId = "txn-cccccccccccccccccccccccccccccccc"; journal.Op = "install"; journal.Phase = "staging";
+            journal.AppId = id.AppId; journal.AppName = id.AppName; journal.Marker = id.Marker;
+            journal.RegUninstallKey = id.RegUninstallKey; journal.ShortcutGroup = id.ShortcutGroup;
+            journal.UninstallerName = id.UninstallerName; journal.ExeName = id.ExeName; journal.Publisher = id.Publisher;
+            journal.Root = root; journal.ControlDir = Path.Combine(root, StateStore.ControlDirName);
+            journal.StageDir = Path.Combine(Path.Combine(root, "app"), ".pending-x");
+            journal.NewPayloadDir = Path.Combine(Path.Combine(root, "app"), "0.1.0+x");
+            journal.Target = MakeVR("0.1.0+x", "0.1.0", "x"); journal.FirstInstall = true;
+            return journal;
         }
 
         private static void DeleteLockBatchTests()
