@@ -46,3 +46,7 @@ Windows Microsoft Heami Desktop을 파일 출력으로만 사용해 새로운 �
 서명·네이티브 설치·물리 마이크·실제 게임 중 체감·장기 채팅 품질·Steam 판매 조건은 별도의 남은 기준이다. 사용자 앱을 교체하거나 재시작하지 않았다. 이어서 요청된 2차 실사용 분석은 별도 작업 트리에서 원본 기록을 읽고 진행한다.
 
 Windows checkout에서도 배포 소스 해시가 같도록 수정한 worker 하나를 LF로 정규화하고 `.gitattributes`에 해당 파일만 지정했다. 전후 Git canonical blob은 같으며 `worker-eol.json`에 바이트 해시를 남겼다. 정규화 후 Python9개, 필수495개/빌드, 새 배포 실제 인식기 복구와 전체 무결성 검사를 다시 통과했다. 처음 혼합 줄바꿈 배포의 `window-build-result.json`은 중간 검증으로 보존한다.
+
+## 통합 기록
+
+제품/검증 도구 커밋 `415cf595f62504738b0dbaf98eb7d36b529a5593`를 별도 `speech-window-integration` worktree에서 다시 확인했다. 자체 `npm ci` 후 **495개 테스트와 TypeScript/Vite 빌드**가 통과했고, 그 통합 소스/화면 빌드의 **67개 배포 대상**이 이번 실제 실행 ASAR/리소스와 일치했다. 원본은 두 worktree의 `artifacts/window-integration-check.log`, 흐름은 개발 worktree의 `artifacts/window-integration-result.json`이다. 이 기록만 추가한 뒤 main에 fast-forward하며 푸시·사용자 앱 교체·네이티브 실행은 하지 않는다.
