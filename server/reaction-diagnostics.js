@@ -9,8 +9,8 @@ const skips=new Set(['busy','audience-arrival','interval','backoff','older-windo
 export class ReactionDiagnostics {
   constructor(now=Date.now){this.now=now;this.serial=0;this.reset();}
   reset(){this.since=this.now();this.rows=[];this.skips={};this.total=0;}
-  begin({hasSpeech=false,frameCount=0,present=0,eligible=0,latestFrameAt}={}){
-    const row={id:++this.serial,startedAt:this.now(),hasSpeech:!!hasSpeech,frameCount:count(frameCount),present:count(present),eligible:count(eligible),latestFrameAgeMs:Number.isFinite(latestFrameAt)?elapsed(latestFrameAt,this.now()):null,modelMs:null,generated:null,admitted:0,delivered:0,pending:0,rejected:{},state:'generating',firstDeliveryMs:null};
+  begin({hasSpeech=false,frameCount=0,present=0,eligible=0,eligibleViewers=0,lurkingEligible=0,company=null,latestFrameAt}={}){
+    const row={id:++this.serial,startedAt:this.now(),hasSpeech:!!hasSpeech,frameCount:count(frameCount),present:count(present),eligible:count(eligible),eligibleViewers:count(eligibleViewers),lurkingEligible:count(lurkingEligible),company:['idle','watching'].includes(company)?company:null,latestFrameAgeMs:Number.isFinite(latestFrameAt)?elapsed(latestFrameAt,this.now()):null,modelMs:null,generated:null,admitted:0,delivered:0,pending:0,rejected:{},state:'generating',firstDeliveryMs:null};
     this.rows.push(row);this.rows=this.rows.slice(-LIMIT);this.total++;return row.id;
   }
   row(id){return this.rows.find(row=>row.id===id);}

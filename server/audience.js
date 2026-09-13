@@ -74,15 +74,21 @@ export class Audience {
     }
     return events;
   }
-  context(settings,speech='',excitement=0,{hearers=null}={}){
-    const candidates=[];
+  context(settings,speech='',excitement=0,{hearers=null,company=false}={}){
+    const candidates=[],lurkers=[];
     for(const p of settings.personas.filter(p=>p.enabled)){
       if(hearers&&!hearers.includes(p.id))continue;
       const member=this.data.members[p.id];const named=speech.includes(p.name)&&['active','lurking'].includes(this.presence[p.id])&&member?.joinedAt>=this.lastStart;
       if(named){this.presence[p.id]='active';member.recognized++;member.affinity=Math.min(1,member.affinity+0.025);}
       const interest=profiles[member?.origin?.key];
-      if(this.presence[p.id]==='active')candidates.push({id:p.id,score:this.random()+(p.sociability??0.6)*0.4+(interest?.sociability??0.5)*0.15+(named?2:0)+(p.id===settings.managerId?-0.4:0)});
+      const active=this.presence[p.id]==='active';
+      const occasional=company&&this.presence[p.id]==='lurking'&&!p.system&&p.id!==settings.managerId&&member?.joinedAt>=this.lastStart;
+      if(active||occasional)(active?candidates:lurkers).push({id:p.id,score:this.random()+(p.sociability??0.6)*0.4+(interest?.sociability??0.5)*0.15+(named?2:0)+(p.id===settings.managerId?-0.4:0)});
     }
+    // Watching quietly does not mean unable to speak. At a bounded company
+    // opportunity, one lurker may volunteer without changing their presence,
+    // affinity or visit. The model can still choose silence or current gameplay.
+    const volunteer=lurkers.sort((a,b)=>b.score-a.score)[0];if(volunteer)candidates.push(volunteer);
     const eligible=candidates.sort((a,b)=>b.score-a.score).slice(0,Math.min(settings.chatPace+1,settings.personas.length)).map(p=>p.id);
     return {eligible,members:settings.personas.filter(p=>p.enabled).map(p=>{
       const m=this.data.members[p.id];return {id:p.id,presence:this.presence[p.id] || 'away',...m,relationship:(m?.sessions>=3&&m?.seconds>=600)?'단골':m?.sessions>1?'재방문':'첫 방문',arrivalInterest:profiles[m?.origin?.key]?.intent || '직접 초대한 관객. 개인 설정과 실제 기억을 따른다.'};

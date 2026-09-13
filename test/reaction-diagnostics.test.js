@@ -57,6 +57,11 @@ test('first-chat wait measures delivered responses only, separating inference fr
  assert.equal(summary.firstChatSamples,3);assert.equal(summary.firstChatWaitP50Ms,800);assert.equal(summary.firstChatWaitP95Ms,2500);
  d.reset();assert.equal(d.snapshot().summary.firstChatSamples,0);assert.equal(d.snapshot().summary.firstChatWaitP95Ms,null);
 });
+test('company diagnostics preserve only bounded categories and candidate counts',()=>{
+ const d=new ReactionDiagnostics();d.begin({company:'idle',eligible:2,eligibleViewers:1,lurkingEligible:1});d.begin({company:'PRIVATE-TEXT',eligibleViewers:Infinity,lurkingEligible:-5});
+ const rows=d.snapshot().requests;assert.equal(rows[0].company,'idle');assert.equal(rows[0].eligibleViewers,1);assert.equal(rows[0].lurkingEligible,1);
+ assert.equal(rows[1].company,null);assert.equal(rows[1].eligibleViewers,0);assert.equal(rows[1].lurkingEligible,0);assert.ok(!JSON.stringify(rows).includes('PRIVATE'));
+});
 test('a previous broadcast finishing late cannot add a skip to the new broadcast diagnostics',async t=>{
  let release;const f=fixture(t,()=>new Promise(r=>release=r));const old=f.s.react({speech:'old private conversation'});
  f.s.stop();f.s.start();release(result());assert.equal((await old).skipped,'stopped');

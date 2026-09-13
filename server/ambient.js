@@ -11,11 +11,14 @@ export class Ambient {
   reset(){this.active=null;this.until=0;this.quietUntil=0;this.turns=0;this.nextIdleAt=0;}
   idle(witnesses,{observing=false}={}){
     const s=this.studio,now=s.now();
-    if(now<this.quietUntil||now<this.nextIdleAt||s.queue.length||!witnesses.length)return null;
+    if(now<this.quietUntil||now<this.nextIdleAt||s.queue.length)return null;
+    // The system manager is not a substitute audience. Do not spend the
+    // opportunity before an actual viewer is present, including quiet lurkers.
+    if(!s.settings.personas.some(p=>p.enabled&&!p.system&&p.id!==s.settings.managerId&&witnesses.includes(p.id)))return null;
     if(!s.messages.some(m=>m.kind==='streamer'&&!m.fictional&&m.time<=now&&now-m.time<1200000))return null;
     const last=Math.max(s.startedAt,...s.messages.filter(m=>!m.fictional).map(m=>m.time));
     if(now-last<60000)return null;
-    // One opportunity per 75–135s, including empty responses. This cannot
+    // One opportunity per 75–135s with viewers present, including empty responses. This cannot
     // continuously wake itself or generate points/clips from an old scene.
     this.nextIdleAt=now+75000+s.random()*60000;
     const priority=observing?'한동안 채팅이 없었다는 대화 기회이며 현재 화면이 정적이라는 판정은 아니다. 현재 화면·소리에서 실제 새 사건이 보이거나 스트리머가 집중할 상황이면 그 흐름을 먼저 따른다. 화면의 작은 애니메이션·반복 음악만 바뀌고 특별한 사건이 없으면, 과거 대화를 지금 처음 들은 듯 되풀이하지 말고 아래의 가벼운 대화도 가능하다.':'새 화면 사건은 없다.';

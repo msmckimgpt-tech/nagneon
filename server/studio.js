@@ -240,7 +240,8 @@ export class Studio extends EventEmitter {
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
         const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
-        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers});
+        const ambient=idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null);
+        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers,company:ambient?.id==='quiet-company'});
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses().filter(id=>!speechHearers||speechHearers.includes(id)),capturedAt=this.lastRequest;
@@ -252,9 +253,9 @@ export class Studio extends EventEmitter {
         const adviceRequestId=speechBatch.ids.at(-1)||(speech?this.messages.findLast(m=>m.kind==='streamer'&&m.text===speech)?.id:undefined);
         let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};
-        this.reserveCall();if(!directed)diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
+        this.reserveCall();if(!directed)diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,eligibleViewers:eligiblePersonas.filter(p=>!p.system&&p.id!==this.settings.managerId).length,lurkingEligible:eligiblePersonas.filter(p=>this.audience.presence[p.id]==='lurking').length,company:idleConversation?'idle':watchingCompany?'watching':null,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
         const responseStartedAt=this.now();
-        const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient:idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null),voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient,voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         this.reactions.generated(diagnosticId,result.observation.messages.length);
         if(epoch!==this.epoch||!this.running){diagnosticOutcome='stopped';return {skipped:'stopped'};}
         this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded){diagnosticOutcome='superseded';return {skipped:'superseded'};}
