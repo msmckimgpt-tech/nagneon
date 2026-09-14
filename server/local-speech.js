@@ -8,18 +8,20 @@ const retry='마이크를 껐다 켜거나 음성 인식을 다시 준비해주�
 
 export class LocalSpeech {
   constructor(runtime={},spawner=spawn,{clock=globalThis,startupTimeoutMs=45000,requestTimeoutMs=60000}={}){
-    this.runtime=runtime;this.spawn=spawner;this.clock=clock;this.startupTimeoutMs=startupTimeoutMs;this.requestTimeoutMs=requestTimeoutMs;
+    this.requestedDevice='gpu';this.device='';this.fallback=false;this.switching=null;this.runtime=runtime;this.spawn=spawner;this.clock=clock;this.startupTimeoutMs=startupTimeoutMs;this.requestTimeoutMs=requestTimeoutMs;
     this.child=null;this.ready=false;this.pending=null;this.error='';this.model='';this.closed=false;this.retiring=false;this.waiters=new Set();this.jobs=new Map();
   }
-  start(){
+  start(device=this.requestedDevice){
     if(this.closed||this.child)return;
-    this.ready=false;this.error='';this.model='';
+    this.requestedDevice=device==='cpu'?'cpu':'gpu';
+    this.ready=false;this.error='';this.model='';this.device='';this.fallback=false;
     const python=this.runtime.python||process.env.BACKSEAT_PYTHON||resolve(root,'.venv/Scripts/python.exe');
     if(!existsSync(python)){this.fail('로컬 음성 모델 설치가 필요합니다.');return;}
     const args=['-X','utf8','-B',this.runtime.worker||resolve(root,'scripts/speech_worker.py')];
     const installed=resolve(root,'.models/microphone');
     const model=this.runtime.model||(existsSync(resolve(installed,'manifest.json'))?installed:null);
     if(model)args.push('--model-path',model,'--offline','--model-name',this.runtime.modelName||(model===installed?'medium':'local'));
+    args.push('--device',this.requestedDevice,'--gpu-library-path',this.runtime.gpuLibraries||resolve(root,'.models/gpu'));
     let child;
     try{child=this.spawn(python,args,{windowsHide:true,stdio:['pipe','pipe','pipe'],env:{...process.env,PYTHONIOENCODING:'utf-8',...(model?{HF_HUB_OFFLINE:'1'}:{})}});}
     catch{this.fail('로컬 음성 프로세스를 시작하지 못했습니다. '+retry);return;}
@@ -36,6 +38,7 @@ export class LocalSpeech {
         if(!data||typeof data!=='object')continue;
         if(data.ready===true){
           this.clock.clearTimeout(this.startupTimer);this.ready=true;this.error='';this.model=typeof data.model==='string'?data.model.slice(0,120):'';
+          this.device=typeof data.device==='string'?data.device.slice(0,40):'';this.fallback=data.fallback===true;
           for(const waiter of [...this.waiters])waiter.finish();
         }else if(data.error&&!data.id){this.retire(String(data.error).slice(0,1000));return;}
         else if(this.jobs.has(data.id)){
@@ -66,7 +69,15 @@ export class LocalSpeech {
     // Keep ownership until close. Never overlap a replacement with a stuck worker.
     try{this.child.kill();}catch{this.error='음성 인식기 종료를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.';}
   }
-  async prepare(signal=new AbortController().signal){
+  async prepare(signal=new AbortController().signal,device=this.requestedDevice){
+    if(!['gpu','cpu'].includes(device))throw Error('음성 인식 장치를 확인해주세요.');
+    if(this.switching)await this.switching;
+    if(device!==this.requestedDevice){
+      if(this.closed)throw Error('음성 인식을 종료했습니다.');
+      if(this.jobs.size)throw Error('이전 음성 인식이 끝난 뒤 장치를 변경해주세요.');
+      this.switching=this.stopWorker().then(()=>{if(this.closed)throw Error('음성 인식을 종료했습니다.');this.requestedDevice=device;this.error='';}).finally(()=>{this.switching=null;});
+      await this.switching;
+    }
     if(signal.aborted)throw Error('음성 준비를 취소했습니다.');
     if(this.closed)throw Error('음성 인식을 종료했습니다.');
     if(this.retiring)throw Error('이전 음성 인식기 종료를 기다리고 있습니다. 잠시 후 다시 시도해주세요.');
@@ -103,8 +114,9 @@ export class LocalSpeech {
       catch{this.retire('로컬 음성 연결이 종료되었습니다. '+retry);}
     });
   }
-  close(){
-    this.closed=true;const child=this.child;this.retire('음성 인식을 종료했습니다.');
+  close(){this.closed=true;return this.stopWorker();}
+  stopWorker(){
+    const child=this.child;this.retire('음성 인식을 종료했습니다.');
     if(!child||this.child!==child)return Promise.resolve();
     return new Promise((resolve,reject)=>{
       const done=()=>{this.clock.clearTimeout(timer);resolve();};

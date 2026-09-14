@@ -37,6 +37,23 @@ class FakeModel:
 
 
 class SpeechWorkerTests(unittest.TestCase):
+    def test_gpu_failure_retries_same_job_on_cpu_once(self):
+        events = []
+        cpu = object()
+        with patch.object(worker, 'process_job', side_effect=[RuntimeError('CUDA out of memory'), {'id': 'one', 'text': '같은 발언'}]) as process:
+            worker.serve(object(), [json.dumps({'id': 'one', 'audio': 'original'})], events.append, lambda: cpu)
+        self.assertEqual(events, [{'id': 'one', 'text': '같은 발언'}])
+        self.assertIs(process.call_args.args[0], cpu)
+        self.assertEqual(process.call_args.args[1]['audio'], 'original')
+
+    def test_invalid_audio_does_not_trigger_gpu_fallback(self):
+        events = []
+        with patch.object(worker, 'process_job', side_effect=RuntimeError('invalid audio')), patch('builtins.print') as recover:
+            worker.serve(object(), [json.dumps({'id': 'bad'})], events.append, recover)
+        recover.assert_not_called()
+        self.assertEqual(events[0]['id'], 'bad')
+        self.assertIn('error', events[0])
+
     def test_encoder_passes_short_features_without_mutating_them(self):
         model = object.__new__(worker.MicrophoneWhisper)
         features = np.arange(80*3000).reshape(80, 3000)

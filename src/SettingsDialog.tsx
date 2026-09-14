@@ -270,6 +270,14 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
       case 'media':
         return <>
           <h3>음성 인식</h3>
+          <label className="set-field">음성 인식 처리 장치
+            <select value={draft.speechDevice??'gpu'} onChange={e=>update('speechDevice',e.target.value as Settings['speechDevice'])}>
+              <option value="gpu">GPU (기본값 · 사용 불가 시 CPU)</option>
+              <option value="cpu">CPU</option>
+            </select>
+          </label>
+          <p className="field-note">저장한 설정은 다음 마이크 준비 때 적용돼요. NVIDIA GPU를 사용할 수 없으면 CPU로 자동 전환해요.</p>
+          <p className="field-note" role="status">현재 작동 장치: {state.provider.localAudio?state.provider.localAudioDevice||'확인 중':'준비 전'}{state.provider.audioFallback?' · GPU를 사용할 수 없어 CPU로 전환했어요.':''}</p>
           <label className="set-check">
             <input type="checkbox" checked={draft.contextualTranscription!==false} onChange={e=>update('contextualTranscription',e.target.checked)}/>
             <span>게임과 대화 맥락으로 음성 오인식 교정<small>인식 원문을 먼저 전달하고, 관객이 답할 때 확실한 부분만 교정해요. ‘음성 교정’ 표시에서 원문을 확인할 수 있어요.</small></span>

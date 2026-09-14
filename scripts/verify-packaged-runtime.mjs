@@ -41,6 +41,8 @@ try{
   speech.start();const start=Date.now();
   while(!speech.ready&&Date.now()-start<30000){if(speech.error)throw new Error(speech.error);await new Promise(r=>setTimeout(r,100));}
   assert.equal(speech.ready,true);report.speechReadyMs=Date.now()-start;
+  report.speechDevice=speech.device;report.speechFallback=speech.fallback;
+  if(option('expect-speech-device')==='gpu'){assert.match(speech.device,/^GPU/);assert.equal(speech.fallback,false);report.checks.push('bundled CUDA and cuDNN perform real GPU inference');}
   const audio=await readFile(resolve('artifacts/korean-fixture.wav')),transcribedAt=Date.now();
   const transcript=await speech.transcribe(audio,new AbortController().signal);
   assert.match(transcript.text,/오늘|게임|이야기/);assert.equal(transcript.cues.confidence,'low');

@@ -10,6 +10,7 @@ export const Settings = z.object({
   title: short(100), streamer: short(40), gameId: short(40), mode: z.enum(['rehearsal','live']),
   showStreamerMessages:z.boolean().default(true),
   communityActivityEnabled:z.boolean().default(true),
+  speechDevice:z.enum(['gpu','cpu']).default('gpu'),
   contextualTranscription:z.boolean().default(true),
   streamerStyle: z.string().max(2000).default('친근한 채팅, 요청할 때만 훈수'), adviceMode: z.enum(['on-request','always','never']).default('on-request'),
   webSearch: z.boolean().default(false), mistakenAdvice: z.number().min(0).max(1).default(0), attentionSeeking: z.number().min(0).max(1).default(0),

@@ -88,6 +88,15 @@ await cp(join(root,'third-party/whisper'),join(speechTarget,'licenses/whisper'),
 const accurateModel=join(root,'.models/microphone');
 const accurateStat=await lstat(accurateModel).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
 if(accurateStat)await installMicrophoneModel(accurateModel,join(speechTarget,'microphone-model'));
+const gpuSource=join(root,'.models/gpu');
+const gpuManifest=await json(join(gpuSource,'manifest.json')).catch(()=>{throw Error('먼저 scripts/install-speech-gpu.py로 GPU 런타임을 설치하세요.');});
+if(gpuManifest.schema!=='nagneon.gpu-runtime/1'||gpuManifest.versions?.nvidia_cublas_cu12!=='12.4.5.8'||gpuManifest.versions?.nvidia_cudnn_cu12!=='9.1.0.70')throw Error('GPU 런타임 버전을 확인하세요.');
+for(const required of ['nvidia/cublas/bin/cublas64_12.dll','nvidia/cudnn/bin/cudnn64_9.dll'])if(!gpuManifest.files?.[required])throw Error('GPU 런타임이 불완전합니다.');
+for(const [file,entry] of Object.entries(gpuManifest.files)){
+  if(isAbsolute(file)||file.split(/[\\/]/).includes('..')||await hash(join(gpuSource,file))!==entry.sha256)throw Error('GPU 런타임 무결성 오류: '+file);
+  const target=join(speechTarget,'gpu',file);await mkdir(dirname(target),{recursive:true});await cp(join(gpuSource,file),target);
+}
+await cp(join(gpuSource,'manifest.json'),join(speechTarget,'gpu/manifest.json'));
 const payload=[];for(const file of await files(speechTarget))payload.push({path:file,sha256:await hash(join(speechTarget,file))});
 await writeFile(join(speechTarget,'payload-manifest.json'),JSON.stringify(payload,null,2));
 

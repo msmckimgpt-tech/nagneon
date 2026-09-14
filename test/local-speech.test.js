@@ -28,3 +28,46 @@ test('a failed audio job keeps the worker ready and the next result includes lat
   const timing={encoderWindowMs:8000,fallback:false,decodeMs:10,recognitionMs:1200,cuesMs:5,processingMs:1215};
   emit({id:sent[1].id,text:'다음 발언',timing});assert.deepEqual(await next,{text:'다음 발언',cues:undefined,timing});speech.close();
 });
+import {defaults} from '../shared/defaults.js';
+import {Settings} from '../server/schema.js';
+test('GPU is the persisted default for both new and existing settings',()=>{
+  assert.equal(defaults.speechDevice,'gpu');const old={...defaults};delete old.speechDevice;
+  assert.equal(Settings.parse(old).speechDevice,'gpu');
+  assert.equal(Settings.parse({...old,speechDevice:'cpu'}).speechDevice,'cpu');
+  assert.throws(()=>Settings.parse({...old,speechDevice:'automatic'}));
+});
+test('GPU launch and fallback status remain distinct from readiness errors',()=>{
+  const {speech,launch,emit}=setup();assert.equal(launch.args[launch.args.indexOf('--device')+1],'gpu');
+  emit({ready:true,device:'CPU / int8',fallback:true});
+  assert.equal(speech.ready,true);assert.equal(speech.device,'CPU / int8');assert.equal(speech.fallback,true);assert.equal(speech.error,'');speech.close();
+});
+test('CPU selection restarts only an idle worker and passes the chosen device',async()=>{
+  const children=[],launches=[];
+  const speech=new LocalSpeech({python:process.execPath},(_python,args)=>{
+    const c=new EventEmitter();c.stdin=new PassThrough();c.stdout=new PassThrough();c.stderr=new PassThrough();c.kill=()=>setImmediate(()=>c.emit('close'));
+    children.push(c);launches.push(args);setImmediate(()=>c.stdout.write('{"ready":true}\n'));return c;
+  });
+  await speech.prepare();await speech.prepare(undefined,'cpu');
+  assert.equal(children.length,2);assert.equal(launches[1][launches[1].indexOf('--device')+1],'cpu');
+  await speech.prepare(undefined,'cpu');assert.equal(children.length,2);
+  const job=speech.transcribe(Buffer.from('voice'),new AbortController().signal);
+  await assert.rejects(speech.prepare(undefined,'gpu'),/이전 음성/);
+  children[1].stdout.write(JSON.stringify({id:speech.pending.id,text:'인식 유지'})+'\n');assert.equal((await job).text,'인식 유지');await speech.close();
+});
+import {startServer} from '../server/index.js';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+test('service startup and audio preparation honor the stored CPU selection',async()=>{
+ const dataDir=mkdtempSync(join(tmpdir(),'nagneon-gpu-settings-'));
+ const provider=()=>({status:()=>({configured:false,model:'test',effort:'low'})});
+ let service=await startServer({port:0,dataDir,provider:provider(),localSpeech:false});
+ service.studio.configure({...service.studio.settings,speechDevice:'cpu'});await service.close();
+ const calls=[];const speech={start:device=>calls.push(['start',device]),prepare:async(_signal,device)=>calls.push(['prepare',device]),close:async()=>{}};
+ service=await startServer({port:0,dataDir,provider:provider(),speechWorker:speech});
+ try{
+  assert.deepEqual(calls,[['start','cpu']]);
+  const response=await fetch(service.url+'/api/audio/prepare',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,Origin:service.url,'X-Backseat-Client':'studio'}});
+  assert.equal(response.status,200);assert.deepEqual(calls.at(-1),['prepare','cpu']);
+ }finally{await service.close();}
+});

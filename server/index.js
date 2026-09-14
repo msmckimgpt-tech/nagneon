@@ -58,7 +58,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   if(provider.check)await provider.check();
   const speech=speechWorker||new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
   const clipInspector=new ClipInspector(runtime.clips);
-  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
+  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,localAudioDevice:speech.device,audioFallback:speech.fallback,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
   let debug;
   const requests=new RequestLifetime();provider=ownProviderRequests(withDebugPrompt(provider,()=>debug?.read()),requests);let closing;
@@ -245,7 +245,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/audio/prepare',async(_req,res)=>{
     if(!localSpeech)return res.json({ok:true,local:false});
     const controller=new AbortController();const disconnect=()=>{if(!res.writableEnded)controller.abort();};res.on('close',disconnect);
-    try{await speech.prepare(controller.signal);if(!controller.signal.aborted)res.json({ok:true,local:true});}
+    try{await speech.prepare(controller.signal,studio.settings.speechDevice);if(!controller.signal.aborted)res.json({ok:true,local:true});}
     finally{res.off('close',disconnect);studio.publish();}
   });
   app.post('/api/audio',express.raw({type:['audio/webm','audio/mp4','audio/ogg','audio/wav'],limit:'8mb'}),async(req,res)=>{
@@ -266,7 +266,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((error,_req,res,_next)=>res.status(error instanceof z.ZodError?400:409).json({error:error instanceof z.ZodError?'입력 설정을 확인하세요: '+error.issues.map(i=>i.message).join(', '):error.message || '요청 처리 실패'}));
   const server=await new Promise((resolve,reject)=>{const s=app.listen(port,'127.0.0.1',()=>resolve(s));s.on('error',reject);});
   expectedHost=`127.0.0.1:${server.address().port}`;
-  if(localSpeech)speech.start();
+  if(localSpeech)speech.start(studio.settings.speechDevice);
   const health=setInterval(()=>studio.publish(),5000);health.unref();
   return {server,studio,obsInput,url:`http://${expectedHost}`,accessToken:access.token,close:()=>{
     if(closing)return closing;

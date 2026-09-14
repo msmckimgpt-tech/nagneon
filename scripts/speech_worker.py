@@ -3,6 +3,8 @@ import argparse
 import base64
 import json
 import io
+import os
+import gc
 from pathlib import Path
 import sys
 import time
@@ -105,7 +107,7 @@ def process_job(model, job):
                        'processingMs': round((finished - started) * 1000)}}
 
 
-def serve(model, lines, emit):
+def serve(model, lines, emit, recover=None):
     for line in lines:
         job = {}
         try:
@@ -113,7 +115,15 @@ def serve(model, lines, emit):
             if not isinstance(job, dict):
                 job = {}
                 raise ValueError('Invalid job')
-            emit(process_job(model, job))
+            try:
+                result = process_job(model, job)
+            except RuntimeError as error:
+                if recover is None or not any(word in str(error).lower() for word in ('cuda', 'cublas', 'cudnn', 'out of memory')):
+                    raise
+                model = recover()
+                recover = None
+                result = process_job(model, job)
+            emit(result)
         except Exception:
             # Job errors must not be mistaken for fatal model startup errors.
             emit({'id': job.get('id'), 'error': '로컬 음성 인식에 실패했습니다.'})
@@ -125,13 +135,49 @@ def main():
     parser.add_argument('--model-path', type=Path)
     parser.add_argument('--model-name', default='small')
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--device', choices=['gpu', 'cpu'], default='gpu')
+    parser.add_argument('--gpu-library-path', type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    model = MicrophoneWhisper(str(args.model_path) if args.model_path else 'small', device='cpu', compute_type='int8', download_root=None if args.model_path else str(root / '.models'), local_files_only=args.offline, cpu_threads=4)
+    # Keep directory handles alive for the lifetime of the worker. Never modify
+    # the user's system PATH; packaged and development libraries are local.
+    libraries = args.gpu_library_path or root / '.models' / 'gpu'
+    bins = sorted(libraries.glob('nvidia/*/bin')) if args.device == 'gpu' else []
+    handles = [os.add_dll_directory(str(p.resolve())) for p in bins] if os.name == 'nt' else []
+    if bins:
+        os.environ['PATH'] = os.pathsep.join(str(p.resolve()) for p in bins) + os.pathsep + os.environ.get('PATH', '')
     emit = lambda value: print(json.dumps(value, ensure_ascii=False), flush=True)
-    emit({'ready': True, 'model': args.model_name, 'device': 'cpu/int8'})
+    active = [None]
+
+    def load(device, fallback=False):
+        if active[0] is not None:
+            active[0].model.unload_model()
+        active[0] = None
+        gc.collect()
+        model = MicrophoneWhisper(str(args.model_path) if args.model_path else 'small',
+                                 device=device, compute_type='int8_float16' if device == 'cuda' else 'int8',
+                                 download_root=None if args.model_path else str(root / '.models'),
+                                 local_files_only=args.offline, cpu_threads=4)
+        if device == 'cuda':
+            # DLL loading is lazy. Readiness must mean actual GPU inference works.
+            model.encoder_frames = 400
+            model.encode(np.zeros((model.feature_extractor.mel_filters.shape[0], 400), dtype=np.float32))
+            model.encoder_frames = 3000
+        active[0] = model
+        emit({'ready': True, 'model': args.model_name,
+              'device': 'GPU / int8_float16' if device == 'cuda' else 'CPU / int8', 'fallback': fallback})
+        return model
+
+    if args.device == 'gpu' and not args.download_only:
+        try:
+            load('cuda')
+        except Exception:
+            load('cpu', fallback=True)
+    else:
+        load('cpu')
     if not args.download_only:
-        serve(model, sys.stdin, emit)
+        serve(active[0], sys.stdin, emit,
+              (lambda: load('cpu', fallback=True)) if args.device == 'gpu' and active[0].model.device == 'cuda' else None)
 
 
 if __name__ == '__main__':

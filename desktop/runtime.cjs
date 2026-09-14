@@ -7,7 +7,7 @@ function packagedRuntime(resources){
   const accurate=existsSync(join(microphone,'manifest.json'));
   const runtime={
     codexBin:join(resources,'codex','bin','codex.exe'),
-    speech:{python:join(speech,'python','python.exe'),worker:join(speech,'speech_worker.py'),model:accurate?microphone:join(speech,'model'),modelName:accurate?'medium':'small'},
+    speech:{gpuLibraries:join(speech,'gpu'),python:join(speech,'python','python.exe'),worker:join(speech,'speech_worker.py'),model:accurate?microphone:join(speech,'model'),modelName:accurate?'medium':'small'},
     clips:{python:join(speech,'python','python.exe'),worker:join(speech,'clip_inspector.py')},
     clipPerception:{worker:join(speech,'clip_perception.py')},
     sound:{python:join(speech,'python','python.exe'),worker:join(resources,'sound','sound_worker.py'),model:join(resources,'sound','model'),speechModel:join(speech,'model')}
