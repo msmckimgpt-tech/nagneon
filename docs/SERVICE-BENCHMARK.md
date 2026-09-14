@@ -1,5 +1,13 @@
 # 유사 서비스 벤치마킹과 구현
 
+## 실제 로컬 제공처 검증 추가
+
+2026-09-14, `codex/service-benchmark-integration`의 격리 Ollama 0.34.0/RTX 2070 8GB에서 `qwen3-vl:2b-instruct`를 실제 실행했다. 공식 Windows ZIP SHA256 `a7dd1b174f39d3d1b8a25d4cbc86045d0e190b17187bfdcbe2f2ee3b5a11470e` 확인 후 별도 USERPROFILE/OLLAMA_MODELS/14366 포트, OLLAMA_NO_CLOUD=1을 사용했다. 기존 사용자 Ollama나 앱 설정은 변경하지 않았다.
+
+기본 f16/65536 문맥은 60초 제한에 걸렸다(`artifacts/ollama-live/inference-f16.json`). q8_0 캐시와 Flash Attention 설정 후 응답은 빨라졌으나, 생성 스키마에서 빠진 UUID 제약 때문에 답글 대상에 문장이 출력됐다. 로컬 생성 스키마를 `z.toJSONSchema(Observation)`로 일원화하여 길이·범위·식별자 검사와 맞췄다. 최종 `artifacts/ollama-acceptance-WFu8sd/result.json`은 형식 2건 통과/10.3초·5.6초이며 **의미 품질은 미달**이다. 질문 반복과 잘못된 장면 설명이 있어 소형 모델 성공이나 게임용 추천으로 판정하지 않는다. 전체 기본 지침을 줄여 시험을 통과시키지 않았다.
+
+`scripts/verify-ollama-live.mjs`에 합성 입력 재현과 원본 응답 보존을 추가했다. `artifacts/ollama-live/schema-check.log`: 647개 테스트·TypeScript/Vite 통과. 같은 폴더 account-device.log/account-runtime.log: 공식 CLI 격리 기기 발급/취소와 실제 Electron 계정 UI 회귀 통과. 다른 로컬 모델의 적합성, 실제 외부 플랫폼과 장치·게임 검증은 남아 있다. [로컬 설정 안내](OLLAMA-SETUP.md)에 실측 조건과 한계를 기록했다.
+
 ## 목표와 결정
 
 2026-09-14 사용자 요청: 조사한 서비스들의 장점을 제품과 코드 구조에 적극 반영한다. 기능 이름만 추가하거나 비교표 작성만으로 완료하지 않는다. 관객은 **텍스트만** 유지한다. 개인 방송실이 기본이며 OBS와 실제 채팅 연동은 선택 기능이다. 외부 채팅 대상은 사용자 선택에 따라 **치지직·유튜브**다. 기존 계정/모델 선택과 사용자 기록을 보존한다.

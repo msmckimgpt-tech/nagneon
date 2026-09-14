@@ -1,5 +1,10 @@
-import {OpenAIProvider,format} from './provider.js';
+import {OpenAIProvider} from './provider.js';
+import {z} from 'zod';
 import {Observation} from './schema.js';
+
+// Local constrained decoding needs the same lengths, ranges and UUIDs that
+// acceptance validates. The hosted-provider schema omits some of these bounds.
+const localFormat=z.toJSONSchema(Observation);
 
 export class OllamaProvider extends OpenAIProvider {
   constructor(env=process.env,fetcher=fetch){
@@ -41,7 +46,7 @@ export class OllamaProvider extends OpenAIProvider {
     const text=content.filter(p=>p.type==='input_text').map(p=>p.text).join('\n');
     // Conservative text allowance; image tokenization remains model-specific.
     if(Buffer.byteLength(payload.instructions+text,'utf8')+images.length*4096+2300>this.contextSize)throw Error('로컬 모델의 문맥 예산을 넘었습니다. 문맥 크기를 늘리거나 참여 관객·화면 입력을 줄여주세요.');
-    const result=await this.localRequest('chat',{model:this.model,stream:false,format:format.schema,options:{num_predict:2200,num_ctx:this.contextSize},messages:[{role:'system',content:payload.instructions+'\n웹 검색 기능은 제공되지 않는다. 검색을 했다고 주장하지 않는다.'},{role:'user',content:text,...(images.length?{images:images.map(image=>image.slice(image.indexOf(',')+1))}:{})}]},signal);
+    const result=await this.localRequest('chat',{model:this.model,stream:false,format:localFormat,options:{num_predict:2200,num_ctx:this.contextSize},messages:[{role:'system',content:payload.instructions+'\n웹 검색 기능은 제공되지 않는다. 검색을 했다고 주장하지 않는다.'},{role:'user',content:text,...(images.length?{images:images.map(image=>image.slice(image.indexOf(',')+1))}:{})}]},signal);
     if(result.done!==true||result.done_reason==='length'||result.message?.tool_calls?.length)throw Error('로컬 모델 응답이 완료되지 않았습니다. 모델과 출력 길이를 확인해주세요.');
     try{const observation=Observation.parse(JSON.parse(result.message.content));const count=n=>Number.isSafeInteger(n)&&n>=0?n:0;return {observation,usage:{input_tokens:count(result.prompt_eval_count),output_tokens:count(result.eval_count),total_tokens:count(result.prompt_eval_count)+count(result.eval_count)}};}
     catch{throw Error('로컬 모델 응답 형식이 올바르지 않아 채팅을 표시하지 않았습니다.');}

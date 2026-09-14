@@ -1,6 +1,6 @@
 # 선택 로컬 모델 준비
 
-기본 제공처는 Codex 구독이다. 방송 설정 → 계정과 모델 연결 → **AI 제공처 선택**에서 Ollama로 전환할 수 있다. 실제 모델 품질 검증은 아직 남아 있다.
+기본 제공처는 Codex 구독이다. 방송 설정 → 계정과 모델 연결 → **AI 제공처 선택**에서 Ollama로 전환할 수 있다. 모델별 적합성 확인이 필요하며 아래 실측 모델은 품질 기준에 미달했다.
 
 1. [Ollama 공식 사이트](https://ollama.com/)에서 Windows 런타임을 설치한다.
 2. PC 메모리에 맞는 로컬 GGUF 모델을 별도로 준비한다. 게임 화면을 함께 보려면 vision 지원 모델이 필요하다. 앱이 모델을 자동 다운로드하지 않는다.
@@ -25,4 +25,12 @@ Codex로 돌아가려면 앱의 **AI 제공처 선택**에서 **ChatGPT 구독 �
 
 선택은 앱 프로필의 `provider-choice.json`에 제공처·모델명·주소·문맥 크기만 저장한다. API 키는 저장하지 않는다.
 
-현재 증거는 로컬 HTTP 규격 시험과 fixture 응답을 사용한 Electron 전환/복귀 검증이다. 이 PC에서는 PATH의 Ollama와 기본 11434 포트 응답을 확인하지 못했다. 실제 Ollama 설치·모델 추론·한국어 품질·VRAM/지연 검증은 미완료다.
+### 실제 로컬 모델 시험 (2026-09-14)
+
+별도 포트·프로필·모델 저장소에서 Ollama 0.34.0과 `qwen3-vl:2b-instruct`를 실행했다. RTX 2070 8GB, 문맥 65536, 기본 관객 지침 전체와 합성 도형 PNG를 사용했다. **이 2B 모델은 현재 앱의 대화·장면 인식용으로 권장하지 않는다.** 한국어 출력과 JSON 통과는 가능했지만 질문 반복, 잘못된 장면 설명과 근거 없는 취향 생성이 관찰됐다.
+
+기본 f16 캐시는 CPU/GPU 분할 적재 후 두 요청 모두 60초 제한을 넘겼다. [공식 KV 캐시 설정](https://docs.ollama.com/faq#how-can-i-set-the-quantization-type-for-the-kv-cache)에 따라 시험용 Ollama 서버에 `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_NUM_PARALLEL=1`을 설정하자 응답이 가능했다. 이는 Ollama **서버 실행 환경** 설정이며 앱의 환경 변수만 바꿔서는 적용되지 않는다. 다른 모델·PC의 품질이나 속도를 보장하지 않으며 기본 Codex 선택은 유지한다.
+
+실제 추론에서 발견한 replyTo UUID 불일치를 고쳐, 로컬 생성 스키마를 앱의 Observation 검증 스키마에서 직접 만든다. 길이·범위·UUID 제약을 함께 전달하며 결과 검증도 유지한다. 스키마 통과가 응답의 사실성이나 자연스러움을 보장하지 않는다.
+
+재현 도구는 `scripts/verify-ollama-live.mjs`다. 별도로 준비한 서버에 `OLLAMA_BASE_URL`, `OLLAMA_MODEL`을 지정하고 `node scripts/verify-ollama-live.mjs --image=<합성 PNG 경로>`를 실행한다. 모델을 자동 설치하거나 화면을 캡처하지 않는다. 매 실행의 원본 응답·시간·사용량은 독립 `artifacts/ollama-acceptance-*`에 저장되며 의미 품질은 따로 검토해야 한다. 이번 최종 시험은 `ollama-acceptance-WFu8sd/result.json`: 형식 2건 통과, 10.3초/5.6초, 의미 품질 미달이다. 실제 게임·물리 마이크와 다른 로컬 모델의 적합성 검증은 남아 있다.

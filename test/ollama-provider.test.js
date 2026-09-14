@@ -12,6 +12,12 @@ test('Ollama real HTTP request keeps instructions, ordered frames and schema, pa
   const provider=new OllamaProvider({OLLAMA_BASE_URL:`http://127.0.0.1:${server.address().port}`,OLLAMA_MODEL:'fixture:local'});
   const result=await provider.react({...args(),frames:[{image:'data:image/jpeg;base64,YQ=='},{image:'data:image/jpeg;base64,Yg=='}],screenTimeline:{sourceId:'one',through:200}});
   assert.equal(result.usage.total_tokens,110);const payload=requests[1].body;assert.equal(payload.stream,false);assert.equal(payload.format.type,'object');assert.deepEqual(payload.messages[1].images,['YQ==','Yg==']);assert.ok(payload.messages[0].content.includes('훈수 정책'));assert.ok(payload.messages[1].content.includes('screenTimeline'));assert.equal(requests[1].headers.authorization,undefined);assert.equal(provider.status().kind,'ollama');
+  // Real local inference emitted speech text as replyTo when the generation
+  // schema omitted the UUID constraint, although acceptance required it.
+  const message=payload.format.properties.messages.items.properties;
+  assert.equal(message.replyTo.anyOf[0].format,'uuid');
+  assert.equal(message.text.maxLength,240);
+  assert.equal(payload.format.properties.confidence.maximum,1);
 });
 test('Ollama rejects cloud, remote hosts, and images for text-only models',async()=>{
   assert.throws(()=>new OllamaProvider({OLLAMA_BASE_URL:'https://ollama.com'}));
