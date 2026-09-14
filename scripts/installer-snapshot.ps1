@@ -1,6 +1,6 @@
 param([Parameter(Mandatory=$true)][string]$OutputPath)
 $ErrorActionPreference='Stop'
-$identityKey='Software\Microsoft\Windows\CurrentVersion\Uninstall\BACKSEAT-Studio-Test'
+$identityKey='Software\Microsoft\Windows\CurrentVersion\Uninstall\Nagneon-Test'
 $result=@{registries=@{};shortcut=$null;group=$null}
 foreach($view in @([Microsoft.Win32.RegistryView]::Registry32,[Microsoft.Win32.RegistryView]::Registry64)) {
   $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,$view)
@@ -11,8 +11,8 @@ foreach($view in @([Microsoft.Win32.RegistryView]::Registry32,[Microsoft.Win32.R
     finally {$key.Dispose()}
   } finally {$base.Dispose()}
 }
-$group=Join-Path ([Environment]::GetFolderPath('Programs')) 'BACKSEAT Studio (Test)'
-$link=Join-Path $group 'BACKSEAT Studio (Test).lnk'
+$group=Join-Path ([Environment]::GetFolderPath('Programs')) 'Nagneon (Test)'
+$link=Join-Path $group 'Nagneon (Test).lnk'
 $result.group=@{path=$group;exists=(Test-Path -LiteralPath $group)}
 if(Test-Path -LiteralPath $link){
   $shell=New-Object -ComObject WScript.Shell

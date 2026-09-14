@@ -24,6 +24,7 @@ export async function packageSources(root){
     }
   }
   for(const [name,extension] of Object.entries(roots))await visit(join(root,name),name,extension);
+  files.push({source:'LICENSE',kind:'archive',target:'LICENSE',sha256:digest(await readFile(join(root,'LICENSE')))});
   const pkg=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
   files.push({source:'package.json',kind:'archive',target:'package.json',sha256:digest(JSON.stringify(defaultSanitizePackageJson(pkg),null,2)+'\n')});
   for(const source of ['package.json','package-lock.json'])buildInputs.push({source,sha256:digest(await readFile(join(root,source)))});

@@ -21,7 +21,7 @@ export function Experiences({state,onError,onSay,onMic,mic}:{state:State;onError
     </div>
     {mode==='seasons'?<Seasons state={state} onError={onError} onSay={onSay} onMic={onMic} mic={mic}/>:mode==='practice'?<TrainingPanel training={state.training} onAction={async(path,body)=>{onError('');try{return await api(path,body);}catch(e){onError(e instanceof Error?e.message:'연습을 진행하지 못했습니다.');throw e;}}}/>:<>
       <section className="experience-hero panel"><div className="eyebrow">TONIGHT, YOU ARE THE MAIN CHARACTER</div><h2>한 번쯤 꿈꿨던 방송을,<br/>오늘 우리 방에서.</h2><p>수상 소감, 새벽 라디오, 관객들과 만드는 축제.<br/>당신이 무대를 열면, 익숙한 이름들이 각자의 방식으로 함께해요.</p><div className="tags"><span>10가지 기획 방송</span><span>자유로운 설정과 대화</span><span>끝나면 핫클립으로</span></div></section>
-      {!state.running&&!state.training.active&&<div className="panel experience-start"><p>관객들이 입장할 수 있도록 AI 방송을 먼저 켜주세요.</p><button className="primary" disabled={pending||state.settings.mode!=='live'} onClick={()=>void request('start')}><Play size={16}/> 방송 시작</button></div>}
+      {!state.running&&!state.training.active&&<div className="panel experience-start"><p>관객들이 입장할 수 있도록 방송을 먼저 켜주세요.</p><button className="primary" disabled={pending||state.settings.mode!=='live'} onClick={()=>void request('start')}><Play size={16}/> 방송 시작</button></div>}
       {state.training.active&&<p className="alert">상황 연습을 마치면 기획 방송을 시작할 수 있어요.</p>}
       <div className="experience-layout">
         <div className="episode-catalog">{director.catalog.map(e=><button key={e.id} className={'panel episode-card '+((active?.episodeId||selected)===e.id?'selected':'')} disabled={!!active} onClick={()=>choose(e.id)}><span>{e.tag}</span><h3>{e.title}</h3><p>{e.description}</p><small>{e.stages.length}개의 장면 <ArrowRight size={13}/></small></button>)}</div>
@@ -35,7 +35,7 @@ export function Experiences({state,onError,onSay,onMic,mic}:{state:State;onError
               <div className="feature-buttons"><button className="secondary" disabled={pending||state.busy||!line.trim()} onClick={()=>{onSay(line.trim());setLine('');}}><Send size={15}/> 관객과 이야기</button><button className={'secondary '+(mic?'active':'')} onClick={onMic}><Mic size={15}/>{mic?'마이크 끄기':'마이크로 이야기'}</button>
                 {active.stage<active.totalStages-1&&<button className="primary" disabled={pending||state.busy} onClick={async()=>{if(await request('director/advance',{text:line}))setLine('');}}><Play size={15}/>{active.stage<0?'첫 장면 열기':'다음 장면'}</button>}
                 <button className="secondary" disabled={pending||state.busy} onClick={()=>void request('director/finish',{status:active.stage===active.totalStages-1?'completed':'interrupted'})}><Square size={14}/>{active.stage===active.totalStages-1?'피날레 · 기록 남기기':'이야기 마무리'}</button></div>
-              <p className="field-note">장면 진행마다 모델 1회. 자유 대화와 마이크는 방송의 호출 한도를 함께 사용합니다. 기획된 연출에는 포인트 후원이 발생하지 않습니다.</p>
+              <p className="field-note">다음 장면으로 넘어가거나, 잠시 머물며 관객과 자유롭게 이야기해보세요.</p>
             </>}
           </div>
         </section>

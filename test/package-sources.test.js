@@ -6,7 +6,7 @@ import {createPackage} from '@electron/asar';
 import {packageSources,verifyPackageSources} from '../scripts/lib/package-sources.mjs';
 async function fixture(){
   await mkdir('artifacts',{recursive:true});const root=await mkdtemp(resolve('artifacts/package-source-')),source=join(root,'source'),stage=join(root,'stage'),folder=join(root,'output');
-  const files={'scripts/clip_perception.py':'perception','desktop/main.cjs':'main','server/temporal-new.js':'sequence','shared/config.json':'{}','dist/index.html':'<html/>','dist/assets/app.js':'screen code','package.json':JSON.stringify({name:'test',version:'1.0.0',scripts:{start:'node private'}}),'package-lock.json':'{}','scripts/speech_worker.py':'microphone','scripts/sound_worker.py':'sound','scripts/clip_inspector.py':'clips'};
+  const files={'LICENSE':'MIT fixture','scripts/clip_perception.py':'perception','desktop/main.cjs':'main','server/temporal-new.js':'sequence','shared/config.json':'{}','dist/index.html':'<html/>','dist/assets/app.js':'screen code','package.json':JSON.stringify({name:'test',version:'1.0.0',scripts:{start:'node private'}}),'package-lock.json':'{}','scripts/speech_worker.py':'microphone','scripts/sound_worker.py':'sound','scripts/clip_inspector.py':'clips'};
   files['shared/temporal-policy.d.ts']='export declare const VIDEO_SAMPLE_MS:number;';
   files['server/youtube-chat.proto']='syntax = "proto2";';
   for(const [file,text] of Object.entries(files)){await mkdir(dirname(join(source,file)),{recursive:true});await writeFile(join(source,file),text);}
@@ -17,7 +17,7 @@ async function fixture(){
   return {root,source,stage,folder,snapshot,archive:join(folder,'resources/app.asar')};
 }
 test('complete delivered source comparison includes new modules, frontend assets and all worker scripts',async()=>{
-  const f=await fixture(),result=await verifyPackageSources(f.source,f.folder,f.snapshot);assert.equal(result.passed,true);assert.equal(result.matchingSources,11);
+  const f=await fixture(),result=await verifyPackageSources(f.source,f.folder,f.snapshot);assert.equal(result.passed,true);assert.equal(result.matchingSources,12);
   assert.ok(f.snapshot.files.some(file=>file.source==='server/youtube-chat.proto'));
   assert.ok(f.snapshot.files.some(file=>file.source==='server/temporal-new.js'));assert.ok(f.snapshot.files.some(file=>file.source==='dist/assets/app.js'));
   assert.deepEqual(f.snapshot.buildInputs.map(file=>file.source),['package-lock.json','package.json','shared/temporal-policy.d.ts']);assert.ok(!f.snapshot.files.some(file=>file.source.endsWith('.d.ts')||file.source==='package-lock.json'));

@@ -1,6 +1,6 @@
 # installer/ — NSIS build scaffold
 
-Reviewable, static source for the BACKSEAT Studio **per-user, unsigned
+Reviewable, static source for the Nagneon **per-user, unsigned
 development** Windows installer. This directory contains no per-build data.
 
 **Root review: execution is currently blocked in both init functions (exit 10).**

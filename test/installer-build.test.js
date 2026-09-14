@@ -20,7 +20,7 @@ const tmp = () => mkdtemp(join(tmpdir(), 'backseat-installer-'));
 const RECURSIVE_RMDIR = /^[ \t]*RMDir\b[^\n]*\/r\b/mi;
 
 test('sanitizeRelativePath accepts safe relative paths and rejects escapes', () => {
-  assert.equal(sanitizeRelativePath('BACKSEAT.exe'), 'BACKSEAT.exe');
+  assert.equal(sanitizeRelativePath('Nagneon.exe'), 'Nagneon.exe');
   assert.equal(sanitizeRelativePath('resources/app/index.txt'), 'resources/app/index.txt');
   for (const bad of [
     '', '..', '../x', 'a/../b', 'a/./b', 'a//b', '/etc/passwd', 'C:/Windows/x',
@@ -76,9 +76,9 @@ test('resolveIdentity fully isolates test identity from production', () => {
 test('buildFileEntries validates, sorts, and rejects bad manifests', () => {
   const entries = buildFileEntries({version: '0.1.0', files: [
     {path: 'resources/app/z.txt', bytes: 1, sha256: 'a'.repeat(64)},
-    {path: 'BACKSEAT.exe', bytes: 2, sha256: 'b'.repeat(64)},
+    {path: 'Nagneon.exe', bytes: 2, sha256: 'b'.repeat(64)},
   ]});
-  assert.deepEqual(entries.map(e => e.path), ['BACKSEAT.exe', 'resources/app/z.txt']);
+  assert.deepEqual(entries.map(e => e.path), ['Nagneon.exe', 'resources/app/z.txt']);
   assert.equal(entries[1].dir, 'resources/app');
   assert.equal(entries[1].name, 'z.txt');
   // bad sha256 / bad size / traversal / duplicate
@@ -93,7 +93,7 @@ test('buildFileEntries validates, sorts, and rejects bad manifests', () => {
 
 test('renderInstallList groups by dir with SetOutPath into staging, no wildcards', () => {
   const entries = buildFileEntries({version: '0.1.0', files: [
-    {path: 'BACKSEAT.exe', bytes: 1, sha256: 'a'.repeat(64)},
+    {path: 'Nagneon.exe', bytes: 1, sha256: 'a'.repeat(64)},
     {path: 'resources/app.asar', bytes: 1, sha256: 'b'.repeat(64)},
     {path: 'resources/app/index.txt', bytes: 1, sha256: 'c'.repeat(64)},
   ]});
@@ -101,7 +101,7 @@ test('renderInstallList groups by dir with SetOutPath into staging, no wildcards
   assert.match(list, /SetOutPath "\$StageDir"/);
   assert.match(list, /SetOutPath "\$StageDir\\resources"/);
   assert.match(list, /SetOutPath "\$StageDir\\resources\\app"/);
-  assert.match(list, /File "\/oname=BACKSEAT.exe" "\$\{BACKSEAT_SRC\}\\BACKSEAT\.exe"/);
+  assert.match(list, /File "\/oname=Nagneon.exe" "\$\{BACKSEAT_SRC\}\\Nagneon\.exe"/);
   assert.match(list, /File "\/oname=index.txt" "\$\{BACKSEAT_SRC\}\\resources\\app\\index\.txt"/);
   // one File per entry, one SetOutPath per unique dir, no wildcard globbing.
   assert.equal((list.match(/^File /gm) || []).length, 3);
@@ -113,11 +113,11 @@ test('renderInstallList groups by dir with SetOutPath into staging, no wildcards
 
 test('renderUninstallList removes only owned paths, deepest-first, never RMDir /r', () => {
   const entries = buildFileEntries({version: '0.1.0', files: [
-    {path: 'BACKSEAT.exe', bytes: 1, sha256: 'a'.repeat(64)},
+    {path: 'Nagneon.exe', bytes: 1, sha256: 'a'.repeat(64)},
     {path: 'resources/app/index.txt', bytes: 1, sha256: 'b'.repeat(64)},
   ]});
   const list = renderUninstallList(entries, {baseExpr: '$PayloadDir'});
-  assert.match(list, /Delete "\$PayloadDir\\BACKSEAT\.exe"/);
+  assert.match(list, /Delete "\$PayloadDir\\Nagneon\.exe"/);
   assert.match(list, /Delete "\$PayloadDir\\resources\\app\\index\.txt"/);
   // Never a recursive delete (match the COMMAND form, not the word in comments).
   assert.doesNotMatch(list, RECURSIVE_RMDIR);
@@ -145,11 +145,11 @@ test('verifyPackage passes on a good fixture and flags every corruption', async 
   assert.equal(good.checked, entries.length);
 
   // Tamper: same size, different bytes -> hash mismatch (size check passes).
-  const exeBytes = entries.find(e => e.path === 'BACKSEAT.exe').bytes;
-  await writeFile(join(dir, 'BACKSEAT.exe'), Buffer.alloc(exeBytes, 0x58));
+  const exeBytes = entries.find(e => e.path === 'Nagneon.exe').bytes;
+  await writeFile(join(dir, 'Nagneon.exe'), Buffer.alloc(exeBytes, 0x58));
   const badHash = await verifyPackage(dir, entries, {hash: true});
   assert.ok(!badHash.ok);
-  assert.ok(badHash.errors.some(e => /sha256 mismatch: BACKSEAT\.exe/.test(e)), JSON.stringify(badHash.errors));
+  assert.ok(badHash.errors.some(e => /sha256 mismatch: Nagneon\.exe/.test(e)), JSON.stringify(badHash.errors));
 
   // Different size -> size mismatch caught even without hashing (structural).
   await writeFile(join(dir, 'resources', 'app', 'index.txt'), 'longer content than the fixture original');
@@ -188,7 +188,7 @@ test('generateInstaller binds exact payload and engine hashes to an isolated NSI
   const {identity, meta} = await generateInstaller({
     engineFile,
     manifest, packageFolder: folder, outDir: out, mode: 'test', buildId: 'testbuild',
-    outFileWin: 'C:\\out\\BACKSEAT-Setup.exe',
+    outFileWin: 'C:\\out\\Nagneon-Setup.exe',
   });
   assert.equal(identity.marker, 'test');
   assert.equal(meta.claims.signed, false);
@@ -202,9 +202,9 @@ test('generateInstaller binds exact payload and engine hashes to an isolated NSI
   }
   // Per-user, no elevation; isolated test install root (define expanded by makensis).
   assert.match(nsi, /RequestExecutionLevel user/);
-  assert.match(nsi, /!define INSTALL_SUBDIR\s+"BACKSEAT Studio \(Test\)"/);
+  assert.match(nsi, /!define INSTALL_SUBDIR\s+"Nagneon \(Test\)"/);
   assert.match(nsi, /InstallDir "\$LOCALAPPDATA\\Programs\\\$\{INSTALL_SUBDIR\}"/);
-  assert.match(nsi, /!define REG_UNINSTALL_KEY "[^"]*BACKSEAT-Studio-Test"/);
+  assert.match(nsi, /!define REG_UNINSTALL_KEY "[^"]*Nagneon-Test"/);
   // No token left behind.
   assert.doesNotMatch(nsi, /@[A-Z0-9_]+@/);
   // Uninstall list is owned-only, no recursive delete.

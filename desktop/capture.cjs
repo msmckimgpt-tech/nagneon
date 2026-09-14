@@ -9,7 +9,7 @@ function attachCapture({session,ipcMain,desktopCapturer,main,platform=process.pl
     const work=Promise.resolve().then(()=>desktopCapturer.getSources(options));
     pending.set(key,work);work.then(()=>pending.delete(key),()=>pending.delete(key));return work;
   };
-  const visible=s=>!s.name.startsWith('BACKSEAT');
+  const visible=s=>! /^(BACKSEAT|Nagneon|NAGNEON)/.test(s.name);
   const kind=s=>s.id.startsWith('screen:')?'screen':'window';
   const trusted=event=>{if(event.sender!==main.webContents||event.senderFrame!==main.webContents.mainFrame)throw Error('메인 방송 창에서 화면을 선택하세요.');};
   session.setDisplayMediaRequestHandler(async(request,callback)=>{

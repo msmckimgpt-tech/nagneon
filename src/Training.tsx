@@ -34,8 +34,8 @@ export function TrainingPanel({training,onAction}:{training:TrainingState;onActi
     <section className="panel info-panel">
       <GraduationCap size={20}/>
       <div>
-        <b>연습 모드 · 시뮬레이션</b>
-        <p>처음 온 관객 맞이부터 날 선 채팅 대응까지. 준비된 상황을 천천히 연습하세요. 모델 사용량과 관객의 기억에 영향을 주지 않습니다.</p>
+        <b>방송 리허설</b>
+        <p>처음 온 관객 맞이부터 날 선 채팅 대응까지. 준비된 상황을 천천히 연습하세요.</p>
       </div>
     </section>
 
@@ -66,7 +66,7 @@ export function TrainingPanel({training,onAction}:{training:TrainingState;onActi
         <button className="stop-button" disabled={busy} onClick={()=>void run('training/stop',{})}><Square size={14} fill="currentColor"/> 연습 종료</button>
       </div>
     </>:<>
-      <div className="section-actions"><span className="muted">상황을 골라 연습을 시작하세요. 각 연습은 2~4개의 가상 시청자 반응으로 진행됩니다.</span></div>
+      <div className="section-actions"><span className="muted">상황을 골라 연습을 시작하세요. 관객들의 반응을 보며 나만의 진행 방식을 찾아보세요.</span></div>
       <div className="persona-grid">
         {training.catalog.map(s=><section className="panel persona-card" key={s.id}>
           <span className="status-pill">연습</span>
@@ -95,7 +95,6 @@ export function TrainingPanel({training,onAction}:{training:TrainingState;onActi
           <b>돌아보기 · 스스로 점검</b>
           <ul>{report.reflection.map((q,i)=><li key={i}>{q}</li>)}</ul>
         </div>
-        <p className="field-note">{report.disclaimer}</p>
       </section>}
     </>}
   </>;

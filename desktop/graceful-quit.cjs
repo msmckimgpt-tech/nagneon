@@ -1,6 +1,6 @@
 // Electron does not await async event handlers. Prevent every premature quit,
 // then permit one final quit after the service has drained its owned work.
-function installGracefulQuit(app,close,{onError=error=>console.error('BACKSEAT 종료 정리 실패:',error.message)}={}){
+function installGracefulQuit(app,close,{onError=error=>console.error('Nagneon 종료 정리 실패:',error.message)}={}){
   let quitting=false,finished=false,pending;
   app.on('will-quit',event=>{
     if(finished)return;

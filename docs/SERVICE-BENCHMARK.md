@@ -144,3 +144,17 @@ ChatSim의 로컬 제공처 선택 장점을 `OllamaProvider`로 반영했다. �
 - `artifacts/provider-selection-account-device.log`, `provider-selection-account-runtime.log`: 격리된 공식 CLI 기기 코드 발급·취소와 실제 앱 렌더러 회귀 통과. 실제 로그인 완료나 유료 추론은 실행하지 않았다.
 
 실제 Ollama 모델·OBS·치지직/YouTube 계정 설정에 의존하는 수용 검증, 남은 서비스 경험 비교와 main 통합은 남아 있다. 이 단계는 전체 벤치마킹 목표의 완료를 뜻하지 않는다.
+
+### 최신 나그넌 통합 검증 · 2026-09-14
+
+깨끗한 `G:/dev/ai/00_game_backseat-worktrees/service-benchmark-integration` / `codex/service-benchmark-integration`에서 작업 커밋 `6a749ba`와 main `878c41e`를 합쳤다. 통합 잠금 소유권을 확보하고 별도 `npm ci`를 수행했다(취약점 0). App 충돌은 나그넌 브랜딩·세로 화면 개선과 브리핑·스크롤·OBS·외부 채팅을 함께 유지했다. 패키지 소스 검사는 새 LICENSE와 YouTube proto를 모두 포함한 12개 fixture 파일을 확인한다.
+
+최신 main의 응원 포인트 통계를 유지하며 연결 설정에 세션 요청 수/앱 한도 및 제공처가 보고한 누적 토큰을 추가했다. 실패 요청과 연결 시험/계정 전체 사용량의 차이를 표시하며 비용·잔여 구독량으로 환산하지 않는다.
+
+- `artifacts/integration-check-final.log`: **645개 전체 테스트 + TypeScript/Vite 통과**. 첫 검사 `integration-check.log`에서는 experiences HTTP 시험의 `fetch failed`가 발생했다. 같은 코드의 해당 파일 12개 시험(`integration-experiences.log`)과 최종 전체 검사는 통과했다. 최초 출력에 하위 네트워크 원인이 없어 원인 확정은 하지 않는다.
+- `artifacts/service-benchmark-ui-1789390245883/result.json`: 실제 Electron 8개 제품 흐름 통과. 치지직 패널 PNG와 가시 영역 좌표도 확인했다. 최초 통합 UI 시험은 OBS 미리보기 제거 직후 서버 해제 전에 검사하여 실패했다. 서버 상태가 반영된 장면 선택 UI 제거까지 기다리도록 검증을 보강했으며 해제 자체를 모의 성공 처리하지 않았다.
+- `artifacts/nagneon/renderer-result.json`: 새 브랜드 온보딩·8개 페이지·1440/1000/850 가로·1080/850 세로·540/420 좁은 창·오버레이·리허설·콘솔 오류 검사 통과.
+- `artifacts/integration-account-device.log`, `integration-account-runtime.log`: 공식 CLI 격리 기기 코드 발급/취소 및 실제 데스크톱 로그인 UI 회귀 통과.
+- `artifacts/ollama-ui-1789390289100/result.json`: 실제 렌더러의 제공처 선택/시험 응답/Codex 복귀 통과. 모델과 외부 플랫폼은 fixture이며 실제 플랫폼·OBS·Ollama 수용 증거를 대신하지 않는다.
+
+남은 서비스별 경험 감사, 실장치/외부 계정 수용은 계속 진행한다. 기존 설치 패키지는 이번 기능이 포함된 새 패키지로 검증한 상태가 아니다.

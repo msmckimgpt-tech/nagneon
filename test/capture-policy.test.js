@@ -9,7 +9,7 @@ test('disappearing screen source never grants audio and malformed audio choice i
 
 test('names arrive without pixel capture while window previews remain unresolved',async()=>{
   let finish;const calls=[];
-  const f=fixture(options=>{calls.push(options);if(options.thumbnailSize.width)return new Promise(r=>finish=r);return [{id:'window:1',name:'Game',thumbnail:{toDataURL:()=>{throw Error('Metadata must not read pixels');}}},{id:'window:2',name:'BACKSEAT Studio'}];});
+  const f=fixture(options=>{calls.push(options);if(options.thumbnailSize.width)return new Promise(r=>finish=r);return [{id:'window:1',name:'Game',thumbnail:{toDataURL:()=>{throw Error('Metadata must not read pixels');}}},{id:'window:2',name:'Nagneon'},{id:'window:3',name:'BACKSEAT Studio'}];});
   const previews=f.handlers['capture:previews'](f.event,'window');
   assert.deepEqual(await f.handlers['capture:sources'](f.event),[{id:'window:1',name:'Game',kind:'window',thumbnail:''}]);
   assert.deepEqual(calls.map(c=>c.thumbnailSize.width),[300,0]);

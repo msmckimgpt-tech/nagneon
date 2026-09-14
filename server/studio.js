@@ -92,7 +92,7 @@ export class Studio extends EventEmitter {
     this.controller.abort();this.controller=new AbortController();this.epoch++;this.queue=[];this.messages=[];this.events=[];this.resetCounters();this.running=true;this.sessionId=randomUUID();this.startedAt=this.now();
     try{if(this.settings.mode==='live'){this.audience.start(this.settings,this.now()).forEach(e=>this.log(e));this.autonomy?.start();}}
     catch(error){this.running=false;this.sessionId=null;this.startedAt=null;this.controller.abort();this.lastError=error.message;this.publish();throw error;}
-    this.log(this.settings.mode==='live'?'AI 방송 시작':'리허설 시작 · 예시 반응, API 사용 없음');this.publish();}
+    this.log(this.settings.mode==='live'?'AI 방송 시작':'리허설 시작');this.publish();}
   stop(){
     this.communityActivity?.interrupt();this.sound.stop();this.running=false;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];this.speechInbox.clear();this.knowledge.lastSeen=null;this.ambient?.reset();
     // Storage failure must never keep the live session or its pending model alive.
@@ -236,7 +236,7 @@ export class Studio extends EventEmitter {
       if(this.settings.mode==='rehearsal'){
         const lines=speech?['말 들었어요! 오늘은 어떤 플레이 보여줄 건가요?','ㅋㅋㅋ 채팅이랑 얘기하면서 하니까 방송 같네','저도 같이 볼게요 🍿']:['오늘 방송 출석! 다들 어서 와요 👋','팝콘 준비 완료 🍿','오늘은 무슨 게임 하나요?','방장 오늘 텐션 좋은데 ㅋㅋ','이런 편한 분위기 좋다','다들 채팅 규칙 한 번씩 확인해주세요'];
         const active=this.settings.personas.filter(p=>p.enabled);const offset=Math.floor(this.random()*lines.length);
-        this.accept({game:'리허설',scene:'예시 채팅 시뮬레이션 · 화면을 분석하지 않습니다.',confidence:0,excitement:0.35,messages:active.slice(0,this.settings.chatPace).map((p,i)=>({personaId:p.id,text:lines[(offset+i)%lines.length],kind:'chat',spoiler:false}))},this.now(),false,'live');
+        this.accept({game:'리허설',scene:'첫 인사를 나누며 방송을 준비하고 있어요.',confidence:0,excitement:0.35,messages:active.slice(0,this.settings.chatPace).map((p,i)=>({personaId:p.id,text:lines[(offset+i)%lines.length],kind:'chat',spoiler:false}))},this.now(),false,'live');
       }else{
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;

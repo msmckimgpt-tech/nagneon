@@ -18,7 +18,7 @@
 //     a launch refuses while an unresolved pending exists.
 //
 // Filesystem layout of an owned install root:
-//   <root>\BACKSEAT Launcher.exe          stable launcher (this engine binary)
+//   <root>\Nagneon Launcher.exe          stable launcher (this engine binary)
 //   <root>\Uninstall BACKSEAT ....exe      NSIS uninstaller (placed by engine)
 //   <root>\app\<version>+<buildId>\...     immutable versioned payload
 //   <root>\app\.pending-<buildId>\...      staging (transient)

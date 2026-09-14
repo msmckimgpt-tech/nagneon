@@ -24,7 +24,7 @@ export function createLocalAccess({browserConnect=false}={}){
   };
 }
 
-export const connectPage='<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BACKSEAT 개발 연결</title><body><h1>BACKSEAT 개발 연결</h1><p id="status">실행 터미널에서 제공한 일회용 연결 주소로 접속하세요.</p><script src="/connect.js" defer></script></body></html>';
+export const connectPage='<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Nagneon 개발 연결</title><body style="margin:0;padding:12vh 8vw;background:#10151e;color:#edf4f6;font:16px/1.8 Segoe UI,Malgun Gothic,sans-serif"><p style="color:#80e6cf;letter-spacing:3px">NAGNEON · 나그네온</p><h1>Nagneon 개발 연결</h1><p id="status">실행 터미널에서 제공한 일회용 연결 주소로 접속하세요.</p><script src="/connect.js" defer></script></body></html>';
 export const connectScript=`(async()=>{
   const token=location.hash.slice(1);history.replaceState(null,'','/connect');
   if(!token)return;

@@ -63,7 +63,7 @@ export class AudienceAutonomy {
     z.enum(['points','broadcast','clip']).parse(path);
     if(!s.running||s.settings.mode!=='live')throw new Error('실제 AI 방송 중에 새로운 관객을 만날 수 있습니다.');
     if(s.busy||this.pending)throw new Error('관객 응답이 끝난 뒤 새로운 만남을 열 수 있습니다.');
-    if(path==='points'&&!s.settings.pointsEnabled)throw new Error('가상 포인트 기능이 꺼져 있습니다.');
+    if(path==='points'&&!s.settings.pointsEnabled)throw new Error('포인트 기능이 꺼져 있습니다.');
     if(s.settings.personas.length>=40)throw new Error('현재 방송실의 관객 자리가 가득 찼습니다.');
     if(Object.keys(this.world.data.autonomy.receipts).length>=10000)throw new Error('이 프로필의 만남 기록 한도에 도달했습니다.');
     if(s.calls>=s.settings.maxCalls)throw new Error('세션 모델 호출 한도에 도달했습니다.');

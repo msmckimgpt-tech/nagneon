@@ -44,7 +44,7 @@ app.whenReady().then(async()=>{
     await button('이 장면 함께 보기');await until(`document.querySelector('.obs-panel').textContent.includes('함께 보는 OBS 장면: 격리된 시험 장면')`);
     await button('선택 장면 미리보기');await until(`document.querySelector('.obs-panel img')?.naturalWidth>0`);
     assert.ok(service.obsInput.sourceId);assert.ok(!('password' in service.studio.state().obsInput));
-    await button('OBS 연결 해제');await until(`!document.querySelector('.obs-panel img')`);
+    await button('OBS 연결 해제');await until(`!document.querySelector('.obs-panel img')&&!document.querySelector('[aria-label="OBS 장면"]')`);
     assert.equal(service.obsInput.phase,'disconnected');
     checks.push('OBS connect, scene selection, actual JPEG preview and disconnect through renderer');
     service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();

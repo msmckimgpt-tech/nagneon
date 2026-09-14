@@ -1,0 +1,27 @@
+name: Nagneon checks
+on:
+  push:
+    branches: [main, 'codex/nagneon-brand']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Canonical Windows temporary directory for path safety checks
+        run: node -e "const fs=require('node:fs');const p=fs.realpathSync.native(require('node:os').tmpdir());fs.appendFileSync(process.env.GITHUB_ENV,'TEMP='+p+'\nTMP='+p+'\n')"
+      - run: npm run check
+      - name: Installer engine regression checks
+        run: node scripts/test-installer-engine.mjs
+      - name: Isolated Electron brand and portrait acceptance
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-nagneon.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"

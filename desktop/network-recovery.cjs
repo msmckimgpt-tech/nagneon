@@ -11,7 +11,7 @@ function createNetworkRecovery(app,{write,wait=ms=>new Promise(resolve=>setTimeo
       const file=join(dir,'network-recovery.jsonl');
       try{if(statSync(file).size>1024*1024)renameSync(file,file+'.1');}catch(error){if(error.code!=='ENOENT')throw error;}
       appendFileSync(file,line+'\n');
-    }catch{console.error('[BACKSEAT] Network diagnostic log could not be written.');}
+    }catch{console.error('[Nagneon] Network diagnostic log could not be written.');}
   }
   app.on('before-quit',()=>{quitting=true;});
   app.on('child-process-gone',(_event,details)=>{

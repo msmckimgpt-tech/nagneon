@@ -1,6 +1,6 @@
 ; installer/common.nsh
 ; ---------------------------------------------------------------------------
-; Shared, reviewable NSIS logic for the BACKSEAT Studio *per-user* installer.
+; Shared, reviewable NSIS logic for the Nagneon *per-user* installer.
 ;
 ; Design invariants enforced here (see docs/INSTALLER.md for the full rationale):
 ;   * No plugins are required (core NSIS + LogicLib only).

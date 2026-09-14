@@ -38,8 +38,8 @@ export function AudiencePanel({state,onError}:{state:State;onError:(text:string)
     <p>오래 방송하다 우연히, 누군가 남긴 핫클립을 통해, 혹은 포인트로 연 첫 만남에서 새로운 관객이 들어옵니다.</p>
     <p className="field-note">이름과 성향을 미리 고를 수 없어요. 함께한 대화로 취향이 달라지거나 스스로 닉네임을 바꾸기도 합니다. 기본 방송 도우미는 관객 수에 포함하지 않습니다.</p>
     <button className="primary" disabled={pending||state.autonomy?.pending||!state.running||state.settings.mode!=='live'||!state.settings.pointsEnabled||(!id.current&&state.economy.balance<price)} onClick={()=>void meet()}>{pending||state.autonomy?.pending?'첫 만남 요청을 진행하는 중…':id.current?'지난 만남 결과 확인':`한 명과 첫 만남 · ${price}P`}</button>
-    <p className="field-note">실제 AI 방송에서 모델 1회 사용. 현재 관객이 응답 중이면 끝난 뒤 첫 만남을 시작하며, 대기 중에는 포인트를 사용하지 않습니다. 생성 실패나 방송 종료 시 반환됩니다. 방송을 켜는 것만으로 새 관객이 보장되지는 않아요.</p>
+    <p className="field-note">현재 관객의 이야기가 끝나면 첫 만남을 시작합니다. 기다리는 동안에는 포인트를 사용하지 않습니다. 생성 실패나 방송 종료 시 반환됩니다. 방송을 켜는 것만으로 새 관객이 보장되지는 않아요.</p>
     {notice&&<p role="status">{notice}</p>}
   </section><div className="persona-grid">{viewers.map(p=><ViewerCard key={p.id} person={p} state={state} onError={onError}/>)}</div>
-  {!viewers.length&&<section className="panel feature-body"><h2>아직 만나기 전이에요</h2><p>실제 AI 방송을 시작하고 첫 체험 포인트로 한 명을 만나보세요. 천천히 방송하며 자연 유입을 기다릴 수도 있습니다.</p></section>}</>;
+  {!viewers.length&&<section className="panel feature-body"><h2>아직 만나기 전이에요</h2><p>방송을 시작하고 첫 체험 포인트로 한 명을 만나보세요. 천천히 방송하며 자연 유입을 기다릴 수도 있습니다.</p></section>}</>;
 }

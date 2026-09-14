@@ -18,9 +18,9 @@ function packagedRuntime(resources){
   return runtime;
 }
 function profileDirectory(argv){
-  const arg=argv.find(a=>a.startsWith('--backseat-profile='));
+  const arg=argv.find(a=>a.startsWith('--nagneon-profile=')||a.startsWith('--backseat-profile='));
   if(!arg)return null;
-  const path=arg.slice('--backseat-profile='.length);
+  const path=arg.slice(arg.indexOf('=')+1);
   if(!isAbsolute(path))throw new Error('별도 프로필은 절대 경로로 지정하세요.');
   return resolve(path);
 }

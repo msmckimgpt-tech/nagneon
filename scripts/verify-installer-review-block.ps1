@@ -1,5 +1,5 @@
 param(
-  [string]$InstallerPath = 'artifacts/installer-reviewed-fixture/BACKSEAT-Setup.exe',
+  [string]$InstallerPath = 'artifacts/installer-reviewed-fixture/Nagneon-Setup.exe',
   [string]$ReportPath = 'artifacts/installer-review-block-test.json'
 )
 $ErrorActionPreference = 'Stop'
@@ -11,9 +11,9 @@ if (-not $taskReport.StartsWith((Join-Path $taskRoot 'artifacts') + '\', [String
 $taskTarget = Join-Path $taskRoot ('artifacts/installer-inert-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 if (-not $taskTarget.StartsWith((Join-Path $taskRoot 'artifacts') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Test path outside artifacts' }
 if (Test-Path -LiteralPath $taskTarget) { throw 'Test target already exists' }
-$taskKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BACKSEAT-Studio-Test'
-$taskMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'BACKSEAT Studio (Test)'
-$taskDefault = Join-Path $env:LOCALAPPDATA 'Programs/BACKSEAT Studio (Test)'
+$taskKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Nagneon-Test'
+$taskMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Nagneon (Test)'
+$taskDefault = Join-Path $env:LOCALAPPDATA 'Programs/Nagneon (Test)'
 $taskBefore = @{key=(Test-Path -LiteralPath $taskKey);menu=(Test-Path -LiteralPath $taskMenu);default=(Test-Path -LiteralPath $taskDefault)}
 if ($taskBefore.key -or $taskBefore.menu -or $taskBefore.default) { throw 'Test identity already in use; do not touch it' }
 $taskProc = Start-Process -FilePath $taskExe -ArgumentList @('/S', ('/D=' + $taskTarget)) -WindowStyle Hidden -PassThru
