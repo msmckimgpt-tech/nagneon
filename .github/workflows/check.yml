@@ -19,7 +19,7 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - name: Canonical Windows temporary directory for path safety checks
-        run: node -e "const fs=require('node:fs');const p=fs.realpathSync(require('node:os').tmpdir());fs.appendFileSync(process.env.GITHUB_ENV,'TEMP='+p+'\nTMP='+p+'\n')"
+        run: node -e "const fs=require('node:fs');const p=fs.realpathSync.native(require('node:os').tmpdir());fs.appendFileSync(process.env.GITHUB_ENV,'TEMP='+p+'\nTMP='+p+'\n')"
       - run: npm run check
       - name: Installer engine regression checks
         run: node scripts/test-installer-engine.mjs
