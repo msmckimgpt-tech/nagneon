@@ -1,3 +1,4 @@
+import {enablePreview} from './helpers/preview.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {startServer} from '../server/index.js';
@@ -35,7 +36,7 @@ test('external packets retain provenance and exclude messages before a viewer ar
 
 test('authenticated external API feeds live model context without granting advice and stops with the app',async t=>{
   let callbacks,received,resolveReaction;let closed=false;
-  const service=await startServer({port:0,persist:false,localSpeech:false,youtubeFactory:options=>{callbacks=options;return {async connect(){options.onState({phase:'receiving'});},disconnect(){closed=true;}};},provider:{status:()=>({configured:true}),react:async input=>{received=input;return new Promise(resolve=>{resolveReaction=resolve;});}}});t.after(()=>service.close());
+  const service=await startServer({port:0,persist:false,localSpeech:false,youtubeFactory:options=>{callbacks=options;return {async connect(){options.onState({phase:'receiving'});},disconnect(){closed=true;}};},provider:{status:()=>({configured:true}),react:async input=>{received=input;return new Promise(resolve=>{resolveReaction=resolve;});}}});t.after(()=>service.close());await enablePreview(service);
   const post=async(path,body,authenticated=true)=>{const response=await fetch(service.url+'/api/'+path,{method:'POST',headers:{...(authenticated?{Authorization:'Bearer '+service.accessToken}:{}),'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
   assert.equal((await post('external/youtube/connect',{video:'abcdefghijk',apiKey:'test-api-key'},false)).status,401);
   service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();

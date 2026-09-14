@@ -1,3 +1,4 @@
+import {enablePreview} from './helpers/preview.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -13,7 +14,7 @@ test('provider API persists nonsecret choice, keeps audio, and rejects unsafe tr
   const post=async(path,body)=>{const r=await fetch(service.url+'/api/'+path,{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(body)});return {ok:r.ok,value:await r.json()};};
   const config={kind:'ollama',model:'fixture',base:'http://127.0.0.1:11434',contextSize:65536};
   try{
-    service=await startServer(options);assert.equal(service.studio.provider.status().kind,'codex');
+    service=await startServer(options);assert.equal(service.studio.provider.status().kind,'codex');await enablePreview(service);
     gate=false;assert.equal((await post('connection/provider',config)).ok,false);gate=true;
     service.studio.busy=true;assert.equal((await post('connection/provider',config)).ok,false);service.studio.busy=false;
     assert.equal((await post('connection/provider',{...config,apiKey:'secret'})).ok,false);

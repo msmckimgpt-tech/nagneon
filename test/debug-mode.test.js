@@ -10,9 +10,9 @@ test('debug prompts append, fully replace and restore the generated provider ins
   const provider=new OpenAIProvider({}),args={settings:structuredClone(defaults),history:[],speech:'안녕'};
   const normal=provider.payload(args);
   assert.equal(provider.payload({...args,debugPrompt:{enabled:false,mode:'replace',prompt:'ignored'}}).instructions,normal.instructions);
-  const changed=provider.payload({...args,debugPrompt:{enabled:true,mode:'replace',prompt:'사용자 지침'}});
+  const changed=provider.payload({...args,debugPrompt:{enabled:true,tryNewFeatures:true,mode:'replace',prompt:'사용자 지침'}});
   assert.equal(changed.instructions,'사용자 지침');assert.deepEqual(changed.input,normal.input);assert.deepEqual(changed.text,normal.text);
-  assert.equal(provider.payload({...args,debugPrompt:{enabled:true,mode:'append',prompt:'추가 지침'}}).instructions,normal.instructions+'\n\n추가 지침');
+  assert.equal(provider.payload({...args,debugPrompt:{enabled:true,tryNewFeatures:true,mode:'append',prompt:'추가 지침'}}).instructions,normal.instructions+'\n\n추가 지침');
 });
 
 test('authenticated debug settings persist, override provider requests and unlock existing roster fields only',async()=>{
@@ -24,7 +24,7 @@ test('authenticated debug settings persist, override provider requests and unloc
     service=await run();assert.equal((await fetch(service.url+'/api/debug')).status,401);
     assert.equal((await req('debug',undefined,'GET')).data.settings,undefined);
     assert.equal((await req('debug/settings',service.studio.settings)).ok,false);
-    const config={enabled:true,mode:'replace',prompt:'사용자가 수정한 시스템 지침'};
+    const config={enabled:true,tryNewFeatures:true,mode:'replace',prompt:'사용자가 수정한 시스템 지침'};
     assert.equal((await req('debug',config)).ok,true);
     const view=(await req('debug',undefined,'GET')).data;assert.ok(view.basePrompt.length>100);assert.ok(view.settings.personas[0].personality);
     const privateSettings=structuredClone(view.settings);privateSettings.personas[0].name='새 이름';privateSettings.personas[0].personality='수정된 성격';privateSettings.discovery.arrivalSeconds=99;

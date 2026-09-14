@@ -1,7 +1,7 @@
 name: Nagneon checks
 on:
   push:
-    branches: [main, 'codex/nagneon-brand']
+    branches: [main, 'codex/nagneon-brand', 'codex/preview-*']
   pull_request:
   workflow_dispatch:
 permissions:

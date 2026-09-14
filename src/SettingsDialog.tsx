@@ -159,7 +159,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
         </>;
 
       case 'mood':
-        return <><CrowdPresets draft={draft} locked={locked} onChange={patch=>setDraft(previous=>({...previous,...patch}))}/>
+        return <>{state.debug?.previewEnabled&&<CrowdPresets draft={draft} locked={locked} onChange={patch=>setDraft(previous=>({...previous,...patch}))}/>}
           <div className="set-row">
             <label className="set-field">커뮤니티 규모와 리듬
               <select value={draft.crowdStyle} onChange={e=>update('crowdStyle',e.target.value as Settings['crowdStyle'])}>
@@ -208,7 +208,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
       case 'connection':
         return <>
           <ConnectionPanel state={state}/>
-          {!['codex','ollama'].includes(state.provider.kind||'')&&<label className="set-field">OpenAI API 키 (앱 종료 시 삭제)
+          {!['codex','ollama','claude-cli','gemini-cli'].includes(state.provider.kind||'')&&<label className="set-field">{state.provider.kind==='claude'?'Claude':state.provider.kind==='gemini'?'Gemini':'OpenAI'} API 키 (앱 종료 시 삭제)
             <div className="inline-form">
               <input type="password" autoComplete="off" value={apiKey} placeholder="API 키"
                 onChange={e=>setApiKey(e.target.value)}/>

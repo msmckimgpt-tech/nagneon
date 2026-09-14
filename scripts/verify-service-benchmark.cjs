@@ -21,6 +21,7 @@ app.whenReady().then(async()=>{
     const authFactory=options=>new ChzzkAuth({...options,port:0,fetchImpl:async()=>new Response(JSON.stringify({code:200,content:{accessToken:'fixture-token',tokenType:'Bearer',expiresIn:86400}}))});
     const chzzkFactory=options=>{chzzkCallbacks=options;return {async connect(){options.onState({phase:'receiving',channelId:'fixture-channel'});},disconnect(){}};};
     service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,obsClientFactory:()=>new FixtureObs(),youtubeFactory,chzzkFactory,authFactory,openExternalAuth:async url=>{chzzkAuthorizationUrl=url;},provider:{status:()=>({configured:true,model:'fixture',kind:'fixture'}),react:async()=>({observation:{game:'fixture',scene:'synthetic scene',confidence:0,excitement:0,messages:[]},usage:{total_tokens:0}})}});
+    await (await import('../test/helpers/preview.js')).enablePreview(service);
     await fetch(service.url+'/api/onboarding',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({skip:true})});
     win=new BrowserWindow({width:1440,height:960,show:true,title:'BACKSEAT Benchmark QA',webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
     win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});

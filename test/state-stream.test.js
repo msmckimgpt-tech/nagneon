@@ -1,3 +1,4 @@
+import {enablePreview} from './helpers/preview.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {StateStream,StateFeed} from '../server/state-stream.js';
@@ -39,7 +40,7 @@ test('full snapshots recover reconnects, field removal and duplicate ids without
   assert.throws(()=>applyStatePatch(null,{set:{}}),/initial snapshot/);
 });
 test('real SSE patch stream preserves display toggles, and reconnect starts with current full state',{timeout:10000},async t=>{
-  const service=await startServer({port:0,persist:false,localSpeech:false,provider:{status:()=>({configured:true})}});t.after(()=>service.close());
+  const service=await startServer({port:0,persist:false,localSpeech:false,provider:{status:()=>({configured:true})}});t.after(()=>service.close());await enablePreview(service);
   const s=service.studio;s.messages=Array.from({length:500},(_,i)=>msg(i));
   async function connect(){
     const controller=new AbortController();t.after(()=>controller.abort());

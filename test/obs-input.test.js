@@ -1,3 +1,4 @@
+import {enablePreview} from './helpers/preview.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -53,7 +54,7 @@ test('real OBS v5 client completes challenge auth and read-only JSON requests',{
   assert.equal(authentication,hash(hash('synthetic'+'salt')+'challenge'));assert.deepEqual(calls,['GetSceneList','GetSourceScreenshot']);
 });
 test('authenticated API feeds OBS image to real reaction path; stop disconnects and excludes credentials',{timeout:15000},async t=>{
-  let received;const client=new Client(),service=await startServer({port:0,persist:false,localSpeech:false,obsClientFactory:()=>client,provider:{status:()=>({configured:true}),react:async input=>{received=input;return {observation:{game:'test',scene:'test',confidence:.9,excitement:0,messages:[]},usage:{total_tokens:1}};}}});t.after(()=>service.close());
+  let received;const client=new Client(),service=await startServer({port:0,persist:false,localSpeech:false,obsClientFactory:()=>client,provider:{status:()=>({configured:true}),react:async input=>{received=input;return {observation:{game:'test',scene:'test',confidence:.9,excitement:0,messages:[]},usage:{total_tokens:1}};}}});t.after(()=>service.close());await enablePreview(service);
   const post=async(path,body)=>{const r=await fetch(service.url+'/api/'+path,{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
   assert.equal((await post('obs/connect',{port:4455,password:'private-fixture'})).status,200);const selected=await post('obs/select',{scene:'게임'});
   service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();

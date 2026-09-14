@@ -1,3 +1,4 @@
+const {openSubscriptionLogin}=require('./subscription-login.cjs');
 const {app,BrowserWindow,desktopCapturer,session,ipcMain,globalShortcut,screen,dialog,shell}=require('electron');
 const {join}=require('node:path');
 const {pathToFileURL}=require('node:url');
@@ -5,7 +6,7 @@ const {createStudioSession}=require('./session.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
-const profile=profileDirectory(process.argv);app.setPath('userData',profile||join(app.getPath('appData'),'backseat-studio'));
+const profile=profileDirectory(process.argv);app.setPath('userData',profile||join(app.getPath('appData'),app.getVersion().includes('-preview.')?'nagneon-preview':'backseat-studio'));
 app.setName('Nagneon');
 const networkRecovery=require('./network-recovery.cjs').createNetworkRecovery(app);
 let main,overlay,service,startingService,studioSession,account,overlayInput;
@@ -36,7 +37,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
-    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:app.isPackaged||profile?join(app.getPath('userData'),'data'):join(__dirname,'../data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath):{}});
+    startingService=startServer({openSubscriptionLogin,providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:app.isPackaged||profile?join(app.getPath('userData'),'data'):join(__dirname,'../data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath):{}});
     service=await startingService;
     if(shutdown.quitting)return;
     studioSession=createStudioSession(session,service);

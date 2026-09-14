@@ -54,5 +54,7 @@ test('hung real child is terminated and a replacement handles a new HTTP utteran
   const s=await open(t,{timeout:200});await s.post('audio/prepare');const session=s.studio.sessionId;
   const failure=await s.audio('hang');assert.equal(failure.status,409);assert.equal(failure.body.needsPreparation,true);assert.match(failure.body.error,/시간.*초과/);
   await until(()=>s.speech.child===null,'timed out child remained owned');await s.post('audio/prepare');assert.equal(s.children.length,2);
+  // The 200 ms deadline above tests the hung request, not scheduler speed.
+  s.speech.requestTimeoutMs=2000;
   assert.equal((await s.audio('시간 초과 복구')).body.text,'시간 초과 복구');assert.equal(s.studio.sessionId,session);assert.equal(s.studio.calls,0);
 });

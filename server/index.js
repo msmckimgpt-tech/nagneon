@@ -1,10 +1,13 @@
 import {DebugConfig,initialDebug,withDebugPrompt,debugRoutes} from './debug-mode.js';
+import {previewEnabled} from '../shared/debug-prompt.js';
 import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
 import {ProviderChoice,ProviderSelection} from './provider-choice.js';
 import {OllamaProvider} from './ollama-provider.js';
+import {HostedProvider} from './hosted-provider.js';
+import {SubscriptionProvider} from './subscription-provider.js';
 import { CodexProvider } from './codex-provider.js';
 import { Knowledge } from './knowledge.js';
 import {LocalSound} from './local-sound.js';
@@ -37,7 +40,7 @@ import {ObsInput} from './obs-input.js';
 import {externalChatRoutes} from './external-chat-session.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory,chzzkFactory,authFactory,openExternalAuth,providerFactories,providerSwitchAllowed=()=>true}={}){
+export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory,chzzkFactory,authFactory,openExternalAuth,openSubscriptionLogin,providerFactories,providerSwitchAllowed=()=>true}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
   const stores=[];
   const useStore=(name,schema,initial)=>{
@@ -45,12 +48,16 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     const store=new JsonStore(resolve(dataDir,name+'.json'),{validate:value=>schema.parse(value),initial,backupCount:3});
     const data=store.load();stores.push(store);return {data,save:value=>store.save(value)};
   };
+  const debugStore=useStore('debug',DebugConfig,initialDebug);
   let providerChoice;
   if(!provider){
     const selectionStore=useStore('provider-choice',ProviderSelection.nullable(),()=>null);
     const initial=selectionStore.data||(process.env.AI_PROVIDER==='ollama'?{kind:'ollama',model:process.env.OLLAMA_MODEL||'unconfigured',base:process.env.OLLAMA_BASE_URL||'http://127.0.0.1:11434',contextSize:Number(process.env.OLLAMA_CONTEXT_SIZE||65536)}:{kind:process.env.AI_PROVIDER==='openai'?'openai':'codex'});
-    providerChoice=new ProviderChoice({initial,save:selectionStore.save,factories:providerFactories||{
-      codex:()=>new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})}),openai:()=>new OpenAIProvider(),
+    providerChoice=new ProviderChoice({initial,preview:previewEnabled(debugStore.data),baseline:{kind:process.env.AI_PROVIDER==='openai'?'openai':'codex'},save:selectionStore.save,factories:providerFactories||{
+      codex:(config={})=>new CodexProvider({...process.env,...(config.model?{OPENAI_MODEL:config.model}:{}),...(config.effort?{OPENAI_REASONING_EFFORT:config.effort}:{}),...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})}),
+      openai:(config={})=>new OpenAIProvider({...process.env,...(config.model?{OPENAI_MODEL:config.model}:{}),...(config.effort?{OPENAI_REASONING_EFFORT:config.effort}:{})}),
+      claude:config=>new HostedProvider(config),gemini:config=>new HostedProvider(config),
+      'claude-cli':config=>new SubscriptionProvider(config),'gemini-cli':config=>new SubscriptionProvider(config),
       ollama:config=>new OllamaProvider({OLLAMA_MODEL:config.model,OLLAMA_BASE_URL:config.base,OLLAMA_CONTEXT_SIZE:config.contextSize})
     }});provider=providerChoice.proxy;
   }
@@ -65,7 +72,6 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const hasPreviousSettings=hasWorld||(persist&&['settings.json','settings.json.bak.1','settings.json.bak.2','settings.json.bak.3'].some(n=>existsSync(resolve(dataDir,n))));
   const settingsStore=hasWorld?null:useStore('settings',Settings,()=>structuredClone(defaults));
   const onboardingStore=useStore('onboarding',OnboardingData,()=>initialOnboarding(hasPreviousSettings));
-  const debugStore=useStore('debug',DebugConfig,initialDebug);
   const knowledgeStore=useStore('knowledge',KnowledgeData,()=>({}));
   const audienceStore=hasWorld?null:useStore('audience',AudienceData,()=>new Audience().data);
   const economyStore=hasWorld?null:useStore('economy',EconomyData,()=>new Economy().data);
@@ -113,8 +119,16 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.use((req,res,next)=>providerChoice?.changing&&!['GET','HEAD'].includes(req.method)&&req.path!=='/api/stop'?res.status(409).json({error:'AI 제공처 변경을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
-  debug=debugRoutes(app,studio,debugStore,{idle:()=>!requests.pending.size&&!providerChoice?.changing&&!probe.controller&&providerSwitchAllowed()});
+  debug=debugRoutes(app,studio,debugStore,{idle:()=>!requests.pending.size&&!providerChoice?.changing&&!probe.controller&&providerSwitchAllowed(),onChange:config=>{
+    providerChoice?.setPreview(previewEnabled(config));probe.value={status:'untested'};
+    if(!previewEnabled(config)){obsInput.disconnect();external.disconnect();}
+  }});
   const debugState=studio.state.bind(studio);studio.state=()=>({...debugState(),debug:debug.summary()});
+  app.use((req,res,next)=>{
+    const experimental=req.path.startsWith('/api/obs/')||req.path.startsWith('/api/external/')||req.path==='/api/connection/provider'||req.path==='/api/connection/cli/login'||(req.path==='/api/react'&&req.body?.obsSourceId);
+    if(experimental&&!previewEnabled(debug.read()))return res.status(403).json({error:'디버그 모드와 신규 기능 사용해보기를 모두 켜주세요.'});
+    next();
+  });
   const external=externalChatRoutes(app,studio,{youtubeFactory,chzzkFactory,authFactory,openExternalAuth});
   const externalState=studio.state.bind(studio);studio.state=()=>({...externalState(),externalChat:external.snapshot()});
   const externalStop=studio.stop.bind(studio);studio.stop=()=>{external.disconnect();return externalStop();};
@@ -132,7 +146,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.get('/api/donations',(_req,res)=>res.json({entries:economy.donationHistory(studio.settings.personas)}));
   app.get('/api/events',(req,res)=>{
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
-    const feed=new StateFeed(res,{patches:req.query.transport==='patches',currentState:()=>studio.state()});
+    const feed=new StateFeed(res,{patches:req.query.transport==='patches',enabled:()=>previewEnabled(debug.read()),currentState:()=>studio.state()});
     const send=state=>feed.send(state);send(studio.state());studio.on('state',send);
     const display=value=>feed.display(value);studio.on('chat-display',display);
     const timer=setInterval(()=>feed.heartbeat(),15000);req.on('close',()=>{clearInterval(timer);feed.close();studio.off('state',send);studio.off('chat-display',display);});
@@ -157,9 +171,16 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
       await pending;probe.value={status:'untested'};if(!res.destroyed)res.json(providerChoice.snapshot());
     }finally{res.off('close',cancel);if(studio.epoch===epoch)studio.busy=false;studio.publish();}
   });
+  app.post('/api/connection/cli/login',async(_req,res)=>{
+    if(studio.running||studio.training.active||studio.busy||requests.pending.size||!providerSwitchAllowed())throw Error('진행 중인 방송·요청을 마친 뒤 로그인해주세요.');
+    const config=providerChoice?.snapshot().config;
+    if(!config||!['claude-cli','gemini-cli'].includes(config.kind))throw Error('먼저 공식 CLI 제공처를 선택해주세요.');
+    if(!openSubscriptionLogin)throw Error('데스크톱 앱 또는 공식 CLI 터미널에서 로그인해주세요.');
+    await openSubscriptionLogin(config);res.json({ok:true});
+  });
   app.post('/api/connection',(req,res)=>{
     if(studio.running)throw new Error('방송을 종료한 뒤 연결 설정을 변경하세요.');
-    if(provider.status().kind==='ollama')throw Error('Ollama는 API 키를 사용하지 않습니다.');
+    if(['ollama','claude-cli','gemini-cli'].includes(provider.status().kind))throw Error('이 제공처는 앱의 API 키 입력을 사용하지 않습니다.');
     const config=z.object({apiKey:z.string().trim().min(1).max(500)}).parse(req.body);provider.key=config.apiKey;studio.publish();res.json(provider.status());
   });
   app.post('/api/connection/check',async(_req,res)=>{if(provider.check)await provider.check();studio.publish();res.json(provider.status());});
