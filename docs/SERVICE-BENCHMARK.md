@@ -49,9 +49,27 @@
 
 ## 외부 연동 다음 단계
 
+### OBS 첫 구현 · 2026-09-14
+
+`server/obs-input.js`는 공개 MIT 클라이언트 `obs-websocket-js@5.0.8`를 사용한다. 앱 UI의 **OBS 장면 연결**에서 같은 PC의 포트/비밀번호로 연결하고 장면을 고르면, 기존 관찰 주기의 `/api/react`가 그 장면의 JPEG를 읽어 시간·sourceId·방송 sessionId가 있는 기존 영상 입력 경로로 보낸다. 장면 전환이나 해제는 `studio.endVideo`로 이전 응답/대기 메시지를 취소한다. 네이티브 긴급 정지의 직접 `studio.stop()` 호출도 연결을 해제한다. 일반 화면으로 전환할 때는 새 캡처 준비 후 OBS를 해제한다.
+
+인증과 RPC를 직접 재작성하지 않고 검증된 클라이언트에 맡기며, 제품 어댑터는 `GetSceneList`/`GetSourceScreenshot` 두 읽기만 호출한다. 비밀번호는 연결 요청에만 사용하고 일반 상태/내보내기/설정/프롬프트에 넣지 않는다. 사용자 화면에서 연결 취소는 HTTP 요청 중단과 서버 연결 정리를 함께 수행한다. 오래된 응답/잘못된 이미지/크기 초과는 화면 연결을 해제하고 다시 장면 선택을 안내한다. 요청 중첩은 새 대기열을 만들지 않는다.
+
+검증:
+
+- `artifacts/obs-focused-final.log`: 연결·선택, JPEG 정규화, 이전 장면/연결의 늦은 결과 차단, 인증 비밀 비노출, 실제 v5 JSON WebSocket의 challenge 인증, 인증된 HTTP API에서 모델 입력 전달/긴급 종료 등 7개 통과.
+- `artifacts/obs-check-1.log`: 첫 OBS 구현 기준 615개 전체 테스트/TypeScript/Vite 통과. 이후 취소·인증 테스트와 미리보기 안내를 보강했으므로 최종 검사 로그는 후속 기록으로 추가한다.
+- `artifacts/service-benchmark-ui-1789386135840/result.json`: 격리된 실제 Electron에서 연결·장면 선택·유효 JPEG 미리보기·해제와 기존 기능 6흐름 통과. OBS 응답과 모델은 합성이다. 별도 프로토콜 시험은 실제 WebSocket 소켓과 실제 클라이언트를 사용하지만 OBS 프로그램 자체가 아니다.
+
+**남은 실제 수용:** 설치된 OBS의 실제 장면과 픽셀/모델 반응 대조. 표준 OBS 설치 경로에서는 실행 파일을 확인하지 못했으며 다른 설치 경로의 부재를 단정하지 않는다. 현재 OBS 연결은 관찰 주기의 정지 이미지이며 연속 프레임·OBS 오디오·클립 녹화 입력은 포함하지 않는다. 개인 방송실의 기존 직접 캡처·시스템 소리 기능은 유지한다. 전체 벤치마킹 목표와 다른 연동은 계속 진행 중이다.
+
 - [OBS WebSocket v5](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md): 명시적으로 선택한 장면의 `GetSourceScreenshot` 읽기. 방송 시작/정지/장면 변경 명령을 보내지 않는다. 기존 캡처와 입력 소유권·해제 취소를 공유한다.
 - [치지직 Session](https://chzzk.gitbook.io/chzzk/chzzk-api/session): 공식 앱/사용자 인증 후 채팅 조회 scope로 세션 생성, SYSTEM 연결 완료의 sessionKey로 CHAT 구독. 자동 재접속은 새 인증 세션과 중복 제거/이전 세션 취소를 검증한다.
 - [YouTube LiveChatMessages](https://developers.google.com/youtube/v3/live/docs/liveChatMessages/list): 공식 API의 liveChatId, nextPageToken, pollingIntervalMillis와 방송 종료/권한 오류를 처리한다. 시청자 대신 메시지를 게시하는 API는 연결하지 않는다.
 - 연결 정보는 일반 설정/SSE/내보내기/AI 프롬프트에 넣지 않는다. 외부 메시지는 스트리머 명령이나 AI 관객의 기억과 출처를 혼동하지 않는다. 비공개 코드 제품의 내부 구조를 확인했다고 주장하지 않는다.
 
-다음: 원본 메시지의 삭제/세션 경계를 지키는 브리핑, 간편 분위기 프리셋, 코드 비교에 근거한 구조 개선, 선택 외부 입력을 차례로 구현한다. 모든 행의 검증이 끝나기 전 전체 목표 완료로 표시하지 않는다.
+최종 OBS 검증: `artifacts/obs-check-release.log`에서 **617개 테스트/TypeScript/Vite 통과**, `artifacts/service-benchmark-ui-1789386507001/result.json`에서 **실제 Electron 6흐름 통과**. 실제 OBS 프로그램 연결은 여전히 미검증이다.
+
+사용자 확인: 치지직·YouTube 개발자 앱/API 설정은 아직 없다. [외부 채팅 설정 준비 안내](EXTERNAL-CHAT-SETUP.md)를 추가했다. 콜백 URL과 연결 UI가 구현되기 전에는 설정 완료나 실계정 수용을 주장하지 않는다. YouTube 공식 Streaming Live Chat 문서에서 API 키 인증 지원을 확인했으며, 최신 권장 방식인 `streamList` 지속 연결을 우선 검토한다.
+
+다음: 치지직·YouTube 읽기 전용 연결과 설정 흐름, 선택 로컬 제공처, 나머지 경험 및 실제 수용 검증을 계속한다. 모든 행의 검증이 끝나기 전 전체 목표 완료로 표시하지 않는다.

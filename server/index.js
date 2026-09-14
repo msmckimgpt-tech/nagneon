@@ -30,9 +30,10 @@ import {JournalStore} from './journal-store.js';
 import {World,WorldData,migrateWorld} from './world.js';
 import {RequestLifetime,ownProviderRequests} from './request-lifetime.js';
 import {StateFeed} from './state-stream.js';
+import {ObsInput} from './obs-input.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
+export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
   provider ||= process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
   if(provider.check)await provider.check();
@@ -73,7 +74,9 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const storageStatus=()=>({warnings:stores.flatMap(s=>s.warnings).slice(-6),recovered:stores.filter(s=>s.recoveredFrom).map(s=>s.recoveredFrom)});
   const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,clipPerception:new ClipPerception(runtime),directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
   const probe=new ConnectionProbe(provider,()=>studio.publish());
-  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status()});
+  const obsInput=new ObsInput({createClient:obsClientFactory,onChange:()=>studio.publish(),onEnd:sourceId=>studio.endVideo({sessionId:studio.sessionId,sourceId})});
+  const stopStudio=studio.stop.bind(studio);studio.stop=()=>{obsInput.disconnect();return stopStudio();};
+  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status(),obsInput:obsInput.snapshot()});
   app.disable('x-powered-by');
   app.use((_req,res,next)=>requests.controller.signal.aborted?res.status(503).json({error:'앱을 종료하고 있습니다.'}):next());
   app.use((req,res,next)=>{
@@ -95,6 +98,16 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
+  app.post('/api/obs/connect',async(req,res)=>{
+    const settings=z.object({port:z.number().int().min(1).max(65535),password:z.string().max(1024)}).strict().parse(req.body);
+    if(res.destroyed)return;
+    const pending=obsInput.connect(settings),client=obsInput.client;
+    const cancel=()=>{if(!res.writableEnded&&obsInput.client===client)obsInput.disconnect();};res.on('close',cancel);
+    try{const result=await pending;if(!res.destroyed)res.json(result);}finally{res.off('close',cancel);}
+  });
+  app.post('/api/obs/select',(req,res)=>res.json(obsInput.select(z.object({scene:z.string().min(1).max(240)}).strict().parse(req.body).scene)));
+  app.post('/api/obs/frame',async(req,res)=>res.json(await obsInput.frame(z.object({sourceId:z.string().uuid()}).strict().parse(req.body).sourceId)));
+  app.post('/api/obs/disconnect',(_req,res)=>{obsInput.disconnect();res.json(obsInput.snapshot());});
   app.use(async(req,_res,next)=>{if(!['GET','HEAD'].includes(req.method))await studio.communityActivity.yield();next();});
   app.get('/api/donations',(_req,res)=>res.json({entries:economy.donationHistory(studio.settings.personas)}));
   app.get('/api/events',(req,res)=>{
@@ -183,7 +196,16 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/stop',(_req,res)=>{if(probe.controller)probe.cancel();else studio.stop();res.json(studio.state());});
   app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard'),capture:z.object({startedAt:z.number().finite().nonnegative(),endedAt:z.number().finite().nonnegative()}).strict().optional()}).strict().parse(req.body))));
   app.post('/api/chat/display',(req,res)=>res.json(studio.setChatDisplay(z.object({showStreamerMessages:z.boolean()}).strict().parse(req.body).showStreamerMessages)));
-  app.post('/api/react',async(req,res)=>res.json(await studio.react(Frame.parse(req.body))));
+  app.post('/api/react',async(req,res)=>{
+    const input=Frame.parse(req.body);
+    if(input.obsSourceId){
+      const sessionId=studio.sessionId;if(!studio.running||studio.settings.mode!=='live')throw Error('실제 AI 방송을 시작한 뒤 OBS 화면을 전달할 수 있습니다.');
+      const frame=await obsInput.frame(input.obsSourceId);
+      if(sessionId!==studio.sessionId||!studio.running)throw Error('OBS 화면을 받은 방송이 끝났습니다.');
+      input.video={sessionId,sourceId:frame.sourceId,frames:[{image:frame.image,at:frame.at}]};delete input.obsSourceId;
+    }
+    res.json(await studio.react(input));
+  });
   app.post('/api/viewing-end',(req,res)=>res.json(studio.endVideo(z.object({sessionId:z.string().uuid(),sourceId:z.string().uuid()}).parse(req.body))));
   soundRoutes(app,studio,sound);
   app.post('/api/audio/prepare',async(_req,res)=>{
@@ -212,9 +234,9 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   expectedHost=`127.0.0.1:${server.address().port}`;
   if(localSpeech)speech.start();
   const health=setInterval(()=>studio.publish(),5000);health.unref();
-  return {server,studio,url:`http://${expectedHost}`,accessToken:access.token,close:()=>{
+  return {server,studio,obsInput,url:`http://${expectedHost}`,accessToken:access.token,close:()=>{
     if(closing)return closing;
-    clearInterval(health);
+    clearInterval(health);obsInput.disconnect();
     // Start every cleanup even if another one fails, and keep the event loop
     // alive until all owned requests have left their cleanup/finally blocks.
     const invoke=fn=>{try{return Promise.resolve(fn());}catch(error){return Promise.reject(error);}};

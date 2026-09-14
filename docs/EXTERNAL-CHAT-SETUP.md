@@ -1,0 +1,28 @@
+# 외부 방송 채팅 연결 준비
+
+2026-09-14 기준. 개인 방송실과 텍스트 AI 관객은 외부 계정 없이 사용할 수 있다. 치지직·YouTube 채팅은 선택 기능으로 개발 중이며, 이 문서는 **계정 준비 안내**다. 아직 앱에서 실제 채팅 연결을 완료할 수 있다는 뜻은 아니다.
+
+## 치지직
+
+1. [치지직 개발자 센터의 Application](https://developers.chzzk.naver.com/application)에 방송 계정으로 로그인하고 애플리케이션을 등록한다.
+2. 이름은 예를 들어 `Backseat Personal`로 정한다. 공식 서비스명을 이름에 넣을 수 없다는 [등록 참고사항](https://chzzk.gitbook.io/chzzk/chzzk-api/tips)을 확인한다.
+3. 수신에 필요한 **채팅 메시지 조회** 권한을 설정한다. 이 프로젝트는 채팅 작성 기능을 요청하지 않는다.
+4. 로그인 리디렉션 URL은 연결 기능이 제공하는 정확한 값을 등록한다. 현재 콜백 주소는 구현 중이므로 임의 주소를 등록하지 않는다. 요청 주소와 등록 주소가 같아야 한다는 [인증 규격](https://chzzk.gitbook.io/chzzk/chzzk-api/authorization)을 따른다.
+5. 발급된 Client ID와 Client Secret은 개발자 센터에서 보관한다. 향후 앱의 연결 화면에 직접 입력하며, 대화·저장소·스크린샷에 넣지 않는다.
+
+연결 구현은 사용자 승인 후 토큰을 발급받고 [공식 Session API](https://chzzk.gitbook.io/chzzk/chzzk-api/session)로 채팅을 구독하는 방식이다. 앱 등록만으로 실제 채팅이 들어오지는 않는다. 승인 취소, 연결 해제, 방송 종료 때 수신을 멈추는 동작까지 검증해야 한다.
+
+## YouTube
+
+1. [Google Cloud Console](https://console.cloud.google.com/)에서 이 용도의 프로젝트를 만든다.
+2. API 라이브러리에서 **YouTube Data API v3**를 활성화한다.
+3. 사용자 인증 정보에서 API 키를 만들고, API 제한을 YouTube Data API v3에 맞춘다. 키 생성과 API 활성화의 기준은 [공식 시작 안내](https://developers.google.com/youtube/v3/getting-started)를 따른다.
+4. 채팅이 켜진 진행 중 방송의 URL을 준비한다. 키는 향후 앱 연결 화면에 직접 입력한다.
+
+[공식 스트리밍 안내](https://developers.google.com/youtube/v3/live/streaming-live-chat)는 API 키 또는 OAuth 토큰을 지원하며, 영상의 `liveStreamingDetails.activeLiveChatId`로 채팅을 찾는다. 공개 방송 읽기를 먼저 구현하고, 별도 권한이 필요한 방송은 OAuth 지원 범위를 명확히 안내할 예정이다. API 키만으로 모든 비공개 방송을 읽을 수 있다고 보장하지 않는다.
+
+수신은 [streamList](https://developers.google.com/youtube/v3/live/docs/liveChatMessages/streamList)의 지속 연결과 재개 토큰을 우선 검토한다. 연결 종료·권한 부족·할당량 오류가 나면 상태를 표시하며 무한 재시도하지 않는다. 채팅 전송이나 방송 시작은 자동으로 수행하지 않는다.
+
+## 완료 확인
+
+연결 기능 구현 후, 테스트용 방송에서 메시지 한 건의 플랫폼·작성자·원문이 정확히 표시되는지 확인한다. 재연결 중복, 삭제 반영, 방송 전환 시 이전 메시지 유입 차단, 해제 후 수신 중단도 확인한다. 개발자 설정이 준비되지 않아도 합성 서버 기반 검증과 코드 구현은 계속할 수 있으나, 그 결과를 실제 플랫폼 연결 성공으로 표시하지 않는다.

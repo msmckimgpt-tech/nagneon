@@ -41,10 +41,11 @@ export const Observation = z.object({
   messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional(),advice:z.boolean().default(false) })).max(8)
 });
 const imageData=(max)=>z.string().max(max).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/);
-export const Frame = z.object({image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),
+export const Frame = z.object({obsSourceId:z.string().uuid().optional(),image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),
   video:z.object({sessionId:z.string().uuid(),sourceId:z.string().uuid(),frames:z.array(z.object({image:imageData(VIDEO_FRAME_CHARS),at:z.number().int().nonnegative(),still:z.object({since:z.number().int().nonnegative(),samples:z.number().int().min(2).max(33)}).optional()})).min(1).max(VIDEO_MAX_FRAMES)}).optional()
 }).superRefine((v,ctx)=>{
   if(v.image&&v.video)ctx.addIssue({code:'custom',message:'화면 입력은 한 가지 경로로 전달하세요.'});
+  if(v.obsSourceId&&(v.image||v.video))ctx.addIssue({code:'custom',message:'OBS와 일반 화면 중 하나를 선택해주세요.'});
   const f=v.video?.frames;
   if(f&&(f.some((item,i)=>i>0&&item.at<=f[i-1].at)||f.at(-1).at-f[0].at>VIDEO_WINDOW_MS))ctx.addIssue({code:'custom',message:'연속 화면의 순서와 시간 범위를 확인하세요.'});
   if(f?.some(item=>item.still&&(item.still.since>=item.at||item.at-item.still.since>VIDEO_WINDOW_MS)))ctx.addIssue({code:'custom',message:'같은 화면을 본 시간 범위를 확인하세요.'});

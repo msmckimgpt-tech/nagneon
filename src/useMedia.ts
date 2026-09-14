@@ -42,6 +42,8 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       }});
       if(ticket!==captureEpoch.current||preparation.signal.aborted){releaseCapture(prepared);return;}
       const {stream,video:capture}=prepared;
+      if(stateRef.current?.obsInput?.phase!=='disconnected'&&stateRef.current?.obsInput){try{await api('obs/disconnect');}catch(e){releaseCapture(prepared);throw e;}}
+      if(ticket!==captureEpoch.current||preparation.signal.aborted){releaseCapture(prepared);return;}
       endFrames();clipUploads.current?.dispose();const previous=screenStream.current,previousVideo=captureVideo.current;
       screenStream.current=stream;captureVideo.current=capture;
       previous?.getTracks().forEach(t=>t.stop());if(previousVideo){previousVideo.pause();previousVideo.srcObject=null;}
@@ -111,8 +113,8 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       const current=stateRef.current;if(disposed||pendingSpeech.current.items.length||inFlight||!current?.running||current.sessionId!==session||current.busy||current.calls>=current.settings.maxCalls)return;
       if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt)return;
       inFlight=true;
-      const window=current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
-      try{const result=await api<{ok?:boolean;skipped?:string;transcriptionNeedsReview?:boolean}>('react',{video:window});
+      const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
+      try{const result=await api<{ok?:boolean;skipped?:string;transcriptionNeedsReview?:boolean}>('react',{video:window,...(current.settings.mode==='live'&&current.obsInput?.sourceId?{obsSourceId:current.obsInput.sourceId}:{})});
         if(window&&((result.ok&&!result.transcriptionNeedsReview)||['unchanged-input','stale-screen'].includes(result.skipped||'')))temporal.current.acknowledge(window);
         if(result.ok||['unchanged-input','stale-screen'].includes(result.skipped||'')){answeredVersion=requestSpeechVersion;nextAttemptAt=requestedAt+current.settings.intervalSeconds*1000;}
         else nextAttemptAt=Date.now()+1500;

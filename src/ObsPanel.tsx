@@ -1,0 +1,19 @@
+import {useEffect,useRef,useState} from 'react';
+import {api} from './api';
+import type {State} from './types';
+import './obs-panel.css';
+
+export function ObsPanel({state,onSelected,onError}:{state:State;onSelected:()=>void;onError:(message:string)=>void}){
+  const [port,setPort]=useState(4455),[password,setPassword]=useState(''),[scene,setScene]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState<{image:string;sourceId:string}|null>(null);
+  const ticket=useRef(0),connection=useRef<AbortController|null>(null);const obs=state.obsInput;
+  useEffect(()=>()=>{ticket.current++;connection.current?.abort();},[]);
+  async function connect(){const id=++ticket.current,controller=new AbortController();connection.current=controller;setBusy(true);try{const response=await fetch('/api/obs/connect',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({port,password}),signal:controller.signal});const result=await response.json();if(!response.ok)throw Error(result.error||'OBS 연결 실패');}catch(e){if(id===ticket.current&&!controller.signal.aborted)onError(e instanceof Error?e.message:'OBS 연결 실패');}finally{if(connection.current===controller)connection.current=null;if(id===ticket.current){setPassword('');setBusy(false);}}}
+  async function disconnect(){const id=++ticket.current;connection.current?.abort();setBusy(true);setPreview(null);setPassword('');try{await api('obs/disconnect');}catch(e){if(id===ticket.current)onError(e instanceof Error?e.message:'OBS 연결 해제 실패');}finally{if(id===ticket.current)setBusy(false);}}
+  async function select(){const id=++ticket.current;setBusy(true);try{await api('obs/select',{scene});if(id===ticket.current){setPreview(null);onSelected();}}catch(e){if(id===ticket.current)onError(e instanceof Error?e.message:'장면 선택 실패');}finally{if(id===ticket.current)setBusy(false);}}
+  async function view(){const id=++ticket.current;setBusy(true);try{const frame=await api<{image:string;sourceId:string}>('obs/frame',{sourceId:obs?.sourceId});if(id===ticket.current)setPreview(frame);}catch(e){if(id===ticket.current)onError(e instanceof Error?e.message:'미리보기 실패');}finally{if(id===ticket.current)setBusy(false);}}
+  return <details className="panel obs-panel"><summary>OBS 장면 연결 · 선택 사항</summary><p>OBS의 도구 → WebSocket 서버 설정에서 서버를 켜고 연결하세요. 선택한 장면은 관객이 함께 보며, 방송 시작·종료나 OBS 장면 전환은 직접 제어해요.</p>
+    {obs?.error&&<p role="alert">{obs.error}</p>}
+    {obs?.phase!=='connected'?<><div className="obs-fields"><label>포트<input aria-label="OBS 포트" type="number" min={1} max={65535} value={port} onChange={e=>setPort(Number(e.target.value))} disabled={busy}/></label><label>비밀번호<input aria-label="OBS 비밀번호" type="password" autoComplete="off" maxLength={1024} value={password} onChange={e=>setPassword(e.target.value)} disabled={busy}/></label></div><button className="secondary" disabled={busy||!Number.isInteger(port)||port<1||port>65535} onClick={()=>void connect()}>OBS 연결</button>{(busy||obs?.phase==='connecting')&&<button className="text-button" onClick={()=>void disconnect()}>연결 취소</button>}</>:<><div className="obs-fields"><label>함께 볼 장면<select aria-label="OBS 장면" value={scene} onChange={e=>setScene(e.target.value)} disabled={busy}><option value="">장면 선택</option>{obs.scenes.map(name=><option key={name}>{name}</option>)}</select></label><button className="secondary" disabled={busy||!obs.scenes.includes(scene)} onClick={()=>void select()}>이 장면 함께 보기</button></div><button className="text-button" onClick={()=>void disconnect()}>OBS 연결 해제</button></>}
+    {obs?.sourceId&&<><p role="status">함께 보는 OBS 장면: {obs.selectedScene}</p><p className="muted">관찰 주기에 맞춰 장면 이미지를 읽어요. OBS 소리와 클립 영상은 이 연결에 포함되지 않아요.</p><button className="text-button" disabled={busy||state.busy} onClick={()=>void view()}>선택 장면 미리보기</button>{preview?.sourceId===obs.sourceId&&<img src={preview.image} alt="선택한 OBS 장면의 마지막 미리보기"/>}</>}
+  </details>;
+}
