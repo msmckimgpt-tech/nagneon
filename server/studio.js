@@ -241,7 +241,10 @@ export class Studio extends EventEmitter {
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
         const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
         const ambient=idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null);
-        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers,company:ambient?.id==='quiet-company'});
+        // A quiet watcher must be able to notice this turn's result before its
+        // excitement has been inferred. Eligibility is not a forced chat.
+        const reactive=!directed&&!ambient?.quiet&&(!!speech.trim()||!this.viewing.unchanged(viewing));
+        const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers,company:ambient?.id==='quiet-company',reactive});
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses().filter(id=>!speechHearers||speechHearers.includes(id)),capturedAt=this.lastRequest;

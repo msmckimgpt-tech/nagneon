@@ -74,7 +74,7 @@ export class Audience {
     }
     return events;
   }
-  context(settings,speech='',excitement=0,{hearers=null,company=false}={}){
+  context(settings,speech='',excitement=0,{hearers=null,company=false,reactive=false}={}){
     const candidates=[],lurkers=[];
     for(const p of settings.personas.filter(p=>p.enabled)){
       if(hearers&&!hearers.includes(p.id))continue;
@@ -82,11 +82,11 @@ export class Audience {
       if(named){this.presence[p.id]='active';member.recognized++;member.affinity=Math.min(1,member.affinity+0.025);}
       const interest=profiles[member?.origin?.key];
       const active=this.presence[p.id]==='active';
-      const occasional=company&&this.presence[p.id]==='lurking'&&!p.system&&p.id!==settings.managerId&&member?.joinedAt>=this.lastStart;
+      const occasional=(company||reactive)&&this.presence[p.id]==='lurking'&&!p.system&&p.id!==settings.managerId&&member?.joinedAt>=this.lastStart;
       if(active||occasional)(active?candidates:lurkers).push({id:p.id,score:this.random()+(p.sociability??0.6)*0.4+(interest?.sociability??0.5)*0.15+(named?2:0)+(p.id===settings.managerId?-0.4:0)});
     }
-    // Watching quietly does not mean unable to speak. At a bounded company
-    // opportunity, one lurker may volunteer without changing their presence,
+    // Watching quietly does not mean unable to speak. With fresh witnessed
+    // input or a company opportunity, one lurker may volunteer without changing their presence,
     // affinity or visit. The model can still choose silence or current gameplay.
     const volunteer=lurkers.sort((a,b)=>b.score-a.score)[0];if(volunteer)candidates.push(volunteer);
     const eligible=candidates.sort((a,b)=>b.score-a.score).slice(0,Math.min(settings.chatPace+1,settings.personas.length)).map(p=>p.id);
