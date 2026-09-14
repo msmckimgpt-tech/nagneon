@@ -8,7 +8,7 @@ const normalize=text=>text.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{
 export class Economy {
   constructor(data,save=()=>{},now=Date.now){
     this.save=save;this.lastNow=Math.max(now(),data?.timeFloor||0);this.now=()=>this.lastNow=Math.max(this.lastNow,now());
-    this.data=data || {version:1,balance:rules.welcomePoints,wallets:{},ledger:[{id:randomUUID(),at:now(),kind:'welcome',amount:rules.welcomePoints,text:'첫 체험 포인트 · 현금 가치 없음'}],purchases:[],quotes:[],moments:[],rewardBlockedUntil:0,lastRewardAt:0};
+    this.data=data || {version:1,balance:rules.welcomePoints,wallets:{},ledger:[{id:randomUUID(),at:now(),kind:'welcome',amount:rules.welcomePoints,text:'첫 방송 응원 포인트'}],purchases:[],quotes:[],moments:[],rewardBlockedUntil:0,lastRewardAt:0};
     // A crash cannot strand a purchase hold. The model result had not committed.
     if(this.data.purchases.some(p=>p.status==='pending'))this.change(d=>{for(const p of d.purchases.filter(p=>p.status==='pending')){d.balance+=p.cost;p.status='failed';p.error='앱 재시작으로 취소되어 포인트를 반환했습니다.';if(p.kind==='contract'){const q=d.quotes.find(q=>q.id===p.key);if(q)q.status='failed';}this.entry(d,'refund',p.cost,p.error);} });
     else if(!data)this.save(this.data);

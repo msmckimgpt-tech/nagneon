@@ -135,8 +135,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <div className="set-row">
             <label className="set-field">방송 모드
               <select value={draft.mode} onChange={e=>update('mode',e.target.value as Settings['mode'])}>
-                <option value="rehearsal">리허설 · 예시 채팅 / 사용량 없음</option>
-                <option value="live">실제 AI 관객 · ChatGPT 구독</option>
+                <option value="rehearsal">리허설</option>
+                <option value="live">관객 연결 · ChatGPT</option>
               </select>
             </label>
             <label className="set-field">방송 카테고리
@@ -198,7 +198,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             <input type="checkbox" checked={draft.webSearch} onChange={e=>update('webSearch',e.target.checked)}/>
             <span>훈수 요청 시 인터넷 공략 검색 허용</span>
           </label>
-          <p className="field-note">연출 비율은 모델에 전달하는 목표값입니다. 틀린 훈수는 검증된 지식으로 저장하지 않아요.</p>
+          <p className="field-note">관객들의 말투와 반응을 조절해 원하는 방송 분위기를 만들어보세요.</p>
         </>;
 
       case 'connection':
@@ -294,8 +294,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <label className="set-check">
             <input type="checkbox" checked={draft.pointsEnabled}
               onChange={e=>update('pointsEnabled',e.target.checked)}/>
-            <span>가상 후원 포인트와 특수 기능 사용
-              <small>실제 결제가 아닌, 이 PC 안에서만 쓰이는 가상 포인트예요.</small>
+            <span>후원 포인트와 관객 교류
+              <small>후원으로 모은 포인트로 관객과 더 가까워져요.</small>
             </span>
           </label>
         </>;

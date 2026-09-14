@@ -34,6 +34,7 @@ Var EngineOutput
 Var Params
 Var Operation
 !define MUI_ABORTWARNING
+!define MUI_WELCOMEPAGE_TEXT "Nagneon은 AI 관객과 대화하는 개인용 방송 시뮬레이터입니다.$\r$\n관객·후원·포인트·커뮤니티 활동은 가상이며 현금 가치, 구매, 환전 기능이 없습니다. 외부 플랫폼에 생방송을 송출하지 않습니다.$\r$\n$\r$\n실제 AI 대화는 연결한 계정의 Codex 사용량을 소비합니다. 리허설은 준비된 채팅을 사용합니다.$\r$\n$\r$\nAI audience simulator. Audience activity and points are fictional; no cash value or external broadcasting. AI conversations consume connected account usage."
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

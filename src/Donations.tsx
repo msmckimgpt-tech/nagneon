@@ -15,7 +15,7 @@ export function DonationToast({messages}:{messages:Message[]}){
     return ()=>clearTimeout(timer);
   },[expiry,now]);
   return <div className="donation-toasts" role="status" aria-live="polite">{recent.map(m=><div className="donation-toast" key={m.id}>
-    <Gift size={24}/><div><b>{m.name} · {m.donation?.amount}P</b><p>{m.text}</p><small>가상 후원 · 현금 이동 없음</small></div>
+    <Gift size={24}/><div><b>{m.name} · {m.donation?.amount}P</b><p>{m.text}</p><small>응원해 주셔서 고마워요!</small></div>
   </div>)}</div>;
 }
 
@@ -29,7 +29,7 @@ export function DonationHistory({onClose,revision}:{onClose:()=>void;revision:st
   },[revision,retry]);
   return <AccessibleDialog onClose={onClose} className="donation-history" labelledBy="donation-history-title" describedBy="donation-history-help">
     <div className="modal-header"><h2 id="donation-history-title">받은 후원</h2><button className="icon" aria-label="후원 내역 닫기" onClick={onClose}><X size={20}/></button></div>
-    <p id="donation-history-help">스트리머만 보는 내역이에요. 익명 후원자 확인은 무료이며, 관객의 성향 해금과는 별개예요. 최근 포인트 거래 300건에 포함된 후원을 보여드려요.</p>
+    <p id="donation-history-help">스트리머만 보는 내역이에요. 익명으로 전한 응원의 주인공도 여기서 확인할 수 있어요. 최근 포인트 거래 300건에 포함된 후원을 보여드려요.</p>
     {error&&<p role="alert">{error} <button onClick={()=>setRetry(n=>n+1)}>다시 불러오기</button></p>}
     {!entries&&!error&&<p role="status">후원 내역을 불러오는 중이에요.</p>}
     {entries?.length===0&&<p className="muted">아직 받은 후원이 없어요. 함께 즐거운 순간을 만들어 보세요.</p>}
@@ -38,6 +38,6 @@ export function DonationHistory({onClose,revision}:{onClose:()=>void;revision:st
       {d.currentName&&d.currentName!==d.donorName&&<p>현재 닉네임: {d.currentName}</p>}
       <p>{d.text||'메시지 없이 보낸 응원'}</p><footer><time dateTime={new Date(d.at).toISOString()}>{new Date(d.at).toLocaleString('ko-KR')}</time><small>관객 ID: {d.donorId||'이전 기록 없음'}</small></footer>
     </article>)}</div>
-    <p className="field-note">공개 채팅과 오버레이에는 익명 후원자의 이름이 표시되지 않아요. 모든 포인트는 가상 재화이며 현금 가치가 없어요.</p>
+    <p className="field-note">공개 채팅과 오버레이에는 익명 후원자의 이름이 표시되지 않아요.</p>
   </AccessibleDialog>;
 }

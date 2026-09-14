@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 
 export class SpecialFeatures {
   constructor(studio){this.studio=studio;}
-  ready(){const s=this.studio;if(s.training.active)throw new Error('상황 연습을 종료한 뒤 사용할 수 있습니다.');if(!s.settings.pointsEnabled)throw new Error('가상 포인트 기능이 꺼져 있습니다.');if(s.settings.mode!=='live')throw new Error('실제 AI 관객 모드에서 사용할 수 있습니다.');return s;}
+  ready(){const s=this.studio;if(s.training.active)throw new Error('상황 연습을 종료한 뒤 사용할 수 있습니다.');if(!s.settings.pointsEnabled)throw new Error('포인트 기능이 꺼져 있습니다.');if(s.settings.mode!=='live')throw new Error('관객을 연결한 뒤 사용할 수 있습니다.');return s;}
   person(id){const s=this.ready(),p=s.settings.personas.find(p=>p.id===id);if(!p||p.system||!s.audience.data.members[id]?.sessions)throw new Error('아직 함께 방송을 본 관객이 아닙니다.');return p;}
   preferences(id){return this.studio.economy.data.purchases.filter(p=>p.status==='completed'&&p.kind==='interview'&&p.result?.personaId===id).slice(-4).map(p=>({at:p.result.at,question:p.result.question,answers:p.result.messages.map(m=>m.text)}));}
   profile(id){const p=this.person(id),m=this.studio.audience.data.members[id];return {kind:'profile',title:`${p.name} 관객 수첩`,at:this.studio.now(),personaId:id,origin:m.origin?.label || '직접 초대 · 기존 관객',values:p.values,personality:p.personality,sociability:p.sociability,expertise:p.expertise,sessions:m.sessions,seconds:m.seconds,recognized:m.recognized,affinity:m.affinity,memories:m.memories.slice(-6),preferences:this.preferences(id),note:'취향은 캐릭터 설정, 방문·호명·대화는 실제 앱 기록입니다. 친밀도는 연출 지표입니다.'};}

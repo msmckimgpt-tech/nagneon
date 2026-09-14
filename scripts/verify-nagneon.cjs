@@ -39,6 +39,7 @@ app.whenReady().then(async()=>{
    await js(`[...document.querySelectorAll('nav button')].find(b=>b.textContent===${JSON.stringify(label)}).click()`);
    await new Promise(r=>setTimeout(r,150));
    assert.equal(await js('/BACKSEAT|backseat/.test(document.body.innerText)'),false,'visible legacy name '+label);
+   assert.equal(await js('/무료|검증|가상|시뮬레이션/.test(document.body.innerText)'),false,'immersive platform wording '+label);
    assert.equal(await js('!!document.querySelector("h1")'),true,label);
   }
   checks.push('all eight navigation pages render with Nagneon branding');
