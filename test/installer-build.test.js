@@ -9,10 +9,18 @@ import {
   parseManifest, buildFileEntries, estimatedSizeKb,
   renderInstallList, renderUninstallList, renderNsi, escapeNsiLiteral,
   verifyPackage, generateInstaller, createSyntheticPackage,
-  deriveBuildId, REQUIRED_RUNTIME_FILES,
+  deriveBuildId, REQUIRED_RUNTIME_FILES, compilerSourcePath,
 } from '../scripts/build-installer.mjs';
 
 const tmp = () => mkdtemp(join(tmpdir(), 'backseat-installer-'));
+
+test('compiler sources support deep Windows and UNC paths without changing POSIX sources',()=>{
+  assert.equal(compilerSourcePath('G:/deep/package'),'\\\\?\\G:\\deep\\package');
+  assert.equal(compilerSourcePath('\\\\server\\share\\package'),'\\\\?\\UNC\\server\\share\\package');
+  assert.equal(compilerSourcePath('\\\\?\\G:\\deep\\package'),'\\\\?\\G:\\deep\\package');
+  assert.equal(compilerSourcePath('/tmp/package'),'/tmp/package');
+  assert.throws(()=>compilerSourcePath('G:/bad${DEFINE}'));
+});
 
 // Matches an actual `RMDir ... /r` COMMAND line (recursive delete), while
 // ignoring the words "RMDir /r" that legitimately appear in explanatory

@@ -1,7 +1,14 @@
+param([string]$PackageFolder, [string]$ResultPath)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$package = Get-Content (Join-Path $root 'artifacts/latest-package.json') -Raw | ConvertFrom-Json
-$exe = Join-Path $package.folder 'Nagneon.exe'
+if (-not $PackageFolder) {
+  $package = Get-Content (Join-Path $root 'artifacts/latest-package.json') -Raw | ConvertFrom-Json
+  $PackageFolder = $package.folder
+}
+if (-not $ResultPath) { $ResultPath = Join-Path $root 'artifacts/nagneon/native-result.json' }
+$exe = Join-Path $PackageFolder 'Nagneon.exe'
+if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Package executable is missing' }
+New-Item -ItemType Directory -Path (Split-Path -Parent $ResultPath) -Force | Out-Null
 $profile = Join-Path $root ('artifacts/nagneon/native-' + [guid]::NewGuid().ToString('N'))
 $process = Start-Process -FilePath $exe -ArgumentList ('"--nagneon-profile=' + $profile + '"') -WindowStyle Hidden -PassThru
 $started = $process.StartTime
@@ -17,6 +24,6 @@ if (-not $process.HasExited -and $process.StartTime -eq $started -and $process.P
 }
 $result.profileCreated=Test-Path (Join-Path $profile 'data')
 $result.passed=$result.window -and $result.title -match 'Nagneon' -and $result.exited -and $result.profileCreated
-$result | ConvertTo-Json | Set-Content (Join-Path $root 'artifacts/nagneon/native-result.json')
+$result | ConvertTo-Json | Set-Content -LiteralPath $ResultPath
 $result | ConvertTo-Json
 if (-not $result.passed) { exit 1 }

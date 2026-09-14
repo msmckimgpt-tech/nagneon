@@ -1,5 +1,15 @@
 # Windows 설치 프로그램 검토 상태
 
+## 긴 worktree 경로 검증 · 2026-09-14
+
+디버그 포함 3.14GB 패키지(`release/2026-09-14T13-18-10-132Z`)의 실제 NSIS 3.12 컴파일은 260자 소스 경로를 열지 못해 종료 코드 1로 끝났다. 파일은 존재했고 매니페스트 해시 검사도 통과한 상태였다. `artifacts/benchmark-full-installer/makensis-output.log`에 원본 실패가 있다. 누락 파일이나 설치 성공으로 해석하지 않는다.
+
+실패한 `DeprecatedNodeIndexAndKernelDefHash.py` 한 파일에 확장 Windows 경로(`\\?\`)를 사용한 실제 NSIS 컴파일이 통과했다(`path-probe.nsi`, `path-probe.log`; 같은 증거 폴더). 생성기의 컴파일용 BACKSEAT_SRC만 확장 경로로 바꾸고 설치 대상·매니페스트 경로는 유지했다. 드라이브·UNC·이미 확장된 경로·POSIX와 금지 문자 회귀 17건이 통과했다. 전체 재컴파일 증거는 `artifacts/benchmark-full-installer-longpath`에 별도 보존하며, 아직 전체 설치·제거 통과로 판정하지 않는다.
+
+`verify-nagneon-native.ps1 -PackageFolder <실제 설치 payload 폴더> -ResultPath <증거 JSON>`으로 설치본을 지정할 수 있다. 기존 패키지 포인터를 변경하지 않으며 기본 동작도 유지한다. 이 매개변수 경로의 실제 독립 실행본 창/프로필/정상 종료 검증은 `artifacts/installer-native-preview.json`에서 통과했다. 시험 설치본은 컴파일 완료 후 별도로 검증해야 한다.
+
+`artifacts/installer-long-path-check-final.log`: **648개 테스트·TypeScript/Vite 통과**. 앞선 전체 검사는 관객 자율성 테스트의 HTTP 요청이 fetch failed로 거절된 뒤 `waiting` 상태를 무한히 기다렸다. 소유한 테스트 프로세스만 inspector로 확인했고(`autonomy-loop-state.json`, `autonomy-meeting-response.json`) 종료 기록을 남겼다. 관객 자율성 테스트의 상태 대기에 5초 상한을 넣어 실패를 명시하도록 했다. 별도 자율성 17건 및 수정 후 전체 검사를 통과했으며, 이 변경을 HTTP 실패 자체의 원인 해결이라고 주장하지 않는다.
+
 > **Nagneon 전환:** 현재 이름, 세로 화면 대응과 새 독립 배포본의 검증은 [Nagneon 전환 기록](NAGNEON.md)을 참고하세요. 아래 BACKSEAT 경로와 수치는 과거 증거를 보존한 것입니다.
 
 2026-09-13. 현재 설치 소스는 **작은 패키지의 실제 업데이트·중단 복구와 전체 1.6 GB 앱의 TEST 설치·실행·제거까지 검증한 개발 빌드**다. 기본 빌드는 `.onInit`와 `un.onInit`에서 종료 코드 10으로 중단한다. 개발 시험에서만 `--mode=test --enable-test-install`로 별도 TEST 식별자를 활성화할 수 있다. 본제품 식별자로는 활성화를 거부한다. 일반 배포·Steam 판매 수용과는 구분하며 앱은 `artifacts/latest-package.json`의 전체 폴더 배포본을 사용한다.

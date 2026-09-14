@@ -12,7 +12,13 @@ import {defaults} from '../shared/defaults.js';
 import {Ambient} from '../server/ambient.js';
 import {OpenAIProvider} from '../server/provider.js';
 
-const turn=()=>new Promise(r=>setImmediate(r));
+async function waitFor(condition){
+  const deadline=Date.now()+5000;
+  while(!condition()){
+    assert.ok(Date.now()<deadline,`Timed out waiting for ${condition}`);
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+}
 const birth={name:'이끼수첩',personality:'PRIVATE_PERSONALITY: 조용한 탐험과 식물 이야기를 좋아한다.',values:'PRIVATE_VALUES: 스스로 발견하는 즐거움',sociability:.6,expertise:.3};
 const result=(extra={})=>({observation:{game:'Just Chatting',scene:'식물 취향 이야기',confidence:.8,excitement:.2,messages:[],arrival:null,viewerChanges:[],clipPicks:[],...extra},usage:{total_tokens:1}});
 const fake=(fn=async()=>result({arrival:birth}))=>({status:()=>({configured:true}),react:fn});
@@ -25,8 +31,8 @@ const raw=s=>JSON.parse(readFileSync(join(s.dataDir,'world.json'),'utf8'));
 
 test('first meeting waits behind an active observation without a charge or duplicate generation',async t=>{
   let release,calls=0;const service=await open(t,{provider:fake(async args=>{calls++;return args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r);})});start(service);
-  const s=service.studio,observation=s.react({speech:'게임을 시작할게요.'});while(!release)await turn();
-  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});while(!s.autonomy.waiting)await turn();
+  const s=service.studio,observation=s.react({speech:'게임을 시작할게요.'});await waitFor(()=>!!release);
+  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});await waitFor(()=>!!s.autonomy.waiting);
   assert.equal(raw(service).economy.balance,60);assert.equal(raw(service).autonomy.receipts[requestId],undefined);assert.equal(s.autonomy.snapshot().waiting,true);
   const duplicate=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(duplicate.status,'pending');assert.equal(duplicate.queued,true);
   assert.equal((await req(service,'audience/arrive',{requestId:randomUUID()})).status,409);
@@ -36,8 +42,8 @@ test('first meeting waits behind an active observation without a charge or dupli
 
 test('stopping while a first meeting waits cancels the wait with no charge and leaves the ID retryable',async t=>{
   let release;const service=await open(t,{provider:fake(async args=>args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r))});start(service);
-  const s=service.studio,observation=s.react({speech:'조금 기다려주세요.'});while(!release)await turn();
-  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});while(!s.autonomy.waiting)await turn();
+  const s=service.studio,observation=s.react({speech:'조금 기다려주세요.'});await waitFor(()=>!!release);
+  const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});await waitFor(()=>!!s.autonomy.waiting);
   s.stop();const response=await meeting;assert.equal(response.status,409);assert.equal(raw(service).economy.balance,60);assert.equal(s.autonomy.snapshot().pending,false);assert.equal(s.listenerCount('state'),0);assert.equal(raw(service).autonomy.receipts[requestId],undefined);
   release(result());await observation;s.start();const receipt=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(receipt.status,'completed');assert.equal(raw(service).economy.balance,10);
 });
@@ -53,7 +59,7 @@ test('fresh profile has no hidden waiting audience; settings/API cannot create o
 
 test('arrival holds, settles once, redacts traits on state/SSE/export and reveals only after purchase',async t=>{
   let release;const service=await open(t,{provider:fake(async()=>new Promise(r=>release=r))});start(service);
-  const requestId=randomUUID(),pending=req(service,'audience/arrive',{requestId});while(!release)await turn();
+  const requestId=randomUUID(),pending=req(service,'audience/arrive',{requestId});await waitFor(()=>!!release);
   assert.equal(raw(service).economy.balance,10);assert.equal(raw(service).settings.personas.length,1);
   const duplicate=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(duplicate.status,'pending');assert.equal(duplicate.source,undefined);
   release(result({arrival:birth}));const receipt=await(await pending).json();assert.equal(receipt.status,'completed');assert.equal(receipt.source,undefined);
@@ -95,7 +101,7 @@ for(const mode of ['held','completed'])test(`real process termination ${mode}: r
 
 test('stop cancels a background arrival and returns points; blocked origins consume no call',async t=>{
   let entered=false;const service=await open(t,{provider:fake(async(_args,signal)=>{entered=true;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}));})});start(service);
-  const pending=meet(service);while(!entered)await turn();service.studio.stop();await assert.rejects(pending,/cancelled/);
+  const pending=meet(service);await waitFor(()=>!!entered);service.studio.stop();await assert.rejects(pending,/cancelled/);
   assert.equal(raw(service).economy.balance,60);assert.equal(raw(service).settings.personas.length,1);assert.equal(service.studio.busy,false);
   await assert.rejects(meet(service),/방송/);assert.equal(service.studio.calls,1);
 });
@@ -111,10 +117,10 @@ test('legacy migration keeps met IDs/history, archives unmet candidates, and doe
 test('natural arrivals create at the actual chance, avoid suspend catch-up and use real spectator clip sources',async t=>{
   let args;const service=await open(t,{provider:fake(async value=>{args=value;return result({arrival:birth});})});start(service);const s=service.studio;let now=Date.now();s.now=()=>now;s.random=()=>0;s.autonomy.start();
   for(let i=0;i<599;i++){now+=1000;s.pump();}assert.equal(s.settings.personas.length,1);assert.equal(s.calls,0);
-  now+=1000;s.pump();while(s.busy)await turn();assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,60);
-  now+=3600000;s.pump();while(s.busy)await turn();assert.ok(s.calls<=2,'one chance at wake, no backlog');
+  now+=1000;s.pump();await waitFor(()=>!s.busy);assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,60);
+  now+=3600000;s.pump();await waitFor(()=>!s.busy);assert.ok(s.calls<=2,'one chance at wake, no backlog');
   const creator=s.settings.personas.find(p=>!p.system);const c=s.clips.create({title:'조용한 식물 이야기',game:'Just Chatting',scene:'공개 취향 대화',participants:[],messages:[],sessionId:s.sessionId,creator:{id:creator.id,name:creator.name,reason:'내 관심사'},source:'spectator'});
-  now+=360000;s.pump();while(s.busy)await turn();assert.equal(args.special.source.path,'clip');assert.equal(args.special.source.clipId,c.id);assert.equal(args.special.clip.interest,'일상 대화와 취향 교류');assert.equal(args.special.clip.scene,undefined);
+  now+=360000;s.pump();await waitFor(()=>!s.busy);assert.equal(args.special.source.path,'clip');assert.equal(args.special.source.clipId,c.id);assert.equal(args.special.clip.interest,'일상 대화와 취향 교류');assert.equal(args.special.clip.scene,undefined);
   const admitted=s.settings.personas.at(-1);assert.equal(s.clips.recallArrival(s.audience.data.members[admitted.id].arrivalClip,now).scene,'공개 취향 대화');
 });
 
@@ -166,6 +172,6 @@ test('failed opening write never leaves a half-started broadcast',async t=>{
 
 test('removing a viewer during a paid answer refunds instead of publishing a stale identity',async t=>{
   const service=await open(t);start(service);const {personaId}=await meet(service),s=service.studio;s.economy.change(d=>{d.balance=100;});let release;s.provider.react=async()=>new Promise(r=>release=r);
-  const pending=s.special.generate({kind:'interview',personaId,question:'어떤 취향이 좋아요?',requestId:randomUUID()});while(!release)await turn();s.autonomy.remove(personaId);
+  const pending=s.special.generate({kind:'interview',personaId,question:'어떤 취향이 좋아요?',requestId:randomUUID()});await waitFor(()=>!!release);s.autonomy.remove(personaId);
   release(result({messages:[{personaId,text:'뒤늦은 대답',kind:'chat',spoiler:false}]}));await assert.rejects(pending,/제거/);assert.equal(s.economy.data.balance,100);assert.ok(!s.messages.some(m=>m.text==='뒤늦은 대답'));
 });

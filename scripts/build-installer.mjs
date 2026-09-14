@@ -21,7 +21,7 @@ import {cp, mkdir, readFile, writeFile, readdir, lstat, stat} from 'node:fs/prom
 import {createReadStream} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {dirname, resolve, join, isAbsolute} from 'node:path';
+import {dirname, resolve, join, isAbsolute, win32} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -195,6 +195,13 @@ function nsiCompilerPath(value){
   return String(value);
 }
 
+// Unicode makensis can read extended Windows paths even when its ordinary
+// File input reaches MAX_PATH. This is a compiler source, not an install path.
+export function compilerSourcePath(value){
+  const path=nsiCompilerPath(value);
+  return /^[A-Za-z]:[\\/]|^\\\\/.test(path)?win32.toNamespacedPath(path):path;
+}
+
 // --- Generated NSIS file lists ---------------------------------------------
 
 // install list: group by directory, one SetOutPath per directory (sorted so
@@ -347,7 +354,7 @@ export async function generateInstaller({manifest, packageFolder, outDir, mode, 
     PUBLISHER: identity.publisher,
     EXE_NAME: identity.exeName,
     UNINSTALLER_NAME: identity.uninstallerName,
-    BACKSEAT_SRC: srcWin,
+    BACKSEAT_SRC: compilerSourcePath(srcWin),
     ESTIMATED_SIZE_KB: estimatedSizeKb(entries),
     OUTFILE: outFileWin,
   }).map(([key,value])=>[key,['BACKSEAT_SRC','OUTFILE'].includes(key)?nsiCompilerPath(value):escapeNsiLiteral(value)])));

@@ -34,3 +34,5 @@ Codex로 돌아가려면 앱의 **AI 제공처 선택**에서 **ChatGPT 구독 �
 실제 추론에서 발견한 replyTo UUID 불일치를 고쳐, 로컬 생성 스키마를 앱의 Observation 검증 스키마에서 직접 만든다. 길이·범위·UUID 제약을 함께 전달하며 결과 검증도 유지한다. 스키마 통과가 응답의 사실성이나 자연스러움을 보장하지 않는다.
 
 재현 도구는 `scripts/verify-ollama-live.mjs`다. 별도로 준비한 서버에 `OLLAMA_BASE_URL`, `OLLAMA_MODEL`을 지정하고 `node scripts/verify-ollama-live.mjs --image=<합성 PNG 경로>`를 실행한다. 모델을 자동 설치하거나 화면을 캡처하지 않는다. 매 실행의 원본 응답·시간·사용량은 독립 `artifacts/ollama-acceptance-*`에 저장되며 의미 품질은 따로 검토해야 한다. 이번 최종 시험은 `ollama-acceptance-WFu8sd/result.json`: 형식 2건 통과, 10.3초/5.6초, 의미 품질 미달이다. 실제 게임·물리 마이크와 다른 로컬 모델의 적합성 검증은 남아 있다.
+
+같은 조건의 [Gemma 3 4B](https://ollama.com/library/gemma3:4b)도 시험했다. `ollama-acceptance-JBDtS6/result.json`에서 28.6초/16.5초로 형식은 통과하고 도형 종류·색은 설명했지만 채팅은 없었다. 이어 실제 Studio의 기본 관객·호명·대기열을 거친 합성 세션(`ollama-session-gvaZmV/result.json`)에서도 10.0초/14.1초 응답에 올바른 관객 채팅이 없었다. 첫 인사에는 침묵했고 두 번째에는 `streamer`를 발신자로 잘못 생성하여 전달되지 않았다. 따라서 이 모델 역시 현재 앱의 검증된 대체 모델로 추천하지 않는다. 단일 스키마 통과나 낮은 지연을 제품 적합성으로 확대하지 않는다. 시험 서버와 모델은 종료했으며 사용자 선택은 바꾸지 않았다.

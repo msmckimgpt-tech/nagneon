@@ -1,5 +1,11 @@
 # 유사 서비스 벤치마킹과 구현
 
+## 후속 실측 · 2026-09-14
+
+Gemma 3 4B를 같은 전체 지침·65536 문맥/q8_0 캐시로 실제 실행했다. 도형 관찰 일부는 맞았으나 기본 관객의 호명에 채팅을 전달하지 못해, Qwen 2B와 마찬가지로 현재 앱의 검증된 대체 모델로 추천하지 않는다. 직접 추론과 Studio 세션의 별도 원본/시간/전달 결과는 [로컬 모델 안내](OLLAMA-SETUP.md)에 연결했다.
+
+전체 NSIS 컴파일에서 긴 worktree의 260자 소스 경로 문제가 실제로 드러났다. 확장 Windows 경로를 사용한 실패 파일의 실제 컴파일과 생성기 회귀를 통과했고 전체 재컴파일을 진행 중이다. 설치본을 직접 지정하는 native 실행 검증도 준비·검증했다. [설치 증거와 남은 검증](INSTALLER.md)을 참고한다. 이전 컴파일 실패를 성공으로 덮어쓰지 않았다.
+
 ## 실제 로컬 제공처 검증 추가
 
 2026-09-14, `codex/service-benchmark-integration`의 격리 Ollama 0.34.0/RTX 2070 8GB에서 `qwen3-vl:2b-instruct`를 실제 실행했다. 공식 Windows ZIP SHA256 `a7dd1b174f39d3d1b8a25d4cbc86045d0e190b17187bfdcbe2f2ee3b5a11470e` 확인 후 별도 USERPROFILE/OLLAMA_MODELS/14366 포트, OLLAMA_NO_CLOUD=1을 사용했다. 기존 사용자 Ollama나 앱 설정은 변경하지 않았다.
