@@ -5,3 +5,5 @@
 .external-chat-panel input{display:block;width:100%;margin-top:5px}
 .external-chat-messages{max-height:240px;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border);margin-top:10px}
 .external-source{font-size:10px;color:var(--muted)}
+.chzzk-callback{display:block;overflow-wrap:anywhere;user-select:all}
+.external-chat-panel select{display:block;width:100%;margin-top:5px}

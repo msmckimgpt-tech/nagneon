@@ -10,14 +10,17 @@ const {EventEmitter}=require('node:events');
 const folder=resolve('artifacts/service-benchmark-ui-'+Date.now());mkdirSync(folder,{recursive:true});
 app.setPath('userData',resolve(folder,'profile'));
 let service,win;const checks=[],errors=[];
-let youtubeCallbacks;const youtubeFactory=options=>{youtubeCallbacks=options;return {async connect(){options.onState({phase:"receiving"});},disconnect(){}};};
+let chzzkCallbacks,chzzkAuthorizationUrl;let youtubeCallbacks;const youtubeFactory=options=>{youtubeCallbacks=options;return {async connect(){options.onState({phase:"receiving"});},disconnect(){}};};
 let obsImage;class FixtureObs extends EventEmitter{async connect(){}async disconnect(){this.emit('ConnectionClosed');}async call(type){return type==='GetSceneList'?{scenes:[{sceneName:'격리된 시험 장면'}]}:{imageData:obsImage};}}
 const watchdog=setTimeout(()=>{writeFileSync(resolve(folder,'timeout.json'),JSON.stringify({checks,errors}));app.exit(2);},90000);
 app.whenReady().then(async()=>{
   let failure;
   try{
     const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
-    service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,obsClientFactory:()=>new FixtureObs(),youtubeFactory,provider:{status:()=>({configured:true,model:'fixture',kind:'fixture'}),react:async()=>({observation:{game:'fixture',scene:'synthetic scene',confidence:0,excitement:0,messages:[]},usage:{total_tokens:0}})}});
+    const {ChzzkAuth}=await import(pathToFileURL(resolve('server/chzzk-auth.js')).href);
+    const authFactory=options=>new ChzzkAuth({...options,port:0,fetchImpl:async()=>new Response(JSON.stringify({code:200,content:{accessToken:'fixture-token',tokenType:'Bearer',expiresIn:86400}}))});
+    const chzzkFactory=options=>{chzzkCallbacks=options;return {async connect(){options.onState({phase:'receiving',channelId:'fixture-channel'});},disconnect(){}};};
+    service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,obsClientFactory:()=>new FixtureObs(),youtubeFactory,chzzkFactory,authFactory,openExternalAuth:async url=>{chzzkAuthorizationUrl=url;},provider:{status:()=>({configured:true,model:'fixture',kind:'fixture'}),react:async()=>({observation:{game:'fixture',scene:'synthetic scene',confidence:0,excitement:0,messages:[]},usage:{total_tokens:0}})}});
     await fetch(service.url+'/api/onboarding',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({skip:true})});
     win=new BrowserWindow({width:1440,height:960,show:true,title:'BACKSEAT Benchmark QA',webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
     win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});
@@ -57,6 +60,24 @@ app.whenReady().then(async()=>{
     assert.equal(await js(`document.querySelector('[aria-label="YouTube API 키"]').value`),'');
     await js(`document.querySelector('.external-chat-panel').open=false`);
     checks.push('YouTube connect, escaped original chat, remote deletion, disconnect and cleared key');
+    await js(`document.querySelector('.external-chat-panel').open=true;(()=>{const s=document.querySelector('[aria-label="외부 채팅 플랫폼"]');s.value='chzzk';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await until(`!!document.querySelector('[aria-label="치지직 Client ID"]')`);
+    await js(`(()=>{for(const [name,value] of [['치지직 Client ID','fixture-client-id'],['치지직 Client Secret','fixture-client-secret']]){const input=document.querySelector('[aria-label="'+name+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+    await button('치지직 인증 시작');await until(`document.querySelector('.external-chat-panel').textContent.includes('치지직 승인 대기 중')`);
+    assert.ok(chzzkAuthorizationUrl);const approval=new URL(chzzkAuthorizationUrl),callback=new URL(approval.searchParams.get('redirectUri'));callback.searchParams.set('state',approval.searchParams.get('state'));callback.searchParams.set('code','fixture-auth-code');await fetch(callback);
+    await until(`document.querySelector('.external-chat-panel').textContent.includes('채팅 수신 중')`);
+    chzzkCallbacks.onBatch({channelId:'fixture-channel',items:[{id:'chzzk-one',name:'치지직 시청자',text:'치지직 원문 확인',publishedAt:Date.now()}]});
+    await until(`document.querySelector('.external-chat-messages')?.textContent.includes('치지직 원문 확인')`);
+    assert.ok(await js(`document.querySelector('.external-chat-panel').textContent.includes('개별 메시지 삭제')`));
+    await js(`document.querySelector('.external-chat-panel').scrollIntoView({block:'center'})`);
+    await until(`(()=>{const r=document.querySelector('.external-chat-panel').getBoundingClientRect();return r.width>200&&r.height>80&&r.top>=0&&r.bottom<=innerHeight})()`);
+    await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);await new Promise(r=>setTimeout(r,150));
+    writeFileSync(resolve(folder,'chzzk-layout.json'),JSON.stringify(await js(`(()=>{const p=document.querySelector('.external-chat-panel');return {rect:p.getBoundingClientRect().toJSON(),display:getComputedStyle(p).display,visibility:getComputedStyle(p).visibility,scroll:p.parentElement.scrollTop}})()`)));
+    writeFileSync(resolve(folder,'chzzk.png'),(await win.webContents.capturePage()).toPNG());
+    await button('외부 채팅 연결 해제');await until(`!!document.querySelector('[aria-label="치지직 Client Secret"]')`);assert.equal(await js(`document.querySelector('[aria-label="치지직 Client Secret"]').value`),'');
+    await js(`document.querySelector('.external-chat-panel').open=false`);
+    checks.push('CHZZK renderer authorization, real loopback callback, source label and disconnect');
+
 
     const person=service.studio.settings.personas.find(p=>p.enabled);
     const make=(i,text)=>({id:'fixture-'+i,personaId:person.id,name:person.name,color:person.color,kind:'chat',time:Date.now(),text:text||`검증 채팅 ${i} · 함께 게임을 보고 있어요.`});

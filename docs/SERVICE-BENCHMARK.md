@@ -107,3 +107,15 @@
 검증: `artifacts/chzzk-focused.log`의 6개 시험은 실제 loopback HTTP 인증/취소/만료, 실제 WebSocket 수신/중복 구독 방지/ping/권한 철회, 채널·URL 제한을 확인한다. 별도 `artifacts/socketio-compat`에 스크립트 실행 없이 설치한 공식 Socket.IO 2.0.3 서버를 `scripts/verify-chzzk-protocol.mjs`로 구동했고 `artifacts/chzzk-socketio-compat.log`에서 이벤트 2개와 ping 2회의 호환성을 확인했다. 이 참고 의존성은 배포 대상이 아니다. `artifacts/chzzk-check.log`: **635개 전체 테스트/TypeScript/Vite 통과**. 인증 변경의 필수 회귀인 `chzzk-account-device.log`, `chzzk-account-runtime.log`도 통과했으며 빈 Codex 홈/별도 앱 프로필에서 발급·취소만 시험했다. 로그인 완료·모델 호출·기존 계정 변경은 없다.
 
 남은 치지직 범위: 앱의 인증 시작/취소 화면, 브라우저 열기, 공통 외부 채팅 세션 연결, 실제 개발자 앱/계정 수용. 모듈 및 프로토콜 시험을 실제 치지직 연결 성공으로 간주하지 않는다.
+
+### 치지직 앱 연결 · 2026-09-14
+
+외부 채팅 패널에서 YouTube/치지직을 선택한다. 치지직은 Client ID/Secret과 콜백 등록 안내 → 기본 브라우저 승인 → 채팅 수신 흐름을 제공한다. 서버가 만든 고정 치지직 인증 URL만 데스크톱의 `shell.openExternal`로 열며, 렌더러가 임의 URL을 전달해 열 수 없다. 브라우저 실행이 불가능할 때 복사 가능한 인증 주소를 제공한다. 주소는 인증 시작 응답과 컴포넌트의 임시 상태에만 있고 일반 SSE에는 넣지 않는다.
+
+승인 후 확인된 채널을 기존 ExternalChat 버퍼/개인 관객 맥락에 연결했다. 세션 전환·취소·방송 종료는 인증 콜백 서버와 채팅 연결을 함께 정리하고 늦은 응답은 무시한다. 원격 개별 삭제 동기화 한계는 화면과 설정 안내에 명시했다. 현재 한 플랫폼씩 연결하며 자동 교차 게시 기능은 없다.
+
+`artifacts/chzzk-session-check.log`: **637개 전체 테스트/TypeScript/Vite 통과**. 인증된 앱 API, 실제 loopback 승인 콜백, 서버가 생성한 주소만 브라우저로 전달, 승인 취소 후 포트 해제, 채널 분리/모델 입력/비밀 비노출을 검증했다. `chzzk-session-account-device.log`와 `chzzk-session-account-runtime.log`의 필수 인증 회귀도 별도 프로필에서 통과했다.
+
+`artifacts/service-benchmark-ui-1789388726243/result.json`: **실제 Electron 8흐름 통과**. 치지직의 인증 시작·콜백·원문 출처·해제를 추가했다. 최초 캡처는 스크롤 아래 패널을 보여주지 못했고, 다음 캡처도 compositor 갱신 전이었다. 스크롤 후 실제 크기/가시 영역/두 렌더 프레임을 확인하도록 보강했다. 같은 폴더 `chzzk-layout.json`의 패널 좌표(246,437), 크기(785×208.75), visible/block과 `chzzk.png`의 원문/안내를 시각 확인했다. 이 과정에서 기능 CSS가 숨겨졌다는 증거는 없었고 제품 CSS를 임의 수정하지 않았다. 외부 승인·수신·모델은 fixture이며 실제 치지직 계정/권한 동의 성공은 미검증이다.
+
+다음 범위: 선택 로컬 모델과 남은 서비스 경험 비교·적용, 실제 플랫폼/OBS 수용, 최종 통합. 전체 목표는 진행 중이다.
