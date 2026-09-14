@@ -1,3 +1,4 @@
+import {resolveDebugPrompt} from '../shared/debug-prompt.js';
 import { Observation } from './schema.js';
 import {liveChatInstructions} from './conversation-rhythm.js';
 import {temporalInstructions} from './temporal-video.js';
@@ -30,7 +31,7 @@ export class OpenAIProvider {
     if (!response.ok) throw new Error(`AI API 오류 (${response.status}). 모델 접근 권한, 잔액, 연결 설정을 확인하세요.`);
     return response.json();
   }
-  payload({settings,history,previous,image,frames=[],screenTimeline,speech,knowledge,viewerKnowledge,viewerContext,adviceRequested,advicePolicy,audience,offStream=false,voiceCues,special,directed,ambient,transcriptCandidates=[],liveSpeech=[]}) {
+  payload({settings,history,previous,image,frames=[],screenTimeline,speech,knowledge,viewerKnowledge,viewerContext,adviceRequested,advicePolicy,audience,offStream=false,voiceCues,special,directed,ambient,transcriptCandidates=[],liveSpeech=[],debugPrompt}) {
     const game=settings.games.find(g=>g.id===settings.gameId);
     // The streamer's personal viewer notes are UI-only, including in off-stream
     // recaps and private interviews which otherwise receive full member context.
@@ -86,7 +87,7 @@ viewerKnowledge는 관객 개인별 게임 지식이다. 각 personaId 항목에
     const images=frames.length?frames.map(f=>f.image):image?[image]:[];
     const content=[{type:'input_text',text:JSON.stringify({previous:viewerContext?undefined:previous,knowledge,viewerKnowledge,viewerContext,advicePolicy,audience,voiceCues,special,directed,ambient,transcriptCandidates,liveSpeech,screenTimeline,chatHistory:viewerContext?undefined:history.slice(-35),streamerSpeech:speech,hasImage:images.length>0})}];
     for(const image of images)content.push({type:'input_image',image_url:image,detail:'low'});
-    return {model:this.model,reasoning:{effort:this.effort},store:false,instructions:instructions+'\n'+temporalInstructions,input:[{role:'user',content}],text:{format},max_output_tokens:2200,...(settings.webSearch&&adviceRequested?{tools:[{type:'web_search'}]}:{})};
+    return {model:this.model,reasoning:{effort:this.effort},store:false,instructions:resolveDebugPrompt(instructions+'\n'+temporalInstructions,debugPrompt),input:[{role:'user',content}],text:{format},max_output_tokens:2200,...(settings.webSearch&&adviceRequested?{tools:[{type:'web_search'}]}:{})};
   }
   async react(args,signal) {
     const result=await this.request('responses',this.payload(args),signal);

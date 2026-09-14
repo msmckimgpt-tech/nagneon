@@ -1,3 +1,4 @@
+import {DebugConfig,initialDebug,withDebugPrompt,debugRoutes} from './debug-mode.js';
 import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,11 +59,13 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const clipInspector=new ClipInspector(runtime.clips);
   const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
   if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
-  const requests=new RequestLifetime();provider=ownProviderRequests(provider,requests);let closing;
+  let debug;
+  const requests=new RequestLifetime();provider=ownProviderRequests(withDebugPrompt(provider,()=>debug?.read()),requests);let closing;
   const hasWorld=persist&&['world.json','world.json.bak.1','world.json.bak.2','world.json.bak.3'].some(n=>existsSync(resolve(dataDir,n)));
   const hasPreviousSettings=hasWorld||(persist&&['settings.json','settings.json.bak.1','settings.json.bak.2','settings.json.bak.3'].some(n=>existsSync(resolve(dataDir,n))));
   const settingsStore=hasWorld?null:useStore('settings',Settings,()=>structuredClone(defaults));
   const onboardingStore=useStore('onboarding',OnboardingData,()=>initialOnboarding(hasPreviousSettings));
+  const debugStore=useStore('debug',DebugConfig,initialDebug);
   const knowledgeStore=useStore('knowledge',KnowledgeData,()=>({}));
   const audienceStore=hasWorld?null:useStore('audience',AudienceData,()=>new Audience().data);
   const economyStore=hasWorld?null:useStore('economy',EconomyData,()=>new Economy().data);
@@ -110,6 +113,8 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.use((req,res,next)=>providerChoice?.changing&&!['GET','HEAD'].includes(req.method)&&req.path!=='/api/stop'?res.status(409).json({error:'AI 제공처 변경을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
+  debug=debugRoutes(app,studio,debugStore,{idle:()=>!requests.pending.size&&!providerChoice?.changing&&!probe.controller&&providerSwitchAllowed()});
+  const debugState=studio.state.bind(studio);studio.state=()=>({...debugState(),debug:debug.summary()});
   const external=externalChatRoutes(app,studio,{youtubeFactory,chzzkFactory,authFactory,openExternalAuth});
   const externalState=studio.state.bind(studio);studio.state=()=>({...externalState(),externalChat:external.snapshot()});
   const externalStop=studio.stop.bind(studio);studio.stop=()=>{external.disconnect();return externalStop();};

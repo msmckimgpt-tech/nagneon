@@ -1,3 +1,4 @@
+import {DebugPanel} from './DebugPanel';
 import {useMemo,useRef,useState,type KeyboardEvent} from 'react';
 import {Check,Clapperboard,Gamepad2,Plus,Radio,Shield,SlidersHorizontal,Sparkles,X,type LucideIcon} from 'lucide-react';
 import {api} from './api';
@@ -11,7 +12,7 @@ import modelCallLimits from '../shared/model-call-limits.json';
 // The tabbed settings editor. It owns a private draft of the settings and only
 // commits it when the user saves; personas are intentionally never edited or
 // sent from here — the server owns the audience roster.
-type TabId='broadcast'|'mood'|'connection'|'manager'|'media'|'games';
+type TabId='broadcast'|'mood'|'connection'|'manager'|'media'|'games'|'debug';
 
 const TABS:{id:TabId;label:string;Icon:LucideIcon}[]=[
   {id:'broadcast',label:'방송',Icon:Radio},
@@ -20,6 +21,7 @@ const TABS:{id:TabId;label:string;Icon:LucideIcon}[]=[
   {id:'manager',label:'매니저·채팅',Icon:Shield},
   {id:'media',label:'미디어·기록',Icon:Clapperboard},
   {id:'games',label:'게임',Icon:Gamepad2},
+  {id:'debug',label:'디버그',Icon:SlidersHorizontal},
 ];
 
 // Stable element IDs so the tab/panel aria-controls / aria-labelledby wiring
@@ -122,6 +124,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
 
   function renderPanel(id:TabId){
     switch(id){
+      case 'debug':return active==='debug'?<DebugPanel locked={locked} onSettingsSaved={onSaved}/>:null;
       case 'broadcast':
         return <>
           <button type="button" className="guide-link" disabled={locked} onClick={onGuide}>
@@ -377,7 +380,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
       <span>설정과 게임 기억은 이 PC에 저장됩니다.</span>
       <div className="footer-actions">
         <button type="button" className="secondary" onClick={onClose}>닫기</button>
-        <button type="button" className="primary" disabled={locked||pending} onClick={()=>void save()}>
+        <button type="button" className="primary" disabled={locked||pending||active==='debug'} onClick={()=>void save()}>
           <Check size={16}/> {pending?'저장 중…':'설정 저장'}
         </button>
       </div>
