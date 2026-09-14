@@ -4,8 +4,9 @@
 import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join,dirname,basename} from 'node:path';
+import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {verifyPackage} from './build-installer.mjs';
 const option=name=>process.argv.find(a=>a.startsWith('--'+name+'='))?.slice(name.length+3);
@@ -16,9 +17,13 @@ assert.ok(['install','uninstall'].includes(phase));
 assert.equal(process.platform,'win32');
 const record=phase==='install'?null:await json(resolve(option('record')));
 const base=record?.base||resolve('artifacts','installer-full-test-'+new Date().toISOString().replace(/[:.]/g,'-'));
-const target=record?.target||resolve('artifacts','full-'+Date.now().toString(36));
+// Keep the real install independent of the checkout's depth. The complete
+// payload and TEST identity are unchanged; evidence stays in this worktree.
+const target=record?.target||join(tmpdir(),'nagneon-full-'+randomUUID().slice(0,8));
 assert.equal(dirname(base),resolve('artifacts'));assert.match(basename(base),/^installer-full-test-[0-9TZ-]+$/);
-assert.equal(dirname(target),resolve('artifacts'));assert.match(basename(target),/^full-[a-z0-9]+$/);
+assert.ok((dirname(target)===resolve(tmpdir())&&/^nagneon-full-[0-9a-f]{8}$/.test(basename(target)))||
+  (dirname(target)===resolve('artifacts')&&/^full-[a-z0-9]+$/.test(basename(target))),
+  'Installation target must be a task-owned test directory');
 if(!record)await mkdir(base);
 const result=record||{base,target,checks:[],operations:[],installed:false,uninstalled:false};
 result.passed=false;

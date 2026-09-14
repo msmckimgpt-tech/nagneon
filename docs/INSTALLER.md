@@ -10,6 +10,8 @@
 
 `artifacts/installer-long-path-check-final.log`: **648개 테스트·TypeScript/Vite 통과**. 앞선 전체 검사는 관객 자율성 테스트의 HTTP 요청이 fetch failed로 거절된 뒤 `waiting` 상태를 무한히 기다렸다. 소유한 테스트 프로세스만 inspector로 확인했고(`autonomy-loop-state.json`, `autonomy-meeting-response.json`) 종료 기록을 남겼다. 관객 자율성 테스트의 상태 대기에 5초 상한을 넣어 실패를 명시하도록 했다. 별도 자율성 17건 및 수정 후 전체 검사를 통과했으며, 이 변경을 HTTP 실패 자체의 원인 해결이라고 주장하지 않는다.
 
+설치 대상은 컴파일용 소스와 별개다. 깊은 checkout 아래의 기존 시험 대상은 최장 268자가 되어 기본 .NET 경로 한계를 넘었다(`artifacts/path-runtime-legacy.log`의 실제 PathTooLongException). 전체 설치 검증은 고유한 OS 임시 폴더 `nagneon-full-<8자리 ID>`를 사용하고 증거는 원래 worktree에 보존하도록 바꿨다. 전체 2,452개 파일·해시 검사·TEST 식별자·설치/제거 범위 검사는 유지한다. 사용자 설치 경로가 임의로 길어도 된다는 보장은 하지 않는다. 기존 기록의 worktree 시험 경로도 계속 검증할 수 있다.
+
 > **Nagneon 전환:** 현재 이름, 세로 화면 대응과 새 독립 배포본의 검증은 [Nagneon 전환 기록](NAGNEON.md)을 참고하세요. 아래 BACKSEAT 경로와 수치는 과거 증거를 보존한 것입니다.
 
 2026-09-13. 현재 설치 소스는 **작은 패키지의 실제 업데이트·중단 복구와 전체 1.6 GB 앱의 TEST 설치·실행·제거까지 검증한 개발 빌드**다. 기본 빌드는 `.onInit`와 `un.onInit`에서 종료 코드 10으로 중단한다. 개발 시험에서만 `--mode=test --enable-test-install`로 별도 TEST 식별자를 활성화할 수 있다. 본제품 식별자로는 활성화를 거부한다. 일반 배포·Steam 판매 수용과는 구분하며 앱은 `artifacts/latest-package.json`의 전체 폴더 배포본을 사용한다.
