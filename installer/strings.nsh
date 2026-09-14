@@ -1,6 +1,6 @@
 ; installer/strings.nsh
 ; ---------------------------------------------------------------------------
-; User-facing strings for the BACKSEAT Studio installer.
+; User-facing strings for the Nagneon installer.
 ;
 ; Korean is the primary UI language; English is provided as a fallback so the
 ; installer remains usable on non-Korean Windows. This file MUST be !included

@@ -46,6 +46,7 @@ for(const [dir,extension] of [['desktop',/\.cjs$/],['server',/\.js$/],['shared',
 const pkg=await json(join(root,'package.json'));
 await writeFile(join(stage,'package.json'),JSON.stringify({...pkg,scripts:{}},null,2));
 await cp(join(root,'package-lock.json'),join(stage,'package-lock.json'));
+await cp(join(root,'LICENSE'),join(stage,'LICENSE'));
 // npm CLI is build-time only. Lifecycle scripts are never executed in staging.
 const npm=process.env.npm_execpath || join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
 await run(process.execPath,[npm,'ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'],stage);
@@ -104,12 +105,12 @@ for(const file of soundSpec.files){
 await cp(join(root,'shared/sound-model.json'),join(soundTarget,'provenance.json'));
 await cp(join(root,'scripts/sound_worker.py'),join(soundTarget,'sound_worker.py'));
 await cp(join(root,'third-party/sound/NOTICE.txt'),join(soundTarget,'NOTICE.txt'));
-const output=await packager({dir:stage,out:join(build,'app'),name:'BACKSEAT',executableName:'BACKSEAT',platform:'win32',arch:'x64',electronVersion,
+const output=await packager({dir:stage,out:join(build,'app'),name:'Nagneon',executableName:'Nagneon',icon:join(root,'branding/nagneon.ico'),platform:'win32',arch:'x64',electronVersion,
   appVersion:pkg.version,buildVersion:pkg.version,asar:true,prune:false,overwrite:false,
   extraResource:[codexTarget,join(resources,'speech'),soundTarget],
-  win32metadata:{CompanyName:'Unspecified publisher (development build)',FileDescription:'BACKSEAT Studio',ProductName:'BACKSEAT Studio',InternalName:'BACKSEAT'}
+  win32metadata:{CompanyName:'Unspecified publisher (development build)',FileDescription:'Nagneon',ProductName:'Nagneon',InternalName:'Nagneon'}
 });
-const folder=output[0],exe=join(folder,'BACKSEAT.exe');
+const folder=output[0],exe=join(folder,'Nagneon.exe');
 await flipFuses(exe,{version:FuseVersion.V1,
   [FuseV1Options.RunAsNode]:false,[FuseV1Options.EnableNodeOptionsEnvironmentVariable]:false,
   [FuseV1Options.EnableNodeCliInspectArguments]:false,[FuseV1Options.EnableEmbeddedAsarIntegrityValidation]:true,

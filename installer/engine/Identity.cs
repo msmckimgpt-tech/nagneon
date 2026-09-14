@@ -23,7 +23,7 @@ namespace Backseat.Installer
         public string InstallSubdir;
         public string ShortcutGroup;
         public string RegUninstallKey; // HKCU relative
-        public string ExeName;         // "BACKSEAT.exe"
+        public string ExeName;         // "Nagneon.exe"
         public string UninstallerName;
         public string Publisher;
         public string Version;
@@ -31,7 +31,7 @@ namespace Backseat.Installer
         public string PayloadDirname;  // "<version>+<buildId>"
 
         // Stable launcher filename (this engine binary copied into the root).
-        public const string LauncherName = "BACKSEAT Launcher.exe";
+        public const string LauncherName = "Nagneon Launcher.exe";
 
         // Immutable owner marker written into state; distinguishes our state
         // format/owner from anything else that might sit in the install root.
@@ -44,7 +44,7 @@ namespace Backseat.Installer
         // refused. Keep this list in lockstep with the builder and runtime.cjs.
         public static readonly string[] RequiredRuntimeFiles = new string[]
         {
-            "BACKSEAT.exe",
+            "Nagneon.exe",
             "resources/codex/bin/codex.exe",
             "resources/speech/python/python.exe",
             "resources/speech/speech_worker.py",
@@ -66,26 +66,26 @@ namespace Backseat.Installer
                 return new Identity
                 {
                     Marker = "production",
-                    AppName = "BACKSEAT Studio",
-                    AppId = "{7E3A9C21-4B6D-4F2E-9A1C-8D5F0B2E6A34}",
-                    InstallSubdir = "BACKSEAT Studio",
-                    ShortcutGroup = "BACKSEAT Studio",
-                    RegUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\BACKSEAT-Studio",
-                    ExeName = "BACKSEAT.exe",
-                    UninstallerName = "Uninstall BACKSEAT Studio.exe",
+                    AppName = "Nagneon",
+                    AppId = "{9D4F2B31-8250-4BFC-AE43-3C27B5E8F092}",
+                    InstallSubdir = "Nagneon",
+                    ShortcutGroup = "Nagneon",
+                    RegUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nagneon",
+                    ExeName = "Nagneon.exe",
+                    UninstallerName = "Uninstall Nagneon.exe",
                     Publisher = "Unspecified publisher (development build)",
                 };
             if (marker == "test")
                 return new Identity
                 {
                     Marker = "test",
-                    AppName = "BACKSEAT Studio (Test)",
-                    AppId = "{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}",
-                    InstallSubdir = "BACKSEAT Studio (Test)",
-                    ShortcutGroup = "BACKSEAT Studio (Test)",
-                    RegUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\BACKSEAT-Studio-Test",
-                    ExeName = "BACKSEAT.exe",
-                    UninstallerName = "Uninstall BACKSEAT Studio (Test).exe",
+                    AppName = "Nagneon (Test)",
+                    AppId = "{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}",
+                    InstallSubdir = "Nagneon (Test)",
+                    ShortcutGroup = "Nagneon (Test)",
+                    RegUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nagneon-Test",
+                    ExeName = "Nagneon.exe",
+                    UninstallerName = "Uninstall Nagneon (Test).exe",
                     Publisher = "Unspecified publisher (development build)",
                 };
             throw EngineError.Validation("unknown identity marker: " + PathSafety.Clip(marker));

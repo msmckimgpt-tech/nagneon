@@ -182,14 +182,14 @@ namespace Backseat.Installer.Tests
         {
             Section("Identity");
             var prod = Identity.ParseAndValidate(ProdIdentityMap("1.2.3", "build9", "1.2.3+build9"));
-            Eq(prod.AppId, "{7E3A9C21-4B6D-4F2E-9A1C-8D5F0B2E6A34}", "production appId");
+            Eq(prod.AppId, "{9D4F2B31-8250-4BFC-AE43-3C27B5E8F092}", "production appId");
             Ok(!prod.IsTest, "production not test");
             var test = Identity.ParseAndValidate(TestIdentityMap("0.0.1", "t1", "0.0.1+t1"));
             Ok(test.IsTest, "test IsTest");
             Ok(!string.Equals(test.AppId, prod.AppId, StringComparison.Ordinal), "test appId differs");
             // cross contamination: production marker with test appId
             var cross = ProdIdentityMap("1.0.0", "b", "1.0.0+b");
-            cross["appId"] = "{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}";
+            cross["appId"] = "{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}";
             Throws(delegate { Identity.ParseAndValidate(cross); }, "reject prod marker + test appId");
             Throws(delegate { Identity.ParseAndValidate(ProdIdentityMap("bad", "b", "bad+b")); }, "reject bad version");
             Throws(delegate { Identity.ParseAndValidate(ProdIdentityMap("1.0.0", "b", "9.9.9+b")); }, "reject payload!=v+b");
@@ -210,12 +210,12 @@ namespace Backseat.Installer.Tests
                 "reject manifest missing yamnet.onnx");
             Throws(delegate { InstallRequest.Parse(BuildRequest(Without("resources/sound/sound_worker.py"), null, "production")); },
                 "reject manifest missing sound_worker.py");
-            Throws(delegate { InstallRequest.Parse(BuildRequest(Without("BACKSEAT.exe"), null, "production")); },
-                "reject manifest missing BACKSEAT.exe");
+            Throws(delegate { InstallRequest.Parse(BuildRequest(Without("Nagneon.exe"), null, "production")); },
+                "reject manifest missing Nagneon.exe");
 
             // duplicate path (case-insensitive)
             var dup = new List<string>(Identity.RequiredRuntimeFiles);
-            dup.Add("BACKSEAT.EXE");
+            dup.Add("NAGNEON.EXE");
             Throws(delegate { InstallRequest.Parse(BuildRequest(dup.ToArray(), null, "production")); }, "reject case-insensitive duplicate");
 
             // testFault only for test identity
@@ -236,10 +236,10 @@ namespace Backseat.Installer.Tests
         {
             Section("State / Journal round-trip");
             var st = new InstalledState();
-            st.AppId = "{7E3A9C21-4B6D-4F2E-9A1C-8D5F0B2E6A34}";
-            st.AppName = "BACKSEAT Studio"; st.Marker = "production"; st.InstallRoot = "C:\\Games\\BK";
-            st.RegUninstallKey = "Software\\X"; st.ShortcutGroup = "BACKSEAT Studio";
-            st.UninstallerName = "Uninstall BACKSEAT Studio.exe"; st.ExeName = "BACKSEAT.exe";
+            st.AppId = "{9D4F2B31-8250-4BFC-AE43-3C27B5E8F092}";
+            st.AppName = "Nagneon"; st.Marker = "production"; st.InstallRoot = "C:\\Games\\BK";
+            st.RegUninstallKey = "Software\\X"; st.ShortcutGroup = "Nagneon";
+            st.UninstallerName = "Uninstall Nagneon.exe"; st.ExeName = "Nagneon.exe";
             st.Publisher = "Unspecified publisher (development build)";
             st.Current = MakeVR("1.2.3+b1", "1.2.3", "b1");
             st.Previous = MakeVR("1.2.2+b0", "1.2.2", "b0");
@@ -259,7 +259,7 @@ namespace Backseat.Installer.Tests
             j.TxnId = "txn-1"; j.Op = "install"; j.Phase = "staging";
             j.AppId = st.AppId; j.AppName = st.AppName; j.Marker = "production";
             j.RegUninstallKey = "Software\\X"; j.ShortcutGroup = "G"; j.UninstallerName = "U.exe";
-            j.ExeName = "BACKSEAT.exe"; j.Publisher = "P"; j.Root = "C:\\Games\\BK";
+            j.ExeName = "Nagneon.exe"; j.Publisher = "P"; j.Root = "C:\\Games\\BK";
             j.ControlDir = "C:\\Games\\BK\\.backseat"; j.StageDir = "C:\\Games\\BK\\app\\.pending-b1";
             j.NewPayloadDir = "C:\\Games\\BK\\app\\1.2.3+b1"; j.Target = st.Current;
             j.FirstInstall = true; j.PriorPayloadDirname = null;
@@ -786,9 +786,9 @@ namespace Backseat.Installer.Tests
         private static VersionRecord MakeVR(string payload, string ver, string build)
         {
             var v = new VersionRecord();
-            v.PayloadDirname = payload; v.Version = ver; v.BuildId = build; v.ExeName = "BACKSEAT.exe";
+            v.PayloadDirname = payload; v.Version = ver; v.BuildId = build; v.ExeName = "Nagneon.exe";
             var e = new FileEntry();
-            e.Path = "BACKSEAT.exe"; e.Bytes = 10;
+            e.Path = "Nagneon.exe"; e.Bytes = 10;
             e.Sha256 = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
             v.Files = new List<FileEntry>(); v.Files.Add(e);
             return v;
@@ -799,13 +799,13 @@ namespace Backseat.Installer.Tests
             var m = new Dictionary<string, object>();
             m["marker"] = "production";
             m["version"] = ver; m["buildId"] = build; m["payloadDirname"] = payload;
-            m["appId"] = "{7E3A9C21-4B6D-4F2E-9A1C-8D5F0B2E6A34}";
-            m["appName"] = "BACKSEAT Studio";
-            m["installSubdir"] = "BACKSEAT Studio";
-            m["shortcutGroup"] = "BACKSEAT Studio";
-            m["regUninstallKey"] = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\BACKSEAT-Studio";
-            m["exeName"] = "BACKSEAT.exe";
-            m["uninstallerName"] = "Uninstall BACKSEAT Studio.exe";
+            m["appId"] = "{9D4F2B31-8250-4BFC-AE43-3C27B5E8F092}";
+            m["appName"] = "Nagneon";
+            m["installSubdir"] = "Nagneon";
+            m["shortcutGroup"] = "Nagneon";
+            m["regUninstallKey"] = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nagneon";
+            m["exeName"] = "Nagneon.exe";
+            m["uninstallerName"] = "Uninstall Nagneon.exe";
             m["publisher"] = "Unspecified publisher (development build)";
             return m;
         }
@@ -815,13 +815,13 @@ namespace Backseat.Installer.Tests
             var m = new Dictionary<string, object>();
             m["marker"] = "test";
             m["version"] = ver; m["buildId"] = build; m["payloadDirname"] = payload;
-            m["appId"] = "{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}";
-            m["appName"] = "BACKSEAT Studio (Test)";
-            m["installSubdir"] = "BACKSEAT Studio (Test)";
-            m["shortcutGroup"] = "BACKSEAT Studio (Test)";
-            m["regUninstallKey"] = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\BACKSEAT-Studio-Test";
-            m["exeName"] = "BACKSEAT.exe";
-            m["uninstallerName"] = "Uninstall BACKSEAT Studio (Test).exe";
+            m["appId"] = "{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}";
+            m["appName"] = "Nagneon (Test)";
+            m["installSubdir"] = "Nagneon (Test)";
+            m["shortcutGroup"] = "Nagneon (Test)";
+            m["regUninstallKey"] = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nagneon-Test";
+            m["exeName"] = "Nagneon.exe";
+            m["uninstallerName"] = "Uninstall Nagneon (Test).exe";
             m["publisher"] = "Unspecified publisher (development build)";
             return m;
         }

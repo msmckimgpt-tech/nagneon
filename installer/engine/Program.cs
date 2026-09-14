@@ -6,7 +6,7 @@
 //   InstallEngine.exe install   REQUEST_JSON SOURCE_DIRECTORY INSTALL_ROOT NEW_UNINSTALLER_EXE REPORT_JSON
 //   InstallEngine.exe uninstall INSTALL_ROOT EXPECTED_APP_ID REPORT_JSON
 //   InstallEngine.exe recover   INSTALL_ROOT EXPECTED_APP_ID REPORT_JSON
-//   <installed root>\BACKSEAT Launcher.exe            (no args -> launcher mode)
+//   <installed root>\Nagneon Launcher.exe            (no args -> launcher mode)
 //
 // Exit 0 on success; any non-zero code is a failure (including app-running/busy).
 // A bounded, credential-free JSON report is ALWAYS written to REPORT_JSON and

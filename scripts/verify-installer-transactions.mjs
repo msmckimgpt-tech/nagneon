@@ -25,7 +25,7 @@ async function call(op,root,req){const out=join(base,'result-'+operations.length
 const source=join(base,'source'),target=join(base,'target root'),uninstaller=join(base,'fixture-uninstaller.exe');
 const {manifest}=await createSyntheticPackage(source);
 const compiler='C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
-const compiled=await run(compiler,['/nologo','/target:winexe','/platform:x64','/out:'+join(source,'BACKSEAT.exe'),resolve('scripts/installer-fixture-app.cs')]);assert.equal(compiled.code,0);
+const compiled=await run(compiler,['/nologo','/target:winexe','/platform:x64','/out:'+join(source,'Nagneon.exe'),resolve('scripts/installer-fixture-app.cs')]);assert.equal(compiled.code,0);
 await copyFile(engine.file,uninstaller);
 for(const file of manifest.files){const bytes=await readFile(join(source,file.path));file.bytes=bytes.length;file.sha256=hash(bytes);}
 const identity=resolveIdentity({mode:'test',version:'0.1.0',buildId:'one'}),entries=buildFileEntries(manifest);
@@ -39,25 +39,25 @@ async function whileRunning(exe,args,check){
   try{for(let i=0;!existsSync(join(control,'ready'))&&i<150;i++)await new Promise(r=>setTimeout(r,50));assert.ok(existsSync(join(control,'ready')),'fixture did not become ready: '+exe);await check(control);}
   finally{await writeFile(join(control,'stop'),'stop');await exit;}
 }
-async function publication(name){const ext=await external(name);return {registries:ext.registries,target:ext.shortcut?.target,workingDirectory:ext.shortcut?.workingDirectory,uninstaller:hash(await readFile(join(target,identity.uninstallerName))),launcher:hash(await readFile(join(target,'BACKSEAT Launcher.exe')))};}
+async function publication(name){const ext=await external(name);return {registries:ext.registries,target:ext.shortcut?.target,workingDirectory:ext.shortcut?.workingDirectory,uninstaller:hash(await readFile(join(target,identity.uninstallerName))),launcher:hash(await readFile(join(target,'Nagneon Launcher.exe')))};}
 try{
   const before=await external('before');assert.equal(before.registries.Registry64,null,'Existing TEST registry belongs to another run; do not alter');assert.equal(before.registries.Registry32,null);assert.equal(before.group.exists,false,'Existing TEST Start Menu belongs to another run');
   const first=await call('install',target,await request('one'));assert.equal(first.code,0,JSON.stringify(first.report));const one=await state();await intact(one.current);
-  const published=await external('installed');assert.equal(published.registries.Registry64.InstallLocation,target);assert.equal(published.registries.Registry64.AppId,identity.appId);assert.equal(published.shortcut.target,join(target,'BACKSEAT Launcher.exe'));checks.push('real install publishes owned payload, launcher, shortcut and HKCU state');
+  const published=await external('installed');assert.equal(published.registries.Registry64.InstallLocation,target);assert.equal(published.registries.Registry64.AppId,identity.appId);assert.equal(published.shortcut.target,join(target,'Nagneon Launcher.exe'));checks.push('real install publishes owned payload, launcher, shortcut and HKCU state');
   const refresh=await call('install',target,await request('one'));assert.equal(refresh.code,0,JSON.stringify(refresh.report));await intact((await state()).current);checks.push('same-build reuse verifies the complete manifest');
-  const control=join(base,'control');await mkdir(control);const running=spawn(join(target,'BACKSEAT Launcher.exe'),[],{windowsHide:true,env:{...process.env,BACKSEAT_FIXTURE_CONTROL:control},stdio:'ignore'});const exit=new Promise(r=>running.once('exit',r));
+  const control=join(base,'control');await mkdir(control);const running=spawn(join(target,'Nagneon Launcher.exe'),[],{windowsHide:true,env:{...process.env,BACKSEAT_FIXTURE_CONTROL:control},stdio:'ignore'});const exit=new Promise(r=>running.once('exit',r));
   try{for(let i=0;!existsSync(join(control,'ready'))&&i<100;i++)await new Promise(r=>setTimeout(r,50));assert.ok(existsSync(join(control,'ready')),'stable launcher did not start fixture');const files=await snapshot(target),ext=await external('running-before');
     const result=await call('uninstall',target);assert.notEqual(result.code,0);assert.deepEqual(await snapshot(target),files);assert.deepEqual(await external('running-after'),ext);checks.push('running stable launcher prevents uninstall before any owned file or publication changes');
   }finally{await writeFile(join(control,'stop'),'stop');await exit;}
   const forwarded=['--backseat-profile',join(base,'한글 profile')+'\\','quoted"argument','','uninstall'];
-  await whileRunning(join(target,'BACKSEAT Launcher.exe'),forwarded,async folder=>{
+  await whileRunning(join(target,'Nagneon Launcher.exe'),forwarded,async folder=>{
     const received=(await readFile(join(folder,'arguments'),'utf8')).replace(/^\uFEFF/,'').split(/\r?\n/).slice(0,-1);
     assert.deepEqual(received,forwarded);checks.push('stable launcher forwards exact app arguments including spaces, quotes, Unicode and empty values');
   });
   for(const [name,exe,args] of [
-    ['direct application',join(target,'app',(await state()).current.payloadDirname,'BACKSEAT.exe'),[]],
-    ['payload data lock',join(source,'BACKSEAT.exe'),['--hold',join(target,'app',(await state()).current.payloadDirname,'resources/app/index.txt')]],
-    ['uninstaller lock',join(source,'BACKSEAT.exe'),['--hold',join(target,identity.uninstallerName)]],
+    ['direct application',join(target,'app',(await state()).current.payloadDirname,'Nagneon.exe'),[]],
+    ['payload data lock',join(source,'Nagneon.exe'),['--hold',join(target,'app',(await state()).current.payloadDirname,'resources/app/index.txt')]],
+    ['uninstaller lock',join(source,'Nagneon.exe'),['--hold',join(target,identity.uninstallerName)]],
   ]){
     const files=await snapshot(target),ext=await external('lock-before-'+controlSequence);
     await whileRunning(exe,args,async()=>{const result=await call('uninstall',target);assert.notEqual(result.code,0,name);});

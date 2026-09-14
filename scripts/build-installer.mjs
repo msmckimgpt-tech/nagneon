@@ -32,7 +32,7 @@ const INSTALLER_SRC = join(ROOT, 'installer');
 // Runtime files desktop/runtime.cjs requires; the installer refuses to publish
 // unless all of these are present after extraction. Forward-slash relative.
 export const REQUIRED_RUNTIME_FILES = [
-  'BACKSEAT.exe',
+  'Nagneon.exe',
   'resources/codex/bin/codex.exe',
   'resources/speech/python/python.exe',
   'resources/speech/speech_worker.py',
@@ -49,25 +49,25 @@ const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const IDENTITIES = {
   production: {
     marker: 'production',
-    appName: 'BACKSEAT Studio',
-    appId: '{7E3A9C21-4B6D-4F2E-9A1C-8D5F0B2E6A34}',
-    installSubdir: 'BACKSEAT Studio',
-    shortcutGroup: 'BACKSEAT Studio',
-    regUninstallKey: 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\BACKSEAT-Studio',
-    exeName: 'BACKSEAT.exe',
-    uninstallerName: 'Uninstall BACKSEAT Studio.exe',
+    appName: 'Nagneon',
+    appId: '{9D4F2B31-8250-4BFC-AE43-3C27B5E8F092}',
+    installSubdir: 'Nagneon',
+    shortcutGroup: 'Nagneon',
+    regUninstallKey: 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nagneon',
+    exeName: 'Nagneon.exe',
+    uninstallerName: 'Uninstall Nagneon.exe',
     // Publisher stays a development marker until a real publisher is specified.
     publisher: 'Unspecified publisher (development build)',
   },
   test: {
     marker: 'test',
-    appName: 'BACKSEAT Studio (Test)',
-    appId: '{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}',
-    installSubdir: 'BACKSEAT Studio (Test)',
-    shortcutGroup: 'BACKSEAT Studio (Test)',
-    regUninstallKey: 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\BACKSEAT-Studio-Test',
-    exeName: 'BACKSEAT.exe',
-    uninstallerName: 'Uninstall BACKSEAT Studio (Test).exe',
+    appName: 'Nagneon (Test)',
+    appId: '{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}',
+    installSubdir: 'Nagneon (Test)',
+    shortcutGroup: 'Nagneon (Test)',
+    regUninstallKey: 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nagneon-Test',
+    exeName: 'Nagneon.exe',
+    uninstallerName: 'Uninstall Nagneon (Test).exe',
     publisher: 'Unspecified publisher (development build)',
   },
 };
@@ -459,7 +459,7 @@ async function main(argv) {
     return;
   }
 
-  const outFileWin = (wslToWin(join(outDir, 'BACKSEAT-Setup.exe')) || join(outDir, 'BACKSEAT-Setup.exe'));
+  const outFileWin = (wslToWin(join(outDir, 'Nagneon-Setup.exe')) || join(outDir, 'Nagneon-Setup.exe'));
   const engine=await buildInstallerEngine(join(outDir,'engine-build'));
   const enableTestInstall=flag('enable-test-install');
   const {identity, meta} = await generateInstaller({manifest, packageFolder, outDir, mode, buildId, outFileWin,engineFile:engine.file,enableTestInstall,testFault:arg('test-fault')});

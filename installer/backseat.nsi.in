@@ -2,7 +2,9 @@
 ; are performed by the verified C# engine. No install-root deletes in NSIS.
 Unicode true
 ManifestDPIAware true
-SetCompressor /SOLID lzma
+; Compress files individually: NSIS solid datablocks can overflow with >2 GiB
+; of uncompressed speech/model payload (upstream issue #1284).
+SetCompressor lzma
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"

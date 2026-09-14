@@ -25,7 +25,7 @@ child.stdout.on('data',chunk=>{buffer+=chunk;let n;while((n=buffer.indexOf('\n')
 const watchdog=setTimeout(()=>{done?.reject(new Error('Probe deadline'));child.kill();},90000);
 const report={model:'gpt-6-astra',effort:'low',transport:'official app-server stdio',startedAt:new Date().toISOString(),ephemeral:true};
 try{
-  await rpc('initialize',{clientInfo:{name:'backseat_studio_probe',title:'BACKSEAT Studio',version:'0.1.0'},capabilities:{experimentalApi:true}});send({method:'initialized',params:{}});
+  await rpc('initialize',{clientInfo:{name:'backseat_studio_probe',title:'Nagneon',version:'0.1.0'},capabilities:{experimentalApi:true}});send({method:'initialized',params:{}});
   const effective=await rpc('config/read',{includeLayers:false});const config=effective.config;
   report.config={mcpServers:Object.entries(config.mcp_servers||{}).filter(([,server])=>server.enabled!==false).map(([name])=>name),disabledFeatures:disabled.map(id=>({id,value:config.features?.[id]})),approvalPolicy:config.approval_policy,webSearch:config.web_search};
   if(report.config.mcpServers.length||report.config.disabledFeatures.some(f=>f.value!==false))throw new Error('Probe config is not isolated; refusing a model turn.');

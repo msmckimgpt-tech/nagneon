@@ -224,7 +224,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           </div>
           <button type="button" className="secondary" disabled={locked||pending}
             onClick={()=>update('maxCalls',modelCallLimits.generous)}>넉넉하게 · 10만 회</button>
-          <p className="field-note">화면은 응답을 기다리는 동안에도 0.5초마다 모으고, 최근 16초에서 최대 8장을 시간순으로 전달해요. 간격이 길거나 응답이 늦으면 일부 장면을 놓칠 수 있어요. 방송당 1~100만 회까지 설정할 수 있어요. BACKSEAT 자체 한도이며 ChatGPT 계정의 사용 한도를 변경하지는 않습니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
+          <p className="field-note">화면은 응답을 기다리는 동안에도 0.5초마다 모으고, 최근 16초에서 최대 8장을 시간순으로 전달해요. 간격이 길거나 응답이 늦으면 일부 장면을 놓칠 수 있어요. 방송당 1~100만 회까지 설정할 수 있어요. Nagneon 자체 한도이며 ChatGPT 계정의 사용 한도를 변경하지는 않습니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
         </>;
 
       case 'manager':

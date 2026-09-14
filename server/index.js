@@ -89,7 +89,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     app.get('/connect.js',(_req,res)=>res.type('js').send(connectScript));
     app.post('/api/session',express.json({limit:'1kb'}),(req,res)=>access.redeem(req.body?.token,res)?res.json({ok:true}):res.status(401).json({error:'연결 주소가 만료되었거나 올바르지 않습니다.'}));
   }
-  app.use((req,res,next)=>access.authenticated(req)?next():res.status(401).json({error:'앱 연결 인증이 필요합니다. BACKSEAT 창에서 다시 연결하세요.'}));
+  app.use((req,res,next)=>access.authenticated(req)?next():res.status(401).json({error:'앱 연결 인증이 필요합니다. Nagneon 창에서 다시 연결하세요.'}));
   app.use(express.json({limit:'3mb'}));
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
@@ -225,6 +225,6 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   }};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`BACKSEAT 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);
+  const service=await startServer({browserConnect:true,developmentOrigin:'http://127.0.0.1:5173'});console.log(`Nagneon 개발용 일회용 연결 주소 (공유하지 마세요):\n${service.url}/connect#${service.accessToken}`);
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>service.close().then(()=>process.exit(0)));
 }

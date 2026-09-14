@@ -1,0 +1,78 @@
+/* Nagneon: a quiet night studio with a light left on for arriving guests. */
+:root{--neon:#80e6cf;--night:#10151e;--surface:#181f2b;--line:#303b4b;--ink:#edf4f6;--quiet:#a4b2c3;color:var(--ink);background:var(--night)}
+.nagneon-brand{display:inline-flex;align-items:center;gap:10px;text-align:left;line-height:1}
+.nagneon-mark{width:38px;height:38px;flex-shrink:0;color:var(--neon)}
+.nagneon-wordmark{font-size:25px;font-weight:750;letter-spacing:-1.1px;color:var(--ink)}
+.nagneon-wordmark>span{color:var(--neon)}
+.nagneon-wordmark small{display:block;font-size:10px;font-weight:500;letter-spacing:2.5px;margin-top:7px;color:var(--quiet)}
+.sidebar{background:#131a24;border-color:var(--line);padding-top:25px}
+.sidebar-label{color:#9cabbc;letter-spacing:1.5px;margin-top:32px}
+.sidebar nav button{border:1px solid transparent;border-radius:9px}
+.sidebar nav button.selected{background:#80e6cf10;border-color:#80e6cf30;color:var(--neon)}
+.nav-indicator{background:var(--neon)}
+.sidebar-card{background:linear-gradient(145deg,#20313a,#18202c);border-color:#80e6cf30;margin-top:30px;border-radius:14px}
+.sidebar-card b{font-size:15px;line-height:1.65}.sidebar-card p{color:#a6bbc6}.sidebar-card button,.mini-icon{color:var(--neon)}
+.topbar{background:#10151ecf;border-color:var(--line)}
+.eyebrow{color:var(--neon);letter-spacing:1.6px}
+.page-heading h1{font-weight:650;letter-spacing:-1px;line-height:1.35;word-break:keep-all}
+.page-heading p{color:var(--quiet);word-break:keep-all}
+.panel,.stat{background:var(--surface);border-color:var(--line);border-radius:13px}
+.panel-heading{border-color:var(--line)}
+.primary{background:var(--neon);color:#102820;box-shadow:none;border-radius:8px}
+.secondary{background:#202937;border-color:#394657;color:#dce7ef;border-radius:8px}
+input:focus,textarea:focus,select:focus{border-color:var(--neon);box-shadow:0 0 0 3px #80e6cf14}
+button:focus-visible,a:focus-visible{outline-color:var(--neon)}
+.streamer{background:#224139;color:var(--neon)}
+.preview{background:radial-gradient(ellipse at 50% 45%,#213b40 0%,#182532 48%,#121a26 100%)}
+.screen-icon{color:var(--neon);background:#80e6cf0c;border-color:#80e6cf35}
+.preview-empty h2{letter-spacing:-.7px}.preview-empty p{color:#adbdca}
+.welcome-shell{background:radial-gradient(ellipse at 80% 15%,#1f3942 0%,#111923 55%)}
+.welcome-header{border-color:var(--line)}
+.welcome-card,.welcome-preview{background:#18212e;border-color:var(--line)}
+.welcome-intro h1{line-height:1.35;word-break:keep-all}.welcome-intro p{color:var(--quiet)}
+.welcome-steps .current{color:var(--neon)}
+.welcome-steps .current>span{background:var(--neon);color:#102820}
+.category-options button[aria-pressed=true],.vibe-options button[aria-pressed=true]{border-color:var(--neon);background:#80e6cf0c}
+.welcome-promise{border-color:#80e6cf30}.welcome-promise svg{color:var(--neon)}
+.overlay-grip{color:#d9fff5}.overlay-shell .dot.green{background:var(--neon)}
+.gallery-heading .eyebrow{color:var(--neon)}
+@media(max-width:950px){.page-heading{flex-wrap:wrap}.page-heading>div:first-child{flex-basis:100%}}
+@media(min-width:621px) and (max-width:950px){.sidebar .nagneon-wordmark{display:none}}
+/* A portrait monitor is a vertical studio, even when its width exceeds 950px. */
+@media(max-aspect-ratio:4/5) and (min-width:621px){
+  .studio-workspace{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  .studio-workspace>.topbar{height:52px;flex-shrink:0}
+  .studio-workspace>main{display:flex;flex-direction:column;flex:1;min-height:0;width:100%;padding:20px;overflow-y:auto}
+  .studio-workspace .page-heading{flex-wrap:wrap;flex-shrink:0;gap:10px;margin-bottom:16px}
+  .studio-workspace .page-heading>div:first-child{flex-basis:100%}
+  .studio-workspace .page-heading h1{font-size:24px}
+  .studio-workspace .stats-row{flex-shrink:0;margin-bottom:16px;gap:10px}
+  .studio-workspace .stat{padding:12px}.studio-workspace .stat b{font-size:23px;margin:8px 0 0}
+  .studio-workspace .stat em{display:none}
+  .studio-workspace .studio-grid{flex:1;min-height:660px;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(280px,34%) minmax(340px,1fr);gap:16px;align-items:stretch}
+  .studio-workspace .stage-column{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  .studio-workspace .stage{flex:0 0 100%;display:flex;flex-direction:column;min-height:280px}
+  .studio-workspace .stage .preview{flex:1;min-height:0;aspect-ratio:auto}
+  .studio-workspace .stage .panel-heading,.studio-workspace .stage-controls,.studio-workspace .stage-column>:not(.stage){flex-shrink:0}
+  .studio-workspace .chat-panel{height:100%;min-height:0;max-height:none}
+  .studio-workspace .chat-panel>:not(.chat-scroll){flex-shrink:0}
+  .studio-workspace .chat-scroll{flex:1;min-height:0;overflow-y:auto}
+  .studio-workspace .pinned{max-height:110px;overflow-y:auto}
+  .studio-workspace>main>footer{flex-shrink:0;margin:12px 0 0;padding:0;flex-wrap:wrap}
+}
+@media(max-width:620px){
+  .app-shell{flex-direction:column}
+  .sidebar{display:flex;position:relative;width:100%;inset:auto;padding:12px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-right:0;border-bottom:1px solid var(--line)}
+  .sidebar .brand{font-size:20px;justify-content:flex-start}.sidebar .nagneon-mark{width:30px;height:30px}.sidebar .nagneon-wordmark{font-size:22px}.sidebar .nagneon-wordmark small{display:none}
+  .sidebar nav{order:3;flex:0 0 100%;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}
+  .sidebar nav button{font-size:12px;white-space:nowrap;flex-shrink:0;padding:10px;gap:6px}
+  .sidebar-bottom{display:block;margin:0 0 0 auto;padding:0}.sidebar-bottom .account{display:none}.sidebar-bottom>button{font-size:12px;padding:6px;gap:5px}
+  .sidebar>.secondary{display:none}.workspace{margin-left:0;width:100%}
+  .page-heading h1{font-size:23px}.page-heading .secondary{font-size:11px;padding:9px}
+  .top-status{gap:5px}.breadcrumbs{gap:5px}
+  .studio-grid{grid-template-columns:minmax(0,1fr);gap:16px}
+  .chat-panel{height:max(540px,55dvh);min-height:440px;max-height:none}
+  .stage-controls{flex-wrap:wrap}.stage-controls>div{gap:8px}
+  .welcome-header{padding:16px;gap:10px}.welcome-header .nagneon-wordmark{font-size:22px}.welcome-header .nagneon-wordmark small{display:none}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

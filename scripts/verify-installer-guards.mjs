@@ -30,7 +30,7 @@ try{
   const before=await external('before');assert.equal(before.registries.Registry64,null);assert.equal(before.registries.Registry32,null);assert.equal(before.group.exists,false,'TEST identity occupied');
   engine=await buildInstallerEngine(join(base,'engine'));report.engine=engine.sha256;
   const {manifest}=await createSyntheticPackage(source);
-  assert.equal(await run('C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe',['/nologo','/target:winexe','/platform:x64','/out:'+join(source,'BACKSEAT.exe'),resolve('scripts/installer-fixture-app.cs')]),0);
+  assert.equal(await run('C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe',['/nologo','/target:winexe','/platform:x64','/out:'+join(source,'Nagneon.exe'),resolve('scripts/installer-fixture-app.cs')]),0);
   for(const file of manifest.files){const bytes=await readFile(join(source,file.path));file.bytes=bytes.length;file.sha256=hash(bytes);}
   entries=buildFileEntries(manifest);identity=resolveIdentity({mode:'test',version:'0.1.0',buildId:'one'});await copyFile(engine.file,uninstaller);
   const invalidRequest=await json(await request());invalidRequest.files.push({path:'resources',bytes:0,sha256:'0'.repeat(64)});
@@ -63,7 +63,7 @@ try{
     const foreignBefore=await snapshot(outside);await unchanged('junction-'+name);assert.deepEqual(await snapshot(outside),foreignBefore);
     assert.equal((await lstat(owned)).isSymbolicLink(),true);assert.equal(await readlink(owned),outside);await unlink(owned);await rename(outside,owned);
   }
-  const stale=join(target,'app','.pending-unowned');await mkdir(stale);await writeFile(join(stale,'BACKSEAT.exe'),'user data with a familiar filename');
+  const stale=join(target,'app','.pending-unowned');await mkdir(stale);await writeFile(join(stale,'Nagneon.exe'),'user data with a familiar filename');
   const staleBefore=await snapshot(target),staleExternal=await external('stale-before');const staleResult=await call('install',{build:'unowned'});assert.notEqual(staleResult.code,0);assert.deepEqual(await snapshot(target),staleBefore);assert.deepEqual(await external('stale-after'),staleExternal);report.checks.push('unknown stale stage preserved even when it contains a manifest-like filename');
   // Leave a real uncommitted journal, then mutate each critical field.
   assert.equal((await call('install',{build:'pending',fault:'crash:before-state'})).code,79);
@@ -75,19 +75,19 @@ try{
     ['target-executable',j=>j.target.exeName='../user-note.txt'],['target-file',j=>j.target.files[0].path='../user-note.txt']
   ];
   for(const [name,mutate] of journalMutations)await tamperFile(journalPath,'journal-'+name,mutate);
-  const pending=await json(journalPath);await mkdir(pending.stageDir);const note=join(pending.stageDir,'user-note.txt');await writeFile(note,'Keep this note');await writeFile(join(pending.stageDir,'BACKSEAT.exe'),'partial owned fixture');
+  const pending=await json(journalPath);await mkdir(pending.stageDir);const note=join(pending.stageDir,'user-note.txt');await writeFile(note,'Keep this note');await writeFile(join(pending.stageDir,'Nagneon.exe'),'partial owned fixture');
   const legacyTemp=join(target,'.backseat/pending.json.tmp');await writeFile(legacyTemp,'Unclaimed temporary filename');
-  assert.equal((await call('recover')).code,0);assert.equal(await readFile(note,'utf8'),'Keep this note');assert.equal(existsSync(join(pending.stageDir,'BACKSEAT.exe')),false);assert.equal(await readFile(legacyTemp,'utf8'),'Unclaimed temporary filename');report.checks.push('recovery deletes only staged manifest files and preserves unknown notes and legacy .tmp');
+  assert.equal((await call('recover')).code,0);assert.equal(await readFile(note,'utf8'),'Keep this note');assert.equal(existsSync(join(pending.stageDir,'Nagneon.exe')),false);assert.equal(await readFile(legacyTemp,'utf8'),'Unclaimed temporary filename');report.checks.push('recovery deletes only staged manifest files and preserves unknown notes and legacy .tmp');
   const state=await json(statePath);assert.equal((await verifyPackage(join(target,'app',state.current.payloadDirname),state.current.files)).ok,true);
   const lockedBefore=await snapshot(target),lockedExternal=await external('locked-state-before'),control=join(base,'lock-control');await mkdir(control);
-  const holder=spawn(join(source,'BACKSEAT.exe'),['--hold',statePath],{windowsHide:true,stdio:'ignore',env:{...process.env,BACKSEAT_FIXTURE_CONTROL:control}});
+  const holder=spawn(join(source,'Nagneon.exe'),['--hold',statePath],{windowsHide:true,stdio:'ignore',env:{...process.env,BACKSEAT_FIXTURE_CONTROL:control}});
   const holderExit=new Promise((done,fail)=>{holder.once('exit',done);holder.once('error',fail);});
   try{for(let i=0;!existsSync(join(control,'ready'))&&i<100;i++)await new Promise(r=>setTimeout(r,50));assert.ok(existsSync(join(control,'ready')));for(const operation of ['recover','uninstall','install'])assert.equal((await call(operation)).code,5,'metadata lock must return busy');}
   finally{await writeFile(join(control,'stop'),'stop');await holderExit;}
   assert.deepEqual(await snapshot(target),lockedBefore);assert.deepEqual(await external('locked-state-after'),lockedExternal);report.checks.push('exclusive metadata lock returns busy without changing payload or publication');
   // Metadata read-only is rejected before deleting any payload.
   await chmod(statePath,0o444);await unchanged('readonly-state',['uninstall']);await chmod(statePath,0o666);
-  assert.equal((await call('uninstall')).code,0);assert.equal(await readFile(note,'utf8'),'Keep this note');assert.equal(await readFile(legacyTemp,'utf8'),'Unclaimed temporary filename');assert.equal(await readFile(join(stale,'BACKSEAT.exe'),'utf8'),'user data with a familiar filename');
+  assert.equal((await call('uninstall')).code,0);assert.equal(await readFile(note,'utf8'),'Keep this note');assert.equal(await readFile(legacyTemp,'utf8'),'Unclaimed temporary filename');assert.equal(await readFile(join(stale,'Nagneon.exe'),'utf8'),'user data with a familiar filename');
   const after=await external('after');assert.equal(after.registries.Registry64,null);assert.equal(after.registries.Registry32,null);assert.equal(after.group.exists,false);report.checks.push('final uninstall removes owned publication and preserves all three unknown user fixtures');report.passed=true;
 }catch(error){report.error=error.stack;process.exitCode=1;}
 await writeFile(join(base,'acceptance.json'),JSON.stringify(report,null,2));await writeFile('artifacts/latest-installer-guards-test.json',JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,base,checks:report.checks,error:report.error},null,2));

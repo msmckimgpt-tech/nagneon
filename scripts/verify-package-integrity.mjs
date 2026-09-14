@@ -14,7 +14,7 @@ const failures=[];
 const sourceCheck=await verifyPackageSources(resolve('.'),folder,spec.sourceManifest);failures.push(...sourceCheck.failures);
 for(const file of spec.files)if(await hashFile(join(folder,file.path))!==file.sha256)failures.push('File changed: '+file.path);
 const expected=new Set(spec.files.map(f=>f.path));for(const file of await walk(folder))if(!expected.has(file))failures.push('Unexpected file: '+file);
-const fuses=await getCurrentFuseWire(join(folder,'BACKSEAT.exe'));
+const fuses=await getCurrentFuseWire(join(folder,'Nagneon.exe'));
 for(const option of [FuseV1Options.RunAsNode,FuseV1Options.EnableNodeOptionsEnvironmentVariable,FuseV1Options.EnableNodeCliInspectArguments,FuseV1Options.GrantFileProtocolExtraPrivileges])if(fuses[option]!==FuseState.DISABLE)failures.push('Unsafe fuse: '+option);
 for(const option of [FuseV1Options.EnableEmbeddedAsarIntegrityValidation,FuseV1Options.OnlyLoadAppFromAsar])if(fuses[option]!==FuseState.ENABLE)failures.push('Missing ASAR protection: '+option);
 const result={passed:!failures.length,checkedAt:new Date().toISOString(),folder,files:spec.files.length,matchingSources:sourceCheck.matchingSources,bytes:spec.files.reduce((s,f)=>s+f.bytes,0),failures};

@@ -49,10 +49,10 @@ try{
     const project=resolve(option('project'));
     const build=await json(join(project,'build-result.json')),request=await json(join(project,'install-request.json'));
     assert.equal(build.ok,true);assert.equal(build.compiled,true);assert.equal(build.compileExitCode,0);
-    assert.equal(request.identity.marker,'test');assert.equal(request.identity.appId,'{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}');
-    assert.equal(request.identity.uninstallerName,'Uninstall BACKSEAT Studio (Test).exe');
+    assert.equal(request.identity.marker,'test');assert.equal(request.identity.appId,'{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}');
+    assert.equal(request.identity.uninstallerName,'Uninstall Nagneon (Test).exe');
     assert.ok(request.files.length>2000,'Not a full application package');
-    const setup=join(project,'BACKSEAT-Setup.exe');
+    const setup=join(project,'Nagneon-Setup.exe');
     result.project=project;result.setupSha256=hash(await readFile(setup));result.appId=request.identity.appId;
     result.uninstallerName=request.identity.uninstallerName;result.payload=join(target,'app',request.identity.payloadDirname);
     const reportPath=join(base,'install-result.json');
@@ -63,13 +63,13 @@ try{
     const verified=await verifyPackage(result.payload,request.files);assert.equal(verified.ok,true,JSON.stringify(verified));
     result.verifiedFiles=verified.checked;result.payloadBytes=request.files.reduce((n,f)=>n+f.bytes,0);
     const published=await external('installed');assert.equal(published.registries.Registry64.InstallLocation,target);
-    assert.equal(published.shortcut.target,join(target,'BACKSEAT Launcher.exe'));
+    assert.equal(published.shortcut.target,join(target,'Nagneon Launcher.exe'));
     result.checks.push('full NSIS installation: all delivered file sizes and SHA256, state, HKCU and Start Menu');
     result.installed=true;
   }else{
     assert.equal(result.installed,true);assert.equal(result.uninstalled,false);
-    assert.equal(result.appId,'{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}');
-    assert.equal(result.uninstallerName,'Uninstall BACKSEAT Studio (Test).exe');
+    assert.equal(result.appId,'{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}');
+    assert.equal(result.uninstallerName,'Uninstall Nagneon (Test).exe');
     const state=await json(join(target,'.backseat/state.json'));assert.equal(state.appId,result.appId);assert.equal(state.installRoot,target);
     const processes=join(base,'processes-before-uninstall.json');
     const psquote=s=>"'"+s.replaceAll("'","''")+"'";

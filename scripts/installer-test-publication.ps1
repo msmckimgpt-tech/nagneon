@@ -7,9 +7,9 @@ $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $testRoot=[IO.Path]::GetFullPath($InstallRoot)
 if (-not $testRoot.StartsWith((Join-Path $workspace 'artifacts/installer-guards-'),[StringComparison]::OrdinalIgnoreCase)) { throw 'Not a guard-test root' }
 $state=Get-Content -LiteralPath (Join-Path $testRoot '.backseat/state.json') -Raw | ConvertFrom-Json
-$testId='{2F8B1D04-9E3A-4C77-B6A2-1C0E5D9F4B88}'
+$testId='{8C2EFA10-5B76-4D83-AB91-7F3064D82E51}'
 if ($state.appId -ne $testId -or $state.installRoot -cne $testRoot) { throw 'Test identity/root mismatch' }
-$keyPath='Software\Microsoft\Windows\CurrentVersion\Uninstall\BACKSEAT-Studio-Test'
+$keyPath='Software\Microsoft\Windows\CurrentVersion\Uninstall\Nagneon-Test'
 if ($Action -eq 'foreign-registry' -or $Action -eq 'restore-registry') {
   $key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($keyPath,$true)
   if ($null -eq $key) { throw 'No existing TEST registration to mutate' }
@@ -21,7 +21,7 @@ if ($Action -eq 'foreign-registry' -or $Action -eq 'restore-registry') {
     $key.SetValue('AppId',$replacement,[Microsoft.Win32.RegistryValueKind]::String)
   } finally {$key.Dispose()}
 } else {
-  $linkPath=Join-Path ([Environment]::GetFolderPath('Programs')) 'BACKSEAT Studio (Test)/BACKSEAT Studio (Test).lnk'
+  $linkPath=Join-Path ([Environment]::GetFolderPath('Programs')) 'Nagneon (Test)/Nagneon (Test).lnk'
   if (-not (Test-Path -LiteralPath $linkPath)) { throw 'TEST shortcut missing' }
   $launcher=Join-Path $testRoot 'BACKSEAT Launcher.exe'
   $foreign=Join-Path ([IO.Path]::GetDirectoryName($testRoot)) 'foreign.exe'
