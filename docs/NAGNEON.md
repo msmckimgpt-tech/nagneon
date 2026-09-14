@@ -33,17 +33,17 @@
 
 | 검사 | 증거 |
 | --- | --- |
-| Node 테스트 603개 + TypeScript/Vite | `artifacts/nagneon/check.log` |
+| Node 테스트 603개 + TypeScript/Vite | `artifacts/nagneon/immersive-check.log` |
 | 설치 엔진 253개 | `artifacts/latest-installer-unit-test.json` |
 | 온보딩·8개 메뉴·세로 화면·리허설 시작/종료·투명 오버레이 | `artifacts/nagneon/renderer-result.json`와 같은 폴더의 PNG |
 | 독립 실행본 제목·격리 프로필·정상 종료 | `artifacts/nagneon/native-result.json` |
 | 번들 Python·한국어 전사·시스템 소리 분석·공식 CLI 기존 계정 확인 | `artifacts/packaged-runtime-test.json` |
-| 2,452개 파일 / 3,130,267,014바이트 / 소스 81개·ASAR fuses | `artifacts/package-integrity-test.json` |
+| 2,452개 파일 / 3,130,266,140바이트 / 소스 81개·ASAR fuses | `artifacts/package-integrity-test.json` |
 | npm audit | 검출 0건 |
-| 격리 통합 worktree | `artifacts/nagneon/integration-check.log`, `integration-engine.log`, `renderer-result.json` |
+| 격리 통합 worktree | `artifacts/nagneon/integration-immersive-check.log`, `integration-engine.log`, `renderer-result.json` |
 | GitHub Windows CI | [전체 검사 통과](https://github.com/msmckimgpt-tech/nagneon/actions/runs/34839044040) |
 
-독립 실행 폴더는 `release/2026-09-14T11-16-22-922Z/app/Nagneon-win32-x64`입니다. 새로운 실제 모델 응답이나 물리 게임 캡처는 이번 브랜드 변경의 검증 범위가 아닙니다.
+독립 실행 폴더는 `release/2026-09-14T11-49-28-713Z/app/Nagneon-win32-x64`입니다. 새로운 실제 모델 응답이나 물리 게임 캡처는 이번 브랜드 변경의 검증 범위가 아닙니다.
 
 ## 배포 상태
 

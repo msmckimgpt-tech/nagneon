@@ -95,7 +95,6 @@ export function TrainingPanel({training,onAction}:{training:TrainingState;onActi
           <b>돌아보기 · 스스로 점검</b>
           <ul>{report.reflection.map((q,i)=><li key={i}>{q}</li>)}</ul>
         </div>
-        
       </section>}
     </>}
   </>;
