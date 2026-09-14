@@ -2,6 +2,7 @@ import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
+import {ProviderChoice,ProviderSelection} from './provider-choice.js';
 import {OllamaProvider} from './ollama-provider.js';
 import { CodexProvider } from './codex-provider.js';
 import { Knowledge } from './knowledge.js';
@@ -35,21 +36,29 @@ import {ObsInput} from './obs-input.js';
 import {externalChatRoutes} from './external-chat-session.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory,chzzkFactory,authFactory,openExternalAuth}={}){
+export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory,chzzkFactory,authFactory,openExternalAuth,providerFactories,providerSwitchAllowed=()=>true}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
-  provider ||= process.env.AI_PROVIDER==='ollama'?new OllamaProvider():process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
-  if(provider.check)await provider.check();
-  const speech=speechWorker||new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
-  const clipInspector=new ClipInspector(runtime.clips);
-  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
-  if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
-  const requests=new RequestLifetime();provider=ownProviderRequests(provider,requests);let closing;
   const stores=[];
   const useStore=(name,schema,initial)=>{
     if(!persist)return {data:initial(),save:()=>{}};
     const store=new JsonStore(resolve(dataDir,name+'.json'),{validate:value=>schema.parse(value),initial,backupCount:3});
     const data=store.load();stores.push(store);return {data,save:value=>store.save(value)};
   };
+  let providerChoice;
+  if(!provider){
+    const selectionStore=useStore('provider-choice',ProviderSelection.nullable(),()=>null);
+    const initial=selectionStore.data||(process.env.AI_PROVIDER==='ollama'?{kind:'ollama',model:process.env.OLLAMA_MODEL||'unconfigured',base:process.env.OLLAMA_BASE_URL||'http://127.0.0.1:11434',contextSize:Number(process.env.OLLAMA_CONTEXT_SIZE||65536)}:{kind:process.env.AI_PROVIDER==='openai'?'openai':'codex'});
+    providerChoice=new ProviderChoice({initial,save:selectionStore.save,factories:providerFactories||{
+      codex:()=>new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})}),openai:()=>new OpenAIProvider(),
+      ollama:config=>new OllamaProvider({OLLAMA_MODEL:config.model,OLLAMA_BASE_URL:config.base,OLLAMA_CONTEXT_SIZE:config.contextSize})
+    }});provider=providerChoice.proxy;
+  }
+  if(provider.check)await provider.check();
+  const speech=speechWorker||new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
+  const clipInspector=new ClipInspector(runtime.clips);
+  const providerStatus=provider.status.bind(provider);provider.status=()=>({...providerStatus(),localAudio:speech.ready,localAudioModel:speech.model,audioError:speech.error,audioPreparing:!!speech.child&&!speech.ready&&!speech.error});
+  if(localSpeech){provider.localSpeech=true;provider.transcribe=(buffer,_mime,signal)=>speech.transcribe(buffer,signal);}
+  const requests=new RequestLifetime();provider=ownProviderRequests(provider,requests);let closing;
   const hasWorld=persist&&['world.json','world.json.bak.1','world.json.bak.2','world.json.bak.3'].some(n=>existsSync(resolve(dataDir,n)));
   const hasPreviousSettings=hasWorld||(persist&&['settings.json','settings.json.bak.1','settings.json.bak.2','settings.json.bak.3'].some(n=>existsSync(resolve(dataDir,n))));
   const settingsStore=hasWorld?null:useStore('settings',Settings,()=>structuredClone(defaults));
@@ -78,7 +87,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const obsInput=new ObsInput({createClient:obsClientFactory,onChange:()=>studio.publish(),onEnd:sourceId=>studio.endVideo({sessionId:studio.sessionId,sourceId})});
   const stopStudio=studio.stop.bind(studio);studio.stop=()=>{obsInput.disconnect();return stopStudio();};
-  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status(),obsInput:obsInput.snapshot()});
+  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status(),...(providerChoice?{providerChoice:providerChoice.snapshot()}:{}),obsInput:obsInput.snapshot()});
   app.disable('x-powered-by');
   app.use((_req,res,next)=>requests.controller.signal.aborted?res.status(503).json({error:'앱을 종료하고 있습니다.'}):next());
   app.use((req,res,next)=>{
@@ -99,6 +108,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use(express.json({limit:'3mb'}));
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
+  app.use((req,res,next)=>providerChoice?.changing&&!['GET','HEAD'].includes(req.method)&&req.path!=='/api/stop'?res.status(409).json({error:'AI 제공처 변경을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
   const external=externalChatRoutes(app,studio,{youtubeFactory,chzzkFactory,authFactory,openExternalAuth});
   const externalState=studio.state.bind(studio);studio.state=()=>({...externalState(),externalChat:external.snapshot()});
@@ -130,6 +140,18 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.put('/api/audience/:id/note',(req,res)=>res.json(studio.autonomy.note(z.string().max(40).parse(req.params.id),z.object({text:z.string().max(2000)}).strict().parse(req.body).text)));
   app.delete('/api/audience/:id',(req,res)=>res.json(studio.autonomy.remove(z.string().max(40).parse(req.params.id))));
   app.post('/api/onboarding',(req,res)=>res.json(finishOnboarding(studio,onboardingStore,req.body)));
+  app.post('/api/connection/provider',async(req,res)=>{
+    if(!providerChoice)throw Error('이 실행 환경에서는 제공처를 변경할 수 없습니다.');
+    const config=ProviderSelection.parse(req.body);
+    const idle=()=>!studio.running&&!studio.training.active&&!requests.pending.size&&providerSwitchAllowed();
+    if(studio.busy||!idle())throw Error('방송·연습·계정 연결과 모델 요청을 마친 뒤 변경해주세요.');
+    const epoch=studio.epoch,controller=new AbortController();
+    const cancel=()=>{if(!res.writableEnded)controller.abort();};res.on('close',cancel);studio.busy=true;
+    try{
+      const pending=providerChoice.select(config,{signal:AbortSignal.any([controller.signal,requests.controller.signal]),canApply:()=>idle()&&studio.epoch===epoch});studio.publish();
+      await pending;probe.value={status:'untested'};if(!res.destroyed)res.json(providerChoice.snapshot());
+    }finally{res.off('close',cancel);if(studio.epoch===epoch)studio.busy=false;studio.publish();}
+  });
   app.post('/api/connection',(req,res)=>{
     if(studio.running)throw new Error('방송을 종료한 뒤 연결 설정을 변경하세요.');
     if(provider.status().kind==='ollama')throw Error('Ollama는 API 키를 사용하지 않습니다.');

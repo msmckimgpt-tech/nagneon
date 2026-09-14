@@ -131,3 +131,16 @@ ChatSim의 로컬 제공처 선택 장점을 `OllamaProvider`로 반영했다. �
 `artifacts/ollama-focused.log`: 실제 loopback HTTP 요청의 지침·프레임 순서·스키마·usage, 텍스트 모델에 이미지 미전송, 원격 모델 거절, 잘린 응답/도구/형식 오류/검색/취소/응답 상한의 4개 시험 통과. `artifacts/ollama-check.log`: **641개 전체 테스트/TypeScript/Vite 통과**. `artifacts/ollama-ui-1789389164159/result.json`: 실제 Electron에서 로컬 안내/API 키 미표시 및 응답 확인의 어댑터 왕복 통과. `ollama-account-device.log`/`ollama-account-runtime.log`: 기본 Codex 계정의 필수 격리 회귀 통과.
 
 실제 Ollama는 PATH와 기본 loopback 포트에서 확인되지 않았다. 자동 설치나 대용량 모델 다운로드를 수행하지 않았고 실제 추론·성능 수용은 남아 있다. 나머지 벤치마킹 범위와 통합도 계속 진행 중이다.
+
+### 앱 안의 제공처 전환 · 2026-09-14
+
+`ProviderChoice`는 Studio·ConnectionProbe·네이티브 계정 도우미가 참조하는 객체를 유지하고 추론 백엔드만 교체한다. 로컬 STT와 공식 Codex CLI 경로는 전환 후에도 유지한다. 모델/로컬 주소/문맥 크기만 기존 JsonStore로 저장하며 저장된 선택은 최초 환경 변수보다 우선한다. Ollama 준비 확인·저장 실패, 요청 취소, 진행 중 세션 변경은 기존 제공처를 유지한다. 방송·연습·모델 요청·기기 로그인 중에는 전환을 거절한다. 전환 뒤 이전 모델의 응답 확인 결과를 초기화한다.
+
+연결 화면에 Codex/Ollama/OpenAI API 선택을 추가했다. Ollama 모델은 사용자가 설치한 정확한 이름으로 지정한다. OpenAI API의 별도 과금 안내를 분리했고 응답 확인 문구는 선택 모델에 공통으로 사용한다. 준비 순서와 Codex 복귀는 [로컬 모델 설정](OLLAMA-SETUP.md)에 반영했다.
+
+- `artifacts/provider-selection-focused.log`: facade의 STT/계정 경로 유지, 준비·저장·취소 실패, HTTP API의 설정 지속성/활동 차단/세션 종료 경쟁 시험 3개 통과.
+- `artifacts/provider-selection-check.log`: **644개 전체 테스트 + TypeScript/Vite 통과**.
+- `artifacts/ollama-ui-1789389881267/result.json`: 별도 실제 Electron에서 Codex → Ollama 전환, 시험 응답, Codex 복귀와 이전 readiness 초기화 통과. 응답은 fixture이다. 최초 UI 시험은 검증 스크립트의 동일 lexical 변수 재선언으로 실패했고 스크립트 범위를 수정했다(1789389864504).
+- `artifacts/provider-selection-account-device.log`, `provider-selection-account-runtime.log`: 격리된 공식 CLI 기기 코드 발급·취소와 실제 앱 렌더러 회귀 통과. 실제 로그인 완료나 유료 추론은 실행하지 않았다.
+
+실제 Ollama 모델·OBS·치지직/YouTube 계정 설정에 의존하는 수용 검증, 남은 서비스 경험 비교와 main 통합은 남아 있다. 이 단계는 전체 벤치마킹 목표의 완료를 뜻하지 않는다.
