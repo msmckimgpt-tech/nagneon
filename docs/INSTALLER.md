@@ -1,5 +1,17 @@
 # Windows 설치 프로그램 검토 상태
 
+## 전체 Nagneon TEST 설치·실행·제거 통과 · 2026-09-14
+
+확장 소스 경로를 반영한 `artifacts/benchmark-full-installer-longpath/Nagneon-Setup.exe` 컴파일이 종료 코드 0으로 완료됐다. 파일 크기는 **2,109,254,153바이트**, SHA-256은 `2c2284cb5bbbfd6e5e1afe82978c0511343cff31bec916dbe3bc001c9d444177`이다. 전체 payload는 2,452개 파일/3,142,423,485바이트다. 미서명 TEST 식별자이며 일반 설치본이나 Steam 판매 준비 완료를 의미하지 않는다.
+
+`artifacts/installer-full-test-2026-09-14T14-21-45-763Z`에 실제 결과가 있다.
+
+- `acceptance-install.json`: 고유 임시 폴더 `C:\Users\newki\AppData\Local\Temp\nagneon-full-13f25f84`에 설치, 전체 파일 크기/SHA-256, 상태 JSON, HKCU와 시작 메뉴 링크 일치 통과.
+- `installed-native.json`: **설치된** Nagneon.exe를 별도 앱 프로필로 실행. 창 제목/프로필 생성/CloseMainWindow/정상 종료 통과.
+- `acceptance-uninstall.json`, `external-after.json`: 정상 uninstaller 실행 후 소유 파일과 레지스트리/시작 메뉴 제거, `my-recording.txt` 내용 보존 통과. 해당 설치 경로와 setup의 잔존 실행 프로세스도 없음을 확인했다.
+
+이 payload의 기능 소스는 디버그를 포함한 `dd51e97`이다. 이후 로컬 생성 스키마 변경을 포함한 최신 main 전체의 배포본이라고 주장하지 않는다. 사용자가 쓰던 앱이나 설치본은 교체하지 않았다. 긴 소스 경로 컴파일과 정상 길이의 설치 대상 수용을 검증했으며 임의 길이의 설치 대상 지원은 아니다.
+
 ## 긴 worktree 경로 검증 · 2026-09-14
 
 디버그 포함 3.14GB 패키지(`release/2026-09-14T13-18-10-132Z`)의 실제 NSIS 3.12 컴파일은 260자 소스 경로를 열지 못해 종료 코드 1로 끝났다. 파일은 존재했고 매니페스트 해시 검사도 통과한 상태였다. `artifacts/benchmark-full-installer/makensis-output.log`에 원본 실패가 있다. 누락 파일이나 설치 성공으로 해석하지 않는다.
