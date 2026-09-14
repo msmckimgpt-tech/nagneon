@@ -19,8 +19,8 @@
 
 아래 경로는 작업 트리의 `artifacts/` 기준이다.
 
-- `speech-screen.test.js`, `microphone-preparation.test.js`: 지연 후 장면 전환, 재전송, 픽셀 변경 충돌, 메모리 복사, 신규 관객/소스 종료/만료/세션 필터, 모델 첨부 번호, 현재 시청 커서 보존, worker 복구, 최신 음성 유지. `microphone-tests.log` 15개 통과.
-- `speech-flow-desktop-test.json`: 실제 Electron/MediaRecorder, 합성 Web Audio/Canvas, 전사 지연 3초를 사용. 마이크 수동 클릭 없이 자동 연결, 발언 3개 순차 전달, 빨간 화면에서 한 발언에 파란 최신 화면 대신 원래 화면 동봉, 방송 종료 시 진행 중 전사 취소 확인. `speech-flow-desktop.png` 및 개별 시험 프로필 보존. 실제 물리 마이크/사용자의 게임 장면은 시험하지 않았다.
+- `speech-screen.test.js`, `microphone-preparation.test.js`: 지연 후 장면 전환, 재전송, 픽셀 변경 충돌, 메모리 복사, 신규 관객/소스 종료/만료/세션 필터, 모델 첨부 번호, 현재 시청 커서 보존, worker 복구, 최신 음성 유지. `microphone-tests.log` 15개 통과. 마지막으로 과거 화면만 포함한 요청의 취소와 종료 소스 60초 초과 유지까지 추가한 `screen-final.log` 10개 통과.
+- `speech-flow-desktop-test.json`: 실제 Electron/MediaRecorder, 합성 Web Audio/Canvas, 전사 지연 3초를 사용. 마이크 수동 클릭 없이 자동 연결, 발언 3개 순차 전달, 빨간 화면에서 한 발언에 파란 최신 화면 대신 원래 화면 동봉, 장치 종료 이벤트 후 방송을 유지한 자동 재연결, 방송 종료 시 진행 중 전사 취소 확인. `speech-flow-desktop.png` 및 개별 시험 프로필 보존. 실제 물리 마이크/사용자의 게임 장면은 시험하지 않았다.
 - `python-tests.log`: encoder 경계/패딩, fallback, 실패 후 복원 등 9개 통과.
 - `single-model-ab.json`: 같은 medium 인스턴스에서 6개 합성 한국어 파일을 2회, 순서를 바꿔 12쌍 비교. 처리 중앙값 기존 **4,191ms → 2,820ms**, 정규화한 전사 내용 12쌍 동일. 발화 시간과 450ms 종료 감지, 모델 응답 시간은 포함하지 않는다.
 - `accuracy.json`: 별도 합성 corpus 12개/150자에서 양쪽 모두 문자 오류 2, 전체 일치 11/12, 무음 통과. 이 검사는 두 medium 인스턴스를 동시에 적재해 부하/메모리 영향을 받았고 시간 중앙값은 11,176.5/11,691.5ms였다. 이를 속도 개선 근거로 사용하지 않는다. 동일 모델 하나를 공유하는 후속 A/B를 따로 보존했다. 인식 오류가 모두 해결됐다는 뜻은 아니다.
@@ -39,3 +39,9 @@
 `artifacts/web-review`에 초기 설계/기준 소스 묶음을 준비했다. [웹 정합성 검토](https://chatgpt.com/c/6aa81887-571c-83e8-b11c-aac47f1615c4)는 완료된 답변을 확인했다. 픽셀을 포함한 영수증, 불변 캡처, 결정적인 화면 선택/첨부 번호 의견을 원본 코드와 대조했다. 해당 답변의 '공유 요청에서 관객별 다른 이미지 사용' 제안은 현재 공통 이미지 접근 구조에 맞지 않아 채택하지 않았고, 'encoder 최소 8초 유지' 제안도 현재 최적화 구조를 오독하여 채택하지 않았다. 성능 검토 요청은 보냈으나 CDP timeout/Debugger unattached로 완료 원문을 확인하지 못했고 웹 종합도 미실행이다. 로컬 검사를 웹 검토로 표시하지 않는다.
 
 소스 통합과 이미 실행 중인 배포 앱은 별개다. 사용자 앱/게임을 종료하거나 재시작하지 않았다. 실행 중인 기존 배포본은 이 소스 변경을 아직 사용하지 않는다. 최신 소스로 다시 빌드/실행해야 마이크 자동 연결과 화면 정합성 수정이 적용된다.
+
+## Windows 수정본 제공
+
+제품 변경 `9adc99b`를 main과 원격 작업 브랜치에 게시했다. 동일 제품 소스로 새 패키지 `release/2026-09-14T16-22-04-553Z/app/Nagneon-win32-x64`를 생성했다. `packaged-runtime-test.json`은 배포 ASAR에서 추출한 모듈과 내장 Python/medium/YAMNet/공식 CLI를 제한된 PATH에서 검증해 통과했다. 실제 모델 API 호출과 물리 장치는 사용하지 않았다. `package-integrity-test.json`은 2,452개 파일, 96개 원본 소스, 3,142,429,449바이트의 해시·소스 대응·ASAR fuses 검사에서 실패 0개다.
+
+실행 바로가기는 작업 트리의 `release/2026-09-14T16-22-04-553Z/Nagneon-Updated.lnk`다. 실행 중이던 앱의 실제 프로세스에서 확인한 `nagneon-preview` 프로필을 명시해 기존 설정/기록을 사용한다(`updated-shortcut.json`). 사용자 앱 PID 30476의 생성 시각과 실행 경로를 확인했고 종료·교체하지 않았다(`user-app-preserved.json`). 기존 앱을 정상 종료한 후 이 바로가기로 시작해야 수정본이 적용된다. 기본 실행 파일만 직접 열면 다른 기본 프로필을 사용할 수 있으므로 이 바로가기를 사용한다. GPU 라이브러리는 시험 폴더에만 있으며 새 패키지의 기본 STT는 CPU다.
