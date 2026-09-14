@@ -25,6 +25,9 @@ function ViewerCard({person,state,onError}:{person:Persona;state:State;onError:(
 export function AudiencePanel({state,onError}:{state:State;onError:(text:string)=>void}){
   const [pending,setPending]=useState(false),[notice,setNotice]=useState('');
   const id=useRef(sessionStorage.getItem('backseat-arrival-request'));
+  const first=state.tutorial?.arrival;
+  const firstAvailable=!!state.tutorial&&state.tutorial.status!=='new'&&!state.settings.personas.some(p=>!p.system)&&first?.status!=='completed'&&(!state.running||state.settings.mode!=='live');
+  async function inviteFirst(){setPending(true);setNotice('');try{await api('tutorial/arrival',{requestId:first?.status==='pending'?first.id:crypto.randomUUID()});}catch(e){setNotice(e instanceof Error?e.message:'첫 관객 요청 실패');}finally{setPending(false);}}
   const viewers=state.settings.personas.filter(p=>!p.system),price=state.autonomy?.price??50;
   async function meet(){
     setPending(true);setNotice('새로운 관객이 방송을 발견하고 있어요. 이름과 취향은 첫 만남에서 정해집니다.');
@@ -34,12 +37,12 @@ export function AudiencePanel({state,onError}:{state:State;onError:(text:string)
       setNotice(receipt.status==='completed'?'새로운 관객이 입장했습니다.':receipt.error||'관객을 구성하는 중입니다.');
     }catch(error){setNotice((error instanceof Error?error.message:'만남을 완료하지 못했습니다.')+' 다시 누르면 같은 요청의 결과를 확인합니다.');}finally{setPending(false);}
   }
-  return <><section className="panel feature-body acquisition"><div className="panel-heading"><div><Users size={18}/><b>방송에서 만난 사람들</b></div><span>{state.economy.balance}P</span></div>
+  return <>{firstAvailable&&<section className="panel feature-body"><h2>첫 관객을 초대해요</h2><p className="field-note">현재 {state.economy.balance}P · AI 생성 요청 1회 사용</p><p>첫 체험 포인트로 나만의 관객을 만나보세요. 생성되는 동안 튜토리얼과 리허설을 계속할 수 있어요.</p><button data-tutorial="invite" className="primary" disabled={pending||first?.status==='pending'||!!state.autonomy?.pending||!state.provider.configured||state.economy.balance<price||!state.settings.pointsEnabled||(state.running&&state.settings.mode==='live')} onClick={()=>void inviteFirst()}>{first?.status==='pending'?'첫 관객 준비 중…':first?.status==='failed'?`첫 관객 다시 초대 · ${price}P`:`첫 관객 초대 · ${price}P`}</button><p className="field-note">실패하면 포인트가 반환됩니다. 튜토리얼을 건너뛰어도 생성은 계속돼요. 앱을 종료하면 중단되며 다음 실행에서 다시 요청할 수 있어요.</p>{!state.provider.configured&&<p>AI 계정 연결이 필요해요. 방송 설정에서 연결하거나, 이 단계를 건너뛰고 리허설을 먼저 해보세요.</p>}{first?.error&&<p role="alert">{first.error}</p>}{notice&&<p role="status">{notice}</p>}</section>}{!firstAvailable&&<section className="panel feature-body acquisition"><div className="panel-heading"><div><Users size={18}/><b>방송에서 만난 사람들</b></div><span>{state.economy.balance}P</span></div>
     <p>오래 방송하다 우연히, 누군가 남긴 핫클립을 통해, 혹은 포인트로 연 첫 만남에서 새로운 관객이 들어옵니다.</p>
     <p className="field-note">이름과 성향을 미리 고를 수 없어요. 함께한 대화로 취향이 달라지거나 스스로 닉네임을 바꾸기도 합니다. 기본 방송 도우미는 관객 수에 포함하지 않습니다.</p>
     <button className="primary" disabled={pending||state.autonomy?.pending||!state.running||state.settings.mode!=='live'||!state.settings.pointsEnabled||(!id.current&&state.economy.balance<price)} onClick={()=>void meet()}>{pending||state.autonomy?.pending?'첫 만남 요청을 진행하는 중…':id.current?'지난 만남 결과 확인':`한 명과 첫 만남 · ${price}P`}</button>
     <p className="field-note">현재 관객의 이야기가 끝나면 첫 만남을 시작합니다. 기다리는 동안에는 포인트를 사용하지 않습니다. 생성 실패나 방송 종료 시 반환됩니다. 방송을 켜는 것만으로 새 관객이 보장되지는 않아요.</p>
     {notice&&<p role="status">{notice}</p>}
-  </section><div className="persona-grid">{viewers.map(p=><ViewerCard key={p.id} person={p} state={state} onError={onError}/>)}</div>
-  {!viewers.length&&<section className="panel feature-body"><h2>아직 만나기 전이에요</h2><p>방송을 시작하고 첫 체험 포인트로 한 명을 만나보세요. 천천히 방송하며 자연 유입을 기다릴 수도 있습니다.</p></section>}</>;
+  </section>}<div className="persona-grid">{viewers.map(p=><ViewerCard key={p.id} person={p} state={state} onError={onError}/>)}</div>
+  {!viewers.length&&!firstAvailable&&<section className="panel feature-body"><h2>아직 만나기 전이에요</h2><p>방송을 시작하고 첫 체험 포인트로 한 명을 만나보세요. 천천히 방송하며 자연 유입을 기다릴 수도 있습니다.</p></section>}</>;
 }

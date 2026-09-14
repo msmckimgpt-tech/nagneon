@@ -10,6 +10,7 @@ const blankMember=()=>({sessions:0,seconds:0,recognized:0,affinity:.15,peers:{},
 const normalized=s=>s.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu,'');
 export class AudienceAutonomy {
   constructor(studio,world){this.studio=studio;this.world=world;this.lastTick=0;this.nextCheck=0;this.lastSaved=0;this.seconds=world.data.autonomy.broadcastSeconds;this.pending=null;}
+  get firstTutorialPending(){return Object.values(this.world.data.autonomy.receipts).some(r=>r.firstTutorial&&r.status==='pending');}
   start(){this.lastTick=this.studio.now();this.lastSaved=this.lastTick;this.nextCheck=this.lastTick+60000;}
   stop(){if(this.seconds!==this.world.data.autonomy.broadcastSeconds)this.world.change(d=>{d.autonomy.broadcastSeconds=this.seconds;});}
   snapshot(){return {pending:!!(this.pending||this.waiting),waiting:!!this.waiting&&!this.pending,price:ARRIVAL_PRICE,broadcastSeconds:Math.floor(this.seconds),maxViewers:39};}
@@ -56,12 +57,17 @@ export class AudienceAutonomy {
     const keys=path==='clip'?['clip']:['browse','guide','fan','discussion'];const key=keys[Math.min(keys.length-1,Math.floor(this.studio.random()*keys.length))];
     return {path,key,label:path==='points'?`포인트로 열린 첫 만남 · ${profiles[key].label}`:profiles[key].label,...(clip?{clipId:clip.id}:{})};
   }
-  async arrive(requestId,{path='points',clip}={}){
+  async arrive(requestId,{path='points',clip,firstTutorial=false}={}){
     z.string().uuid().parse(requestId);const s=this.studio;
     const prior=this.world.data.autonomy.receipts[requestId];
     if(prior)return {id:requestId,...prior};
     z.enum(['points','broadcast','clip']).parse(path);
-    if(!s.running||s.settings.mode!=='live')throw new Error('실제 AI 방송 중에 새로운 관객을 만날 수 있습니다.');
+    if(firstTutorial){
+      if(this.firstTutorialPending)throw Error('먼저 요청한 첫 관객을 준비 중입니다.');
+      if(s.settings.personas.some(p=>!p.system)||Object.values(this.world.data.autonomy.receipts).some(r=>r.firstTutorial&&r.status==='completed'))throw Error('첫 관객은 이미 만났어요.');
+      if(s.running&&s.settings.mode==='live')throw Error('첫 관객 준비는 방송 대기 또는 리허설에서 시작하세요.');
+      if(!s.provider.status().configured)throw Error('방송 설정에서 AI 계정을 연결한 뒤 첫 관객을 초대하세요. 연결 없이 리허설을 먼저 해도 괜찮아요.');
+    }else if(!s.running||s.settings.mode!=='live')throw new Error('실제 AI 방송 중에 새로운 관객을 만날 수 있습니다.');
     if(s.busy||this.pending)throw new Error('관객 응답이 끝난 뒤 새로운 만남을 열 수 있습니다.');
     if(path==='points'&&!s.settings.pointsEnabled)throw new Error('포인트 기능이 꺼져 있습니다.');
     if(s.settings.personas.length>=40)throw new Error('현재 방송실의 관객 자리가 가득 찼습니다.');
@@ -75,15 +81,17 @@ export class AudienceAutonomy {
     const source=this.source(path,actualClip),cost=path==='points'?ARRIVAL_PRICE:0,at=s.now();
     this.world.change(d=>{
       if(d.economy.balance<cost)throw new Error('새로운 만남에 필요한 포인트가 부족합니다.');
-      d.economy.balance-=cost;d.autonomy.receipts[requestId]={status:'pending',cost,at,source};
+      d.economy.balance-=cost;d.autonomy.receipts[requestId]={status:'pending',cost,at,source,...(firstTutorial?{firstTutorial:true}:{})};
       d.economy.purchases.push({id:requestId,kind:'arrival',key:requestId,cost,status:'pending',at,fingerprint:createHash('sha256').update(requestId).digest('hex')});
       s.economy.entry(d.economy,'hold',-cost,'새로운 관객을 구성하는 동안 포인트 보관');
     });
-    const epoch=s.epoch;this.pending=requestId;s.busy=true;s.reserveCall();s.publish();
+    const epoch=s.epoch;this.pending=requestId;this.firstTutorial=firstTutorial;if(!firstTutorial)s.busy=true;s.reserveCall();s.publish();
+    const signal=firstTutorial?AbortSignal.timeout(180000):s.controller.signal;
     try{
       const individuality=arrivalIndividuality(s.settings.personas,source.key,()=>s.random());
-      const result=await s.provider.react({settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,individuality,usedNames:s.settings.personas.map(p=>p.name),clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},s.controller.signal);
-      if(epoch!==s.epoch||!s.running)throw new Error('방송이 끝나 새로운 만남을 취소했습니다.');
+      const result=await s.provider.react({settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,individuality,usedNames:s.settings.personas.map(p=>p.name),clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},signal);
+      signal.throwIfAborted();
+      if(!firstTutorial&&(epoch!==s.epoch||!s.running))throw new Error('방송이 끝나 새로운 만남을 취소했습니다.');
       s.tokens+=Number(result.usage?.total_tokens)||0;const birth=result.observation.arrival;
       if(!birth)throw new Error('관객을 구성하지 못해 포인트를 반환합니다.');
       const name=birth.name?.trim();if(!name||s.settings.blockedWords.some(w=>normalized(name).includes(normalized(w))))throw new Error('관객 이름이 방송 규칙에 맞지 않습니다.');
@@ -99,13 +107,13 @@ export class AudienceAutonomy {
         Object.assign(d.autonomy.receipts[requestId],{status:'completed',personaId:p.id});d.autonomy.lastArrivalAt=s.now();
         s.economy.entry(d.economy,'purchase',0,`새로운 만남 완료 · ${cost}P 사용`);
       });
-      s.audience.presence[p.id]=s.random()<s.settings.lurkRatio?'lurking':'active';s.log(`${p.name} 첫 방문`);
+      s.audience.presence[p.id]=firstTutorial?'away':s.random()<s.settings.lurkRatio?'lurking':'active';s.log(`${p.name} 첫 방문`);
       return {id:requestId,...this.world.data.autonomy.receipts[requestId]};
     }catch(error){
       this.world.change(d=>{const receipt=d.autonomy.receipts[requestId];if(receipt.status!=='pending')return;receipt.status='failed';receipt.error=error.message;
         const purchase=d.economy.purchases.find(p=>p.id===requestId);purchase.status='failed';purchase.error=error.message;d.economy.balance+=cost;s.economy.entry(d.economy,'refund',cost,error.message);
       });throw error;
-    }finally{this.pending=null;if(epoch===s.epoch)s.busy=false;s.publish();}
+    }finally{this.pending=null;this.firstTutorial=false;if(!firstTutorial&&epoch===s.epoch)s.busy=false;s.publish();}
   }
   tick(){
     const s=this.studio,now=s.now();this.seconds+=Math.min(2,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;

@@ -11,7 +11,7 @@ export const WorldData=z.object({
   autonomy:z.object({
     retired:z.record(z.string(),z.unknown()).default({}),
     unlocks:z.record(actor,z.object({profile:z.boolean().optional(),relations:z.boolean().optional()})).default({}),
-    receipts:z.record(z.string().uuid(),z.object({status:z.enum(['pending','completed','failed']),cost:z.number().int().nonnegative(),at:z.number(),source:z.object({path:z.enum(['points','broadcast','clip']),key:z.string(),label:z.string(),clipId:z.string().optional()}),personaId:z.string().optional(),error:z.string().optional()})).default({}),
+    receipts:z.record(z.string().uuid(),z.object({firstTutorial:z.boolean().optional(),status:z.enum(['pending','completed','failed']),cost:z.number().int().nonnegative(),at:z.number(),source:z.object({path:z.enum(['points','broadcast','clip']),key:z.string(),label:z.string(),clipId:z.string().optional()}),personaId:z.string().optional(),error:z.string().optional()})).default({}),
     broadcastSeconds:z.number().nonnegative().default(0),lastArrivalAt:z.number().nonnegative().default(0)
   })
 }).superRefine((value,ctx)=>{

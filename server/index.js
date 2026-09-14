@@ -1,3 +1,4 @@
+import {Tutorial,TutorialData,initialTutorial,tutorialRoutes} from './tutorial.js';
 import {SpeechCapture} from './speech-screen.js';
 import {DebugConfig,initialDebug,withDebugPrompt,debugRoutes} from './debug-mode.js';
 import express from 'express';
@@ -66,6 +67,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const hasPreviousSettings=hasWorld||(persist&&['settings.json','settings.json.bak.1','settings.json.bak.2','settings.json.bak.3'].some(n=>existsSync(resolve(dataDir,n))));
   const settingsStore=hasWorld?null:useStore('settings',Settings,()=>structuredClone(defaults));
   const onboardingStore=useStore('onboarding',OnboardingData,()=>initialOnboarding(hasPreviousSettings));
+  const tutorialStore=useStore('tutorial',TutorialData,()=>initialTutorial(onboardingStore.data.status!=='new'));
   const debugStore=useStore('debug',DebugConfig,initialDebug);
   const knowledgeStore=useStore('knowledge',KnowledgeData,()=>({}));
   const audienceStore=hasWorld?null:useStore('audience',AudienceData,()=>new Audience().data);
@@ -88,10 +90,11 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const clips=new Clips({data:clipsStore.data,dir:persist?resolve(dataDir,'clip-media'):undefined,save:clipsStore.save});
   const storageStatus=()=>({warnings:stores.flatMap(s=>s.warnings).slice(-6),recovered:stores.filter(s=>s.recoveredFrom).map(s=>s.recoveredFrom)});
   const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,clipPerception:new ClipPerception(runtime),directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
+  const tutorial=new Tutorial(studio,tutorialStore);
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const obsInput=new ObsInput({createClient:obsClientFactory,onChange:()=>studio.publish(),onEnd:sourceId=>studio.endVideo({sessionId:studio.sessionId,sourceId})});
   const stopStudio=studio.stop.bind(studio);studio.stop=()=>{obsInput.disconnect();return stopStudio();};
-  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},connectionProbe:probe.status(),...(providerChoice?{providerChoice:providerChoice.snapshot()}:{}),obsInput:obsInput.snapshot()});
+  const state=studio.state.bind(studio);studio.state=()=>({...state(),onboarding:{...onboardingStore.data},tutorial:tutorial.snapshot(),connectionProbe:probe.status(),...(providerChoice?{providerChoice:providerChoice.snapshot()}:{}),obsInput:obsInput.snapshot()});
   app.disable('x-powered-by');
   app.use((_req,res,next)=>requests.controller.signal.aborted?res.status(503).json({error:'앱을 종료하고 있습니다.'}):next());
   app.use((req,res,next)=>{
@@ -145,6 +148,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   });
   app.put('/api/audience/:id/note',(req,res)=>res.json(studio.autonomy.note(z.string().max(40).parse(req.params.id),z.object({text:z.string().max(2000)}).strict().parse(req.body).text)));
   app.delete('/api/audience/:id',(req,res)=>res.json(studio.autonomy.remove(z.string().max(40).parse(req.params.id))));
+  tutorialRoutes(app,tutorial);
   app.post('/api/onboarding',(req,res)=>res.json(finishOnboarding(studio,onboardingStore,req.body)));
   app.post('/api/connection/provider',async(req,res)=>{
     if(!providerChoice)throw Error('이 실행 환경에서는 제공처를 변경할 수 없습니다.');
@@ -274,7 +278,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     // Start every cleanup even if another one fails, and keep the event loop
     // alive until all owned requests have left their cleanup/finally blocks.
     const invoke=fn=>{try{return Promise.resolve(fn());}catch(error){return Promise.reject(error);}};
-    const tasks=[requests.close(),invoke(()=>probe.cancel()),invoke(()=>studio.close()),invoke(()=>clipInspector.close()),invoke(()=>speech.close()),invoke(()=>studio.communityActivity.yield()),invoke(()=>studio.clipPerception.close()),invoke(()=>sound.close()),invoke(()=>new Promise((done,fail)=>{server.close(error=>error?fail(error):done());server.closeAllConnections();}))];
+    const tasks=[requests.close(),invoke(()=>tutorial.operation),invoke(()=>probe.cancel()),invoke(()=>studio.close()),invoke(()=>clipInspector.close()),invoke(()=>speech.close()),invoke(()=>studio.communityActivity.yield()),invoke(()=>studio.clipPerception.close()),invoke(()=>sound.close()),invoke(()=>new Promise((done,fail)=>{server.close(error=>error?fail(error):done());server.closeAllConnections();}))];
     closing=Promise.allSettled(tasks).then(results=>{
       const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);
       if(errors.length)throw new AggregateError(errors,'앱 종료 정리를 완료하지 못했습니다.');
