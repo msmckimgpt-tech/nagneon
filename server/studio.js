@@ -1,3 +1,4 @@
+import {SpeechCapture,witnessedSpeech} from './speech-screen.js';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { defaults } from '../shared/defaults.js';
@@ -46,9 +47,9 @@ export class Studio extends EventEmitter {
   resetCounters(){this.reactions.reset();this.speechInbox=new SpeechInbox();this.liveReaction=null;this.endedVideoSources=new Map();this.ambient?.reset();this.sound?.stop();this.viewing.reset();this.calls=0;this.tokens=0;this.busy=false;this.audioBusy=false;this.lastRequest=0;this.lastSpeaker=new Map();this.observation=null;this.lastError='';this.sessionId=null;this.startedAt=null;this.voiceCues=null;this.failures=0;this.retryAt=0;}
   endVideo({sessionId,sourceId}){
     if(sessionId!==this.sessionId||!this.running)return {ok:true};
-    for(const [id,at] of this.endedVideoSources)if(this.now()-at>60000)this.endedVideoSources.delete(id);
+    for(const [id,at] of this.endedVideoSources)if(this.now()-at>120000)this.endedVideoSources.delete(id);
     this.endedVideoSources.set(sourceId,this.now());
-    if(this.liveReaction?.sourceId===sourceId){this.liveReaction.superseded=true;this.liveReaction.controller.abort();}
+    if(this.liveReaction?.sourceId===sourceId||this.liveReaction?.speechSourceIds?.has(sourceId)){this.liveReaction.superseded=true;this.liveReaction.controller.abort();}
     this.queue=this.queue.filter(m=>m.screenSourceId!==sourceId);
     if(this.viewing.last?.video?.sourceId===sourceId){this.viewing.reset();this.knowledge.lastSeen=null;this.observation=null;}
     this.publish();return {ok:true};
@@ -59,6 +60,7 @@ export class Studio extends EventEmitter {
     this.communityActivity.interrupt();
     if(!this.running||sessionId!==this.sessionId)throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
     if(capture&&(source!=='microphone'||!Number.isFinite(capture.startedAt)||!Number.isFinite(capture.endedAt)||capture.startedAt<this.startedAt-2000||capture.endedAt>this.now()+2000||capture.endedAt<=capture.startedAt||capture.endedAt-capture.startedAt>15000))throw new Error('발언을 녹음한 시각을 확인하세요.');
+    if(capture){capture=SpeechCapture.parse(capture);if(capture.screen&&capture.screen.sessionId!==sessionId)throw new Error('이미 끝난 방송의 화면은 전달할 수 없습니다.');}
     const hearers=this.presentWitnesses().filter(id=>!capture||this.audience.data.members[id]?.joinedAt<=capture.startedAt);
     const result=this.speechInbox.receive(id,text,()=>this.publishMessage({...this.prepareMessage('streamer',text,'streamer'),...(source==='microphone'?{transcription:{source:'microphone'}}:{})},{witnesses:hearers}),source,capture,hearers);
     if(!result.duplicate){
@@ -254,7 +256,8 @@ export class Studio extends EventEmitter {
         operation.externalIds=[...new Set(Object.values(personalContext.viewerContext).flatMap(p=>(p.externalChat||[]).map(m=>m.id)))];
         const transcriptCandidates=this.settings.contextualTranscription?this.speechInbox.candidates(speechBatch.ids):[];
         const viewerKnowledge=this.settings.category==='just-chatting'?null:viewerKnowledgeByPersona(this.knowledge.get(name,game.popularity),eligiblePersonas,{popularity:game.popularity});
-        const liveSpeech=this.speechInbox.sources(speechBatch.ids);
+        const liveSpeech=witnessedSpeech(this.speechInbox.sources(speechBatch.ids),{sessionId:this.sessionId,now:this.now(),joinedAt:eligiblePersonas.map(p=>this.audience.data.members[p.id]?.joinedAt),endedSources:this.endedVideoSources});
+        operation.speechSourceIds=new Set(liveSpeech.map(s=>s.capture?.screen?.sourceId).filter(Boolean));
         const adviceRequestId=speechBatch.ids.at(-1)||(speech?this.messages.findLast(m=>m.kind==='streamer'&&m.text===speech)?.id:undefined);
         let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};

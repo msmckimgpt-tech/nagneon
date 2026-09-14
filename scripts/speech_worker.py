@@ -25,7 +25,7 @@ def encoder_window_frames(sample_count):
     # Normal capture stops at 6s, but delayed browser callbacks and imported
     # segments may be longer. Do not jump straight from 8s to 30s of work.
     if sample_count > 0:
-        for seconds, frames in [(6.5, 800), (10.5, 1200), (14.5, 1600)]:
+        for seconds, frames in [(2.5, 400), (4.5, 600), (6.5, 800), (10.5, 1200), (14.5, 1600)]:
             if sample_count <= seconds * 16000:
                 return frames
     return 3000

@@ -41,6 +41,14 @@ export class TemporalFrames {
     return {sessionId:this.sessionId,sourceId:this.sourceId,frames:[...selected].sort((a,b)=>a-b).map(i=>({image:frames[i].image,at:frames[i].at,...(frames[i].still?{still:frames[i].still}:{})}))};
   }
   acknowledge(window:VideoWindow){if(window.sessionId===this.sessionId&&window.sourceId===this.sourceId)this.through=Math.max(this.through,window.frames.at(-1)?.at??0);}
+  // Freeze evidence before recognition, regardless of the live viewing cursor.
+  speechWindow(startedAt:number,endedAt:number):VideoWindow|undefined{
+    if(!this.sessionId||!this.sourceId)return;
+    const frames=this.samples.filter(f=>f.at>=startedAt-500&&f.at<=endedAt);
+    if(!frames.length||endedAt-frames.at(-1)!.at>1000)return;
+    const indices=[...new Set([0,Math.floor((frames.length-1)/2),frames.length-1])];
+    return {sessionId:this.sessionId,sourceId:this.sourceId,frames:indices.map(i=>({image:frames[i].image,at:frames[i].at}))};
+  }
 }
 
 // Pixel distance selects visual changes, never semantic events or emotions.

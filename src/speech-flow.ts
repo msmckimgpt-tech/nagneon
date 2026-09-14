@@ -1,6 +1,6 @@
 // Pure capture/queue policy, shared by the renderer and deterministic tests.
 export const VOICE_MAX_MS=6000,VOICE_SILENCE_MS=450;
-export type SpeechCapture={startedAt:number;endedAt:number};
+export type SpeechCapture={startedAt:number;endedAt:number;screen?:import('./temporal-frames').VideoWindow};
 export class VoiceBoundary {
   startedAt:number;lastAt:number;lastVoiceAt:number;voicedMs=0;firstVoiceAt:number|null=null;
   constructor(at:number){this.startedAt=at;this.lastAt=at;this.lastVoiceAt=at;}
@@ -25,6 +25,7 @@ export class SpeechQueue<T,R> {
   execute:(value:T,signal:AbortSignal)=>Promise<R>;onResult:(result:R)=>void;onError:(error:unknown)=>void;onCount:(count:number)=>void;
   constructor(options:{execute:(value:T,signal:AbortSignal)=>Promise<R>;onResult:(result:R)=>void;onError:(error:unknown)=>void;onCount?:(count:number)=>void}){this.execute=options.execute;this.onResult=options.onResult;this.onError=options.onError;this.onCount=options.onCount||(()=>{});}
   enqueue(value:T){if(this.pending.length>=8)return false;this.pending.push({value,generation:this.generation});this.notify();void this.drain();return true;}
+  enqueueLatest(value:T){const dropped=this.pending.length>=8?this.pending.shift():undefined;this.enqueue(value);return dropped?.value;}
   reset(){this.generation++;this.pending=[];this.controller?.abort();this.notify();}
   notify(){this.onCount(this.pending.length+(this.running?1:0));}
   async drain(){
@@ -55,7 +56,7 @@ type DeliveryItem={id:string;sessionId:string;text:string;source:'keyboard'|'mic
 export class SpeechOutbox {
   items:DeliveryItem[]=[];running=false;generation=0;controller:AbortController|null=null;idFactory:()=>string;
   constructor(idFactory:()=>string=()=>crypto.randomUUID()){this.idFactory=idFactory;}
-  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source,...(source==='microphone'&&capture?{capture:{...capture}}:{})})));return true;}
+  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source,...(source==='microphone'&&capture?{capture:structuredClone(capture)}:{})})));return true;}
   clear(){this.generation++;this.items=[];this.controller?.abort();}
   async flush(send:(item:DeliveryItem,signal:AbortSignal)=>Promise<unknown>){
     if(this.running)return;this.running=true;const generation=this.generation;
@@ -67,5 +68,13 @@ export class SpeechOutbox {
         finally{if(this.controller===controller)this.controller=null;}
       }
     }finally{this.running=false;}
+  }
+}
+
+// Retry only a preparation failure; preserve the same audio and capture snapshot.
+export async function recognizeWithRecovery<R>(request:()=>Promise<R>,prepare:()=>Promise<unknown>,signal:AbortSignal):Promise<R>{
+  try{return await request();}catch(error){
+    if(signal.aborted||!(error instanceof Error)||!('needsPreparation' in error)||error.needsPreparation!==true)throw error;
+    await prepare();if(signal.aborted)throw new DOMException('음성 인식 취소','AbortError');return request();
   }
 }

@@ -41,14 +41,14 @@ class SpeechWorkerTests(unittest.TestCase):
         model = object.__new__(worker.MicrophoneWhisper)
         features = np.arange(80*3000).reshape(80, 3000)
         with patch.object(worker.WhisperModel, 'encode', return_value='encoded') as encode:
-            for frames in [800, 1200, 1600, 3000]:
+            for frames in [400, 600, 800, 1200, 1600, 3000]:
                 model.encoder_frames = frames
                 self.assertEqual(model.encode(features), 'encoded')
                 np.testing.assert_array_equal(encode.call_args.args[0], features[:, :frames])
                 self.assertEqual(features.shape, (80, 3000))
 
     def test_short_audio_uses_all_samples_and_bounded_padding(self):
-        for seconds, frames in [(0, 3000), (1, 800), (6, 800), (6.5, 800), (7, 1200), (10.5, 1200), (11, 1600), (14.5, 1600), (15, 3000), (35, 3000)]:
+        for seconds, frames in [(0, 3000), (1, 400), (2.5, 400), (3, 600), (4.5, 600), (6, 800), (6.5, 800), (7, 1200), (10.5, 1200), (11, 1600), (14.5, 1600), (15, 3000), (35, 3000)]:
             model = FakeModel([[segment()]])
             samples = np.arange(int(seconds*16000), dtype=np.float32)
             text, policy = worker.recognize(model, samples)
@@ -62,7 +62,7 @@ class SpeechWorkerTests(unittest.TestCase):
             self.assertEqual(policy['encoderPassesMs'], [frames * 10])
 
     def test_window_boundaries_never_drop_actual_audio_or_padding(self):
-        for limit, frames, next_frames in [(6.5, 800, 1200), (10.5, 1200, 1600), (14.5, 1600, 3000)]:
+        for limit, frames, next_frames in [(2.5, 400, 600), (4.5, 600, 800), (6.5, 800, 1200), (10.5, 1200, 1600), (14.5, 1600, 3000)]:
             count = int(limit*16000)
             self.assertEqual(worker.encoder_window_frames(count), frames)
             self.assertGreaterEqual(frames/100 - count/16000, 1.5)
@@ -74,10 +74,10 @@ class SpeechWorkerTests(unittest.TestCase):
             model = FakeModel([[bad], [segment('확인된 발언')]])
             text, policy = worker.recognize(model, np.zeros(48000))
             self.assertEqual(text, '확인된 발언')
-            self.assertEqual([c[0] for c in model.calls], [800, 3000])
+            self.assertEqual([c[0] for c in model.calls], [600, 3000])
             self.assertNotIn('temperature', model.calls[1][1])
             self.assertTrue(policy['fallback'])
-            self.assertEqual(policy['encoderPassesMs'], [8000, 30000])
+            self.assertEqual(policy['encoderPassesMs'], [6000, 30000])
 
     def test_longer_window_fallback_and_failed_retry_restore_next_request(self):
         for count, frames in [(16000*9, 1200), (16000*12, 1600)]:
@@ -87,7 +87,7 @@ class SpeechWorkerTests(unittest.TestCase):
             self.assertEqual([c[0] for c in model.calls], [frames, 3000])
             self.assertEqual(model.encoder_frames, 3000)
             worker.recognize(model, np.zeros(16000))
-            self.assertEqual(model.calls[-1][0], 800)
+            self.assertEqual(model.calls[-1][0], 400)
 
     def test_silence_does_not_retry_but_unrecognized_voice_does(self):
         silent = FakeModel([[]], duration=0)

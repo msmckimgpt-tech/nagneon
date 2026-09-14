@@ -1,3 +1,4 @@
+import {SpeechCapture} from './speech-screen.js';
 import {DebugConfig,initialDebug,withDebugPrompt,debugRoutes} from './debug-mode.js';
 import express from 'express';
 import { resolve, dirname } from 'node:path';
@@ -227,7 +228,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/special/bid',(req,res)=>{studio.special.ready();const {id,amount}=z.object({id:z.string().uuid(),amount:z.number().int().min(1).max(10000)}).parse(req.body);economy.bid(id,amount);studio.publish();res.json({ok:true});});
   app.post('/api/special/cancel',(req,res)=>{const {id}=z.object({id:z.string().uuid()}).parse(req.body);economy.cancel(id);studio.publish();res.json({ok:true});});
   app.post('/api/stop',(_req,res)=>{if(probe.controller)probe.cancel();else studio.stop();res.json(studio.state());});
-  app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard'),capture:z.object({startedAt:z.number().finite().nonnegative(),endedAt:z.number().finite().nonnegative()}).strict().optional()}).strict().parse(req.body))));
+  app.post('/api/speech',(req,res)=>res.json(studio.receiveSpeech(z.object({id:z.string().uuid(),sessionId:z.string().uuid(),text:z.string().trim().min(1).max(3000),source:z.enum(['keyboard','microphone']).default('keyboard'),capture:SpeechCapture.optional()}).strict().parse(req.body))));
   app.post('/api/chat/display',(req,res)=>res.json(studio.setChatDisplay(z.object({showStreamerMessages:z.boolean()}).strict().parse(req.body).showStreamerMessages)));
   app.post('/api/react',async(req,res)=>{
     const input=Frame.parse(req.body);
