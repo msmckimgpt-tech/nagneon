@@ -48,6 +48,25 @@ app.whenReady().then(async()=>{
     assert.equal(service.obsInput.phase,'disconnected');
     checks.push('OBS connect, scene selection, actual JPEG preview and disconnect through renderer');
     service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();
+    await until(`!document.querySelector('[aria-label="문자 반응 선택"]').disabled`);
+    await js(`(()=>{const input=document.querySelector('[aria-label="관객에게 말하기"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'앞뒤');input.dispatchEvent(new Event('input',{bubbles:true}));input.setSelectionRange(1,1);document.querySelector('[aria-label="문자 반응 선택"]').click();})()`);
+    await until(`!!document.querySelector('[aria-label="문자 반응"]')`);
+    const beforeReactions=service.studio.messages.length;
+    await js(`document.querySelector('[aria-label="박수"]').click()`);
+    await until(`document.querySelector('[aria-label="관객에게 말하기"]').value==='앞👏뒤'`);
+    assert.equal(service.studio.messages.length,beforeReactions,'picker must not send automatically');
+    assert.equal(await js(`document.activeElement===document.querySelector('[aria-label="관객에게 말하기"]')`),true);
+    await js(`document.querySelector('[aria-label="문자 반응 선택"]').click()`);
+    await until(`!!document.querySelector('[aria-label="문자 반응"]')`);
+    for(const width of [1440,600,420]){win.setSize(width,960);await new Promise(r=>setTimeout(r,100));assert.equal(await js(`(()=>{const r=document.querySelector('[aria-label="문자 반응"]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>100})()`),true,'reaction picker fits '+width);}
+    win.setSize(1440,960);await new Promise(r=>setTimeout(r,150));
+    await js(`document.querySelector('[aria-label="문자 반응"]').scrollIntoView({block:'nearest'})`);await new Promise(r=>setTimeout(r,150));
+    assert.equal(await js(`(()=>{const b=document.querySelector('[aria-label="박수"]'),r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`),true,'palette is not clipped or covered');
+    writeFileSync(resolve(folder,'text-reactions.png'),(await win.webContents.capturePage()).toPNG());
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+    await until(`!document.querySelector('[aria-label="문자 반응"]')`);
+    await js(`(()=>{const input=document.querySelector('[aria-label="관객에게 말하기"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    checks.push('text reaction inserts at cursor without sending, restores focus, closes on Escape and fits narrow windows');
     await js(`document.querySelector('.external-chat-panel').open=true`);
     await js(`(()=>{for(const [name,value] of [['YouTube 방송 URL','https://youtu.be/abcdefghijk'],['YouTube API 키','test-api-key']]){const input=document.querySelector('[aria-label="'+name+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
     await button('YouTube 채팅 연결');await until(`document.querySelector('.external-chat-panel').textContent.includes('채팅 수신 중')`);

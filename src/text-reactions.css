@@ -1,0 +1,6 @@
+.text-reactions{position:relative;flex-shrink:0}
+.text-reaction-options{position:absolute;bottom:calc(100% + 14px);left:0;width:216px;max-width:calc(100vw - 64px);padding:10px;background:var(--surface,#19222e);border:1px solid #425266;border-radius:10px;box-shadow:0 8px 24px #0006;z-index:20}
+.text-reaction-options>span{display:block;font-size:11px;color:#a7b7c8;margin-bottom:8px}
+.text-reaction-options>div{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.text-reaction-options button{min-width:38px;min-height:38px;padding:4px;white-space:nowrap;display:flex;align-items:center;justify-content:center;font-size:18px;background:transparent;border:1px solid transparent;border-radius:6px;color:#eef4fa;cursor:pointer}
+.text-reaction-options button:hover,.text-reaction-options button:focus-visible{background:#2b4148;border-color:#63d9c3;outline:2px solid #63d9c3;outline-offset:1px}
