@@ -42,7 +42,12 @@ its own official `start-web-codex.ps1 -Login`; do not copy existing credentials.
 Select a web model explicitly; never change a requested model/effort silently.
 Avoid `--dev-profile`: it is an upstream synthetic development harness.
 
-Verified automatic model slug in this release: `chatgpt-web/high` (High).
+Delegated web work defaults to `chatgpt-web/extra-high` and reasoning `xhigh`,
+including synthesis. The start-web-codex wrapper passes both explicitly.
+Verify account eligibility before dispatch; never downgrade silently or treat a
+prompt asking for deep thinking as proof that the UI/runtime selected xhigh.
+The earlier connectivity smoke used `chatgpt-web/high` (High); that historical
+check does not establish xhigh availability on every account.
 The bare `chatgpt-web` is not a model slug. Use the native `/model` picker for
 account-eligible rows; preserve the user's chosen model and effort. An isolated
 official Codex login is separate from embedded browser login. After both logins,

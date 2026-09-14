@@ -11,6 +11,7 @@ $start.WorkingDirectory=(Resolve-Path -LiteralPath $WorkingDirectory).Path
 $start.UseShellExecute=$false
 $start.EnvironmentVariables['CODEX_HOME']=Join-Path $root 'web-codex-home'
 if($Login){$start.Arguments='login'}
+else{$start.Arguments='--model chatgpt-web/extra-high -c model_reasoning_effort="xhigh"'}
 $p=[System.Diagnostics.Process]::Start($start)
 $p.WaitForExit()
 exit $p.ExitCode

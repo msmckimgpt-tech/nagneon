@@ -116,3 +116,7 @@ read_file로 읽고 write_file로 새 파일에 반환했다. 로컬에서 입�
 새 Windows 머신에서는 위 공식 릴리스와 checksums.txt를 검증해 설치하고,
 `npm install --prefix <도구폴더>/tools/desktop-commander --save-exact
 @wonderwhy-er/desktop-commander@0.2.50`으로 별도 설치한 뒤 전역 설치기를 실행한다.
+
+## 웹 위임 추론 기본값 (2026-09-15)
+
+사용자 요청에 따라 웹 독립 검토·구현·웹 종합 모두 시간이 오래 걸려도 xhigh를 사용한다. 보조 CLI 래퍼는 chatgpt-web/extra-high와 model_reasoning_effort=xhigh를 명시한다. 브라우저 직접 위임도 Extra High 선택을 확인한다. 지원되지 않거나 한도에 걸리면 자동 하향하지 않고 해당 단계를 알린다. 로컬 모델·추론 설정은 바꾸지 않는다. 이전 High 연결 성공 기록은 그대로 보존하며 xhigh 실응답 검증으로 간주하지 않는다.

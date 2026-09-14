@@ -9,7 +9,13 @@ Use this route when multiple independent perspectives, a difficult design decisi
 or a bounded implementation task merits web assistance. Keep small edits and rapid
 edit/test loops local. The user has requested this global supplementary workflow;
 do not require them to repeat that preference. Preserve the selected models,
-reasoning levels, existing local providers and project quality gates.
+existing local providers and project quality gates. For delegated web work the user
+explicitly requests **xhigh**, even when slow. Apply it to every independent role,
+web implementation and synthesis. In Codex Web GPT use `chatgpt-web/extra-high`
+with `model_reasoning_effort="xhigh"`; in browser UI verify Extra High before sending.
+Do not silently fall back to high/medium/Instant when unavailable or taking longer.
+Report an unavailable xhigh option and keep dependent work pending. An explicit
+later user override takes precedence. Local session model/effort stays unchanged.
 
 ## Route by actual capability
 
