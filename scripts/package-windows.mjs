@@ -36,7 +36,7 @@ async function run(bin,args,cwd=root){
 
 // Allowlisted source staging excludes all personal data, recordings, .env,
 // development environments and credentials regardless of .gitignore contents.
-for(const [dir,extension] of [['desktop',/\.cjs$/],['server',/\.js$/],['shared',/\.(js|json)$/],['dist',/\.(html|js|css|svg|png|woff2?)$/]]){
+for(const [dir,extension] of [['desktop',/\.cjs$/],['server',/\.(js|proto)$/],['shared',/\.(js|json)$/],['dist',/\.(html|js|css|svg|png|woff2?)$/]]){
   for(const name of await files(join(root,dir))){
     if(dir==='shared'&&name.endsWith('.d.ts'))continue; // Tracked build input, not runtime JavaScript.
     if(!extension.test(name))throw new Error('검토되지 않은 배포 소스 파일: '+dir+'/'+name);

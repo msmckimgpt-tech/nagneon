@@ -16,6 +16,8 @@
     "package:windows": "npm run check && node scripts/package-windows.mjs"
   },
   "dependencies": {
+    "@grpc/grpc-js": "1.14.4",
+    "@grpc/proto-loader": "0.8.1",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
     "obs-websocket-js": "5.0.8",

@@ -1,0 +1,35 @@
+// Wire-compatible read subset of the documented YouTube StreamList schema.
+// Field numbers: https://developers.google.com/youtube/v3/live/streaming-live-chat
+// Unknown fields are intentionally ignored. No posting service is defined.
+syntax = "proto2";
+package youtube.api.v3;
+service V3DataLiveChatMessageService {
+  rpc StreamList(LiveChatMessageListRequest) returns (stream LiveChatMessageListResponse) {}
+}
+message LiveChatMessageListRequest {
+  optional string live_chat_id = 1;
+  optional string page_token = 99;
+  repeated string part = 100;
+}
+message LiveChatMessageListResponse {
+  optional string offline_at = 2;
+  optional string next_page_token = 100602;
+  repeated LiveChatMessage items = 1007;
+}
+message LiveChatMessage {
+  optional string id = 101;
+  optional LiveChatMessageSnippet snippet = 2;
+  optional LiveChatMessageAuthorDetails author_details = 3;
+}
+message LiveChatMessageAuthorDetails {
+  optional string channel_id = 10101;
+  optional string display_name = 103;
+}
+message LiveChatMessageSnippet {
+  optional int32 type = 1;
+  optional string live_chat_id = 201;
+  optional string author_channel_id = 301;
+  optional string published_at = 4;
+  optional bool has_display_content = 17;
+  optional string display_message = 16;
+}
