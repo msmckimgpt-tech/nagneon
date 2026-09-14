@@ -2,6 +2,7 @@ import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
+import {OllamaProvider} from './ollama-provider.js';
 import { CodexProvider } from './codex-provider.js';
 import { Knowledge } from './knowledge.js';
 import {LocalSound} from './local-sound.js';
@@ -36,7 +37,7 @@ import {externalChatRoutes} from './external-chat-session.js';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory,chzzkFactory,authFactory,openExternalAuth}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
-  provider ||= process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
+  provider ||= process.env.AI_PROVIDER==='ollama'?new OllamaProvider():process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
   if(provider.check)await provider.check();
   const speech=speechWorker||new LocalSpeech(runtime.speech);const sound=soundWorker||new LocalSound(runtime.sound);
   const clipInspector=new ClipInspector(runtime.clips);
@@ -131,6 +132,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/onboarding',(req,res)=>res.json(finishOnboarding(studio,onboardingStore,req.body)));
   app.post('/api/connection',(req,res)=>{
     if(studio.running)throw new Error('방송을 종료한 뒤 연결 설정을 변경하세요.');
+    if(provider.status().kind==='ollama')throw Error('Ollama는 API 키를 사용하지 않습니다.');
     const config=z.object({apiKey:z.string().trim().min(1).max(500)}).parse(req.body);provider.key=config.apiKey;studio.publish();res.json(provider.status());
   });
   app.post('/api/connection/check',async(_req,res)=>{if(provider.check)await provider.check();studio.publish();res.json(provider.status());});

@@ -119,3 +119,15 @@
 `artifacts/service-benchmark-ui-1789388726243/result.json`: **실제 Electron 8흐름 통과**. 치지직의 인증 시작·콜백·원문 출처·해제를 추가했다. 최초 캡처는 스크롤 아래 패널을 보여주지 못했고, 다음 캡처도 compositor 갱신 전이었다. 스크롤 후 실제 크기/가시 영역/두 렌더 프레임을 확인하도록 보강했다. 같은 폴더 `chzzk-layout.json`의 패널 좌표(246,437), 크기(785×208.75), visible/block과 `chzzk.png`의 원문/안내를 시각 확인했다. 이 과정에서 기능 CSS가 숨겨졌다는 증거는 없었고 제품 CSS를 임의 수정하지 않았다. 외부 승인·수신·모델은 fixture이며 실제 치지직 계정/권한 동의 성공은 미검증이다.
 
 다음 범위: 선택 로컬 모델과 남은 서비스 경험 비교·적용, 실제 플랫폼/OBS 수용, 최종 통합. 전체 목표는 진행 중이다.
+
+### 선택 Ollama 어댑터 · 2026-09-14
+
+ChatSim의 로컬 제공처 선택 장점을 `OllamaProvider`로 반영했다. 기본 Codex를 유지하며 `AI_PROVIDER=ollama`를 명시했을 때만 사용한다. 기존 OpenAIProvider의 지침/시각/개인별 출처 패킷을 재사용하고 Ollama `chat` 메시지와 원래 순서의 base64 이미지로 변환한다. [공식 chat API](https://docs.ollama.com/api/chat)의 비스트리밍 응답 및 JSON schema 형식과 [show 정보](https://docs.ollama.com/api-reference/show-model-details)를 이용한다. 구조화 출력 이후에도 기존 Observation 스키마를 검증한다.
+
+127.0.0.1의 HTTP 엔드포인트만 허용하며 리디렉션을 금지한다. GGUF/completion 확인, 원격 모델 메타데이터와 cloud 이름 차단, vision 확인, 요청 취소/시간 제한, 2MiB 응답 상한, 불완전 응답/tool call 거절을 추가했다. 선택 문맥 크기와 알려진 모델 상한을 비교하고 텍스트 UTF-8 바이트와 이미지별 여유량으로 사전 예산을 검사한다. 이는 이미지 토큰 수나 한국어 품질의 실측 보장이 아니다. 웹 검색은 지원하지 않으며, 요청 시 조용히 검색을 생략하는 대신 설정 안내를 반환한다.
+
+연결 화면은 로컬 제공처 안내와 응답 확인을 표시하고 OpenAI API 키 입력을 숨긴다. 제공처 전환은 현재 환경 변수 단계이며 앱의 선택/저장 UI는 남아 있다. [Ollama 설정 안내](OLLAMA-SETUP.md)에 준비와 복귀 방법, 현재 한계를 기록했다.
+
+`artifacts/ollama-focused.log`: 실제 loopback HTTP 요청의 지침·프레임 순서·스키마·usage, 텍스트 모델에 이미지 미전송, 원격 모델 거절, 잘린 응답/도구/형식 오류/검색/취소/응답 상한의 4개 시험 통과. `artifacts/ollama-check.log`: **641개 전체 테스트/TypeScript/Vite 통과**. `artifacts/ollama-ui-1789389164159/result.json`: 실제 Electron에서 로컬 안내/API 키 미표시 및 응답 확인의 어댑터 왕복 통과. `ollama-account-device.log`/`ollama-account-runtime.log`: 기본 Codex 계정의 필수 격리 회귀 통과.
+
+실제 Ollama는 PATH와 기본 loopback 포트에서 확인되지 않았다. 자동 설치나 대용량 모델 다운로드를 수행하지 않았고 실제 추론·성능 수용은 남아 있다. 나머지 벤치마킹 범위와 통합도 계속 진행 중이다.

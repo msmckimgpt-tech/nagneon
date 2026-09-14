@@ -20,13 +20,13 @@ export function ConnectionPanel({state}:{state:State}){
   const canLogin=state.provider.kind==='codex'&&window.backseat?.startAccountLogin;
   return <section className="account-panel" aria-label="계정과 모델 연결">
     <div className="account-summary"><span className={'connection-orb '+(state.provider.configured?'ready':'')}><Radio size={20}/></span><div><b>{state.provider.authMessage||(state.provider.configured?'AI 연결 준비됨':'AI 연결이 필요합니다.')}</b><p>{state.provider.model} · 추론 {state.provider.effort}</p></div>{state.provider.configured&&<Check size={20}/>}</div>
-    <p className="account-note">ChatGPT 구독의 Codex 사용량을 이용합니다. 계정 연결만으로 이 모델의 접근 권한이나 남은 사용량이 보장되지는 않습니다.</p>
+    <p className="account-note">{state.provider.kind==='ollama'?'이 PC의 Ollama 모델을 사용합니다. 한국어 품질과 속도는 모델과 PC 성능에 따라 달라요. 로컬 모드에서는 웹 검색을 지원하지 않아요.':'ChatGPT 구독의 Codex 사용량을 이용합니다. 계정 연결만으로 이 모델의 접근 권한이나 남은 사용량이 보장되지는 않습니다.'}</p>
     <div className="connection-actions">
       {!state.provider.configured&&canLogin&&<button className="primary" disabled={disabled} onClick={()=>void login('browser')}><ExternalLink size={15}/> ChatGPT 계정 연결</button>}
       <button className="secondary" disabled={disabled} onClick={()=>void perform(()=>api('connection/check'))}><RefreshCw size={14}/> 연결 상태 새로고침</button>
-      {state.provider.configured&&<button className="secondary" disabled={disabled} onClick={()=>void perform(()=>api('connection/probe'))}><Radio size={14}/> Astra 응답 확인 · 1회 사용</button>}
+      {state.provider.configured&&<button className="secondary" disabled={disabled} onClick={()=>void perform(()=>api('connection/probe'))}><Radio size={14}/> {state.provider.kind==='ollama'?'로컬 모델 응답 확인 · 1회':'Astra 응답 확인 · 1회 사용'}</button>}
     </div>
-    {!state.provider.configured&&!window.backseat&&<p className="field-note">계정 로그인은 Windows 데스크톱 앱에서 진행하세요.</p>}
+    {state.provider.kind!=='ollama'&&!state.provider.configured&&!window.backseat&&<p className="field-note">계정 로그인은 Windows 데스크톱 앱에서 진행하세요.</p>}
     {!state.provider.configured&&canLogin&&!logging&&<details className="login-alternative"><summary>브라우저 로그인이 열리지 않나요?</summary><p>기기 코드 로그인은 베타 기능입니다. 계정의 보안 설정 또는 조직 권한에서 허용되어 있어야 합니다.</p><button className="secondary" disabled={disabled} onClick={()=>void login('device')}>기기 코드로 연결</button></details>}
     {logging&&<div className="login-progress" role="status">
       {account.status==='waiting'?<><b>{account.method==='device'?'공식 로그인 페이지에 코드를 입력하세요':'브라우저에서 ChatGPT 로그인을 마쳐주세요'}</b>{account.code&&<code className="device-code">{account.code}</code>}<p>{account.method==='device'?'지금 시작한 로그인에만 이 코드를 사용하세요.':'로그인을 마치면 이 창에 자동으로 반영됩니다.'}{account.expiresAt&&` · 남은 시간 ${Math.max(0,Math.ceil((account.expiresAt-now)/60000))}분`}</p><button className="secondary" onClick={()=>void perform(()=>window.backseat!.openAccountLogin())}>공식 로그인 페이지 열기 <ExternalLink size={14}/></button></>:<p><LoaderCircle size={14} className="spin"/> {account.message||'계정 연결 준비 중…'}</p>}
