@@ -7,7 +7,7 @@
 1. [치지직 개발자 센터의 Application](https://developers.chzzk.naver.com/application)에 방송 계정으로 로그인하고 애플리케이션을 등록한다.
 2. 이름은 예를 들어 `Backseat Personal`로 정한다. 공식 서비스명을 이름에 넣을 수 없다는 [등록 참고사항](https://chzzk.gitbook.io/chzzk/chzzk-api/tips)을 확인한다.
 3. 수신에 필요한 **채팅 메시지 조회** 권한을 설정한다. 이 프로젝트는 채팅 작성 기능을 요청하지 않는다.
-4. 로그인 리디렉션 URL은 연결 기능이 제공하는 정확한 값을 등록한다. 현재 콜백 주소는 구현 중이므로 임의 주소를 등록하지 않는다. 요청 주소와 등록 주소가 같아야 한다는 [인증 규격](https://chzzk.gitbook.io/chzzk/chzzk-api/authorization)을 따른다.
+4. 로그인 리디렉션 URL에 `http://127.0.0.1:4319/chzzk/callback`을 등록한다. 인증 모듈의 기본 콜백 주소이며 앱 화면 연결은 개발 중이다. 요청 주소와 등록 주소가 같아야 한다는 [인증 규격](https://chzzk.gitbook.io/chzzk/chzzk-api/authorization)을 따른다. 다른 앱이 해당 포트를 사용하면 그 연결을 종료한 뒤 다시 시도한다.
 5. 발급된 Client ID와 Client Secret은 개발자 센터에서 보관한다. 향후 앱의 연결 화면에 직접 입력하며, 대화·저장소·스크린샷에 넣지 않는다.
 
 연결 구현은 사용자 승인 후 토큰을 발급받고 [공식 Session API](https://chzzk.gitbook.io/chzzk/chzzk-api/session)로 채팅을 구독하는 방식이다. 앱 등록만으로 실제 채팅이 들어오지는 않는다. 승인 취소, 연결 해제, 방송 종료 때 수신을 멈추는 동작까지 검증해야 한다.

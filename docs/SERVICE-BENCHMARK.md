@@ -95,3 +95,15 @@
 검증: `artifacts/external-session-check-final.log`에서 **629개 테스트와 TypeScript/Vite 통과**. 인증 API → 실제 Studio 반응 경로에서 출처 전달/훈수 금지, 삭제 시 생성 취소, 늦은 콜백 차단, 입장 시점 제한, 만료 및 긴급 종료를 검증했다. `artifacts/service-benchmark-ui-1789387460960/result.json`에서 **Electron 7흐름 통과**: YouTube 연결, 원문 표시/HTML 비실행, 삭제 반영, 해제 및 키 초기화를 기존 OBS·프리셋·스크롤·브리핑 검증에 추가했다. 외부 수신과 모델은 fixture이며 실제 YouTube 계정 연결 성공을 뜻하지 않는다.
 
 사용 안내를 `EXTERNAL-CHAT-SETUP.md`에 갱신했다. 현재 작업 브랜치에서는 YouTube 연결을 시도할 수 있다. 치지직 연결, 선택 로컬 모델, 나머지 경험 및 실제 플랫폼/OBS 수용, main 통합은 여전히 남아 있다.
+
+### 치지직 인증·수신 모듈 · 2026-09-14
+
+`chzzk-auth.js`는 기본 `http://127.0.0.1:4319/chzzk/callback`에서 일회용 인증 응답을 받는다. 임의 state/중복 파라미터/다른 경로·Host를 거절하고, 취소·5분 만료 때 소유한 서버와 요청을 정리한다. Client Secret과 인증 코드는 공식 토큰 API에만 전송하고 콜백 본문/일반 상태에 넣지 않는다. 공통 API 응답의 `content` 봉투를 처리한다. Refresh Token은 저장하지 않으며, 현재 구현은 만료 후 사용자 재인증 방식이다. 앱 로컬 해제와 플랫폼 전체 토큰 철회는 다른 동작이다.
+
+`chzzk-chat.js`는 공식 세션 생성 → SYSTEM connected → 채팅 구독 → SYSTEM subscribed 순서를 따른다. 수신은 승인된 채널의 CHAT만 허용하고 권한 철회·연결 종료·인증 만료 때 멈춘다. 세션 URL은 HTTPS의 `*.nchat.naver.com`만 허용하며 리디렉션과 과대 응답을 차단한다. 채팅 전송 API는 없다. 공식 채팅 이벤트에는 고유 message ID/삭제 이벤트가 명시되어 있지 않으므로 채널·작성자·시각·내용의 해시로 중복을 구분한다. 동일 작성자가 같은 밀리초에 같은 내용을 보내면 한 건으로 합쳐질 수 있으며 원격 개별 삭제 동기화는 보장하지 않는다. 이 한계를 실제 연결 안내에도 반영해야 한다.
+
+치지직이 지정한 Socket.IO 1.x–2.0.3과 호환되도록 공식 [Socket.IO protocol 4](https://raw.githubusercontent.com/socketio/socket.io-protocol/v4/Readme.md) / [Engine.IO protocol 3](https://raw.githubusercontent.com/socketio/engine.io-protocol/v3/README.md)의 기본 네임스페이스 텍스트 이벤트·클라이언트 ping/pong만 구현했다. 제품 의존성은 `ws@8.21.3`이며 구형 polling/JSONP 패키지는 제품에 포함하지 않는다. 자동 재접속은 아직 없으며 실패 후 명시적으로 다시 연결한다.
+
+검증: `artifacts/chzzk-focused.log`의 6개 시험은 실제 loopback HTTP 인증/취소/만료, 실제 WebSocket 수신/중복 구독 방지/ping/권한 철회, 채널·URL 제한을 확인한다. 별도 `artifacts/socketio-compat`에 스크립트 실행 없이 설치한 공식 Socket.IO 2.0.3 서버를 `scripts/verify-chzzk-protocol.mjs`로 구동했고 `artifacts/chzzk-socketio-compat.log`에서 이벤트 2개와 ping 2회의 호환성을 확인했다. 이 참고 의존성은 배포 대상이 아니다. `artifacts/chzzk-check.log`: **635개 전체 테스트/TypeScript/Vite 통과**. 인증 변경의 필수 회귀인 `chzzk-account-device.log`, `chzzk-account-runtime.log`도 통과했으며 빈 Codex 홈/별도 앱 프로필에서 발급·취소만 시험했다. 로그인 완료·모델 호출·기존 계정 변경은 없다.
+
+남은 치지직 범위: 앱의 인증 시작/취소 화면, 브라우저 열기, 공통 외부 채팅 세션 연결, 실제 개발자 앱/계정 수용. 모듈 및 프로토콜 시험을 실제 치지직 연결 성공으로 간주하지 않는다.
