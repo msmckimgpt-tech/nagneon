@@ -31,3 +31,5 @@ Codex, OpenAI API, Ollama의 공통 프롬프트 생성 단계에 적용된다. 
 추가 1200/720/420폭 검사는 통과했다. 최초 추가 캡처는 UnknownVizError, 다음 시도는 표시되지 않은 창에서 RAF를 기다리다 watchdog으로 종료됐다. 테스트 창을 명시적으로 표시하고 backgroundThrottling을 꺼 기능 검사를 다시 통과했으며 PNG를 확인했다. UI 캡처는 기능 판정을 대신하지 않는다.
 
 최종 폼 배치 정리 후 같은 디버그 흐름을 다시 통과했다. `artifacts/service-benchmark-ui-1789391816817/result.json`의 기존 9개 제품 흐름 회귀도 통과했다.
+
+디버그 포함 독립 실행본은 `release/2026-09-14T13-18-10-132Z/app/Nagneon-win32-x64`다. 배포 소스 95개/파일 해시·번들 음성/모델 런타임·실제 exe 실행과 정상 종료 검증을 통과했다. 기존 사용자 설치본을 자동 교체한 것은 아니다. [패키지 증거](SERVICE-BENCHMARK.md)의 해당 단계를 참고한다.

@@ -197,3 +197,20 @@ ChatSim의 로컬 제공처 선택 장점을 `OllamaProvider`로 반영했다. �
 패키지 `release/2026-09-14T13-03-48-578Z`는 디버그 요청 전에 만든 2,452개 파일 / 3,142,414,554바이트 미서명 빌드이며 디버그 기능이 없어 최신 수용 대상으로 사용할 수 없다. 첫 무결성 검사도 선행 `packaged-runtime-test.json`이 없어 완료되지 않았다. 디버그를 포함한 새 빌드에서 런타임→무결성 순서로 검증해야 한다.
 
 OBS 32.2.2 공식 포터블 ZIP은 `artifacts/obs-32.2.2.zip`에 받았으며 GitHub 제공 SHA-256 `4d6e40e3ab155f56b30de517380566a206d74b63cdf5ad49aa596924768f97e1`와 일치했다. `artifacts/obs-portable`에 압축 해제했지만 아직 실행하지 않았다. 포터블 격리 프로필/시험 장면을 구성해 실제 OBS 입력 검증을 이어갈 수 있다. 실제 외부 플랫폼/로컬 모델/패키지 수용 목표는 계속 진행 중이다.
+
+### 디버그 포함 패키지와 실제 OBS 수용 · 2026-09-14
+
+최신 기능/디버그 소스 `dd51e97`로 `release/2026-09-14T13-18-10-132Z/app/Nagneon-win32-x64` 독립 실행본을 새로 만들었다. **2,452개 파일 / 3,142,423,485바이트 / 미서명**이다. 기존 사용자 설치본을 교체하지 않았다. 설치 마법사(NSIS)와 이 독립 실행 폴더는 구분한다.
+
+- `artifacts/debug-package.log`: allowlist 패키징 완료. 다른 작업의 음성 런타임은 읽기 원본으로만 사용하고 패키저가 검증·복사했다. sound/microphone 모델은 이 worktree의 별도 `.models`로 복사했다.
+- `artifacts/packaged-runtime-test.json`: 배포된 ASAR를 별도 폴더로 추출해 해당 모듈과 번들 Python/모델/공식 CLI로 실행했다. SHA-256 `5bf71b7eac70e04f5393c26b6f6589ddc3a990922c8bb9e902586e44af0b9c70`. 새로 생성한 Heami 한국어 WAV를 1,745ms에 정확히 전사했으며 번들 YAMNet/시스템 대사, 실제 Astra low 반응도 통과했다. 시스템 대사의 ‘게임 시작합니다’에 관객이 반응한 실제 출력도 확인했다. 음성 파일은 합성이며 물리 마이크/사용자 게임 소리의 품질 시험은 아니다.
+- `artifacts/package-integrity-test.json`: 소스 **95개** 및 전체 파일 해시/ASAR fuses 비교 통과, failures=[]. 런타임 결과가 같은 배포 ASAR를 가리키는 것도 확인했다.
+- `artifacts/nagneon/native-result.json`: 실제 Nagneon.exe를 별도 `--nagneon-profile`로 실행하여 제목/창/데이터 생성/정상 종료 통과.
+
+[OBS 공식 포터블 ZIP](https://github.com/obsproject/obs-studio/releases/tag/32.2.2)을 검증 후 작업 폴더에서만 실행했다. [공식 실행 옵션](https://obsproject.com/kb/launch-parameters)의 portable/profile/collection과 [WebSocket 안내](https://obsproject.com/kb/remote-control-guide)를 따랐다. 초기 `Benchmark` 컬렉션에는 입력이 없음을 확인했고, 시험 도형 PNG 한 개만 image_source로 넣어 두 이미지 사이를 전환했다. 화면·마이크·오디오 장치를 캡처하거나 외부 방송/녹화를 시작하지 않았다.
+
+`artifacts/obs-native-98Qc0o/result.json`, `obs-native.log`: **실제 OBS 32.2.2 / WebSocket 5.7.4 → 앱의 인증된 OBS HTTP 경로 → Studio → 실제 Codex 모델 → 표시 채팅** 두 턴 통과. 첫 JPEG의 왼쪽 빨간 원/오른쪽 파란 정사각형과 다음 JPEG의 위 노란 삼각형/아래 초록 원을 실제 observation/모모 채팅에서 올바르게 구분했다. 저장한 `obs-frame-1.jpg`/`obs-frame-2.jpg`와 대조했다. 같은 sourceId의 새 픽셀을 새 장면으로 전달했고 연결 해제, 다른 sourceId로 재연결, 방송 종료 시 해제, OBS의 방송/녹화 비활성·image_source 외 입력 부재를 검사했다. 두 턴 지연은 10,440ms/10,313ms이며 광범위한 게임 성능 측정은 아니다.
+
+시험 OBS의 숨긴 창은 CloseMainWindow와 WM_CLOSE 이후에도 종료되지 않았다. PID 29052의 생성 시각·정확한 포터블 경로를 다시 확인한 뒤 해당 시험 프로세스만 종료했고 잔존 프로세스가 없음을 확인했다(`artifacts/obs-shutdown-final.json`). 제품의 연결 해제는 그 전에 정상 통과했지만 OBS 자체의 정상 종료를 주장하지 않는다.
+
+남은 범위: 실제 로컬 Ollama 모델, 사용자가 준비할 치지직/YouTube 개발자 설정에 기반한 승인/채팅 수신, NSIS 설치본 및 장시간 실제 게임/장치의 경험 수용. 전체 목표는 아직 진행 중이다.
