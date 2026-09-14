@@ -42,6 +42,14 @@ its own official `start-web-codex.ps1 -Login`; do not copy existing credentials.
 Select a web model explicitly; never change a requested model/effort silently.
 Avoid `--dev-profile`: it is an upstream synthetic development harness.
 
+Verified automatic model slug in this release: `chatgpt-web/high` (High).
+The bare `chatgpt-web` is not a model slug. Use the native `/model` picker for
+account-eligible rows; preserve the user's chosen model and effort. An isolated
+official Codex login is separate from embedded browser login. After both logins,
+`doctor --json` checks the route and proxy; a real Codex response verifies dispatch.
+Browser-only emits a local-tools-unavailable notice by design. Use the separately
+connected RDC web client for file handoffs; it is not injected into every bridge turn.
+
 Source: https://github.com/miuuyy/codex-chatgpt-web/tree/v5.0.6
 
 ## Remote Desktop Commander
