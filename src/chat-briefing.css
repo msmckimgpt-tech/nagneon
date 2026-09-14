@@ -1,0 +1,21 @@
+.chat-briefing{margin-left:auto;font-size:12px}
+.briefing-content{position:fixed;right:24px;bottom:100px;width:min(360px,calc(100vw - 48px));z-index:100;background:#1c2424;border:1px solid #597660;border-radius:10px;padding:16px;max-height: min(450px,65vh);overflow:auto;box-shadow:0 8px 25px #0008}
+.chat-briefing summary{cursor:pointer;font-weight:650;padding:4px 0}
+.chat-briefing summary:focus-visible{outline:2px solid #99d9af;outline-offset:3px}
+.briefing-content ul{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:12px}
+.briefing-content li{border-left:2px solid #99d9af;padding-left:10px;overflow-wrap:anywhere}
+.briefing-content li p{margin:5px 0;white-space:pre-wrap}
+.briefing-kind{font-size:11px;color:#99d9af;margin-right:8px}
+.briefing-content time{font-size:11px;margin-left:8px;opacity:.65}
+.chat-jump{flex-shrink:0;background:#254437;color:#d9ffe9;padding:9px;border:1px solid #99d9af;border-radius:8px;margin:5px 12px;cursor:pointer}
+.chat-jump:focus-visible{outline:2px solid white;outline-offset:2px}
+.crowd-presets{border:0;padding:0;margin:0 0 18px;min-width:0}
+.crowd-presets>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.crowd-presets button{display:flex;flex-direction:column;text-align:left;gap:6px;border:1px solid #41474c;border-radius:10px;padding:12px;background:#222a29;color:inherit;cursor:pointer}
+.crowd-presets button[aria-pressed=true]{border-color:#99d9af;background:#2e4438}
+.crowd-presets button span{font-size:12px;line-height:1.5;opacity:.8}
+@media(max-width:520px){.crowd-presets>div{grid-template-columns:1fr}}
+@media(min-width:951px) and (max-height:760px){
+  .studio-workspace .pinned p{display:none}
+  .studio-workspace .pinned{padding:8px 10px;max-height:40px}
+}

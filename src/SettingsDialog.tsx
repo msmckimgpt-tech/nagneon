@@ -3,6 +3,7 @@ import {Check,Clapperboard,Gamepad2,Plus,Radio,Shield,SlidersHorizontal,Sparkles
 import {api} from './api';
 import {AccessibleDialog} from './AccessibleDialog';
 import {ConnectionPanel} from './ConnectionPanel';
+import {CrowdPresets} from './CrowdPresets';
 import type {Game,Settings,State} from './types';
 import './settings-dialog.css';
 import modelCallLimits from '../shared/model-call-limits.json';
@@ -155,7 +156,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
         </>;
 
       case 'mood':
-        return <>
+        return <><CrowdPresets draft={draft} locked={locked} onChange={patch=>setDraft(previous=>({...previous,...patch}))}/>
           <div className="set-row">
             <label className="set-field">커뮤니티 규모와 리듬
               <select value={draft.crowdStyle} onChange={e=>update('crowdStyle',e.target.value as Settings['crowdStyle'])}>

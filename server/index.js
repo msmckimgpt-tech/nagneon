@@ -29,6 +29,7 @@ import {ConversationJournal,emptyJournal} from './conversation-journal.js';
 import {JournalStore} from './journal-store.js';
 import {World,WorldData,migrateWorld} from './world.js';
 import {RequestLifetime,ownProviderRequests} from './request-lifetime.js';
+import {StateFeed} from './state-stream.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={}}={}){
@@ -98,9 +99,10 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.get('/api/donations',(_req,res)=>res.json({entries:economy.donationHistory(studio.settings.personas)}));
   app.get('/api/events',(req,res)=>{
     res.setHeader('Content-Type','text/event-stream');res.setHeader('Connection','keep-alive');res.flushHeaders();
-    const send=(state)=>res.write(`data: ${JSON.stringify(state)}\n\n`);send(studio.state());studio.on('state',send);
-    const display=value=>res.write(`event: chat-display\ndata: ${JSON.stringify(value)}\n\n`);studio.on('chat-display',display);
-    const timer=setInterval(()=>res.write(': heartbeat\n\n'),15000);req.on('close',()=>{clearInterval(timer);studio.off('state',send);studio.off('chat-display',display);});
+    const feed=new StateFeed(res,{patches:req.query.transport==='patches',currentState:()=>studio.state()});
+    const send=state=>feed.send(state);send(studio.state());studio.on('state',send);
+    const display=value=>feed.display(value);studio.on('chat-display',display);
+    const timer=setInterval(()=>feed.heartbeat(),15000);req.on('close',()=>{clearInterval(timer);feed.close();studio.off('state',send);studio.off('chat-display',display);});
   });
   app.put('/api/settings',(req,res)=>{studio.configure(req.body);res.json(studio.state());});
   app.post('/api/audience/arrive',async(req,res)=>{

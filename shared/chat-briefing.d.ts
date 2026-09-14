@@ -1,0 +1,1 @@
+export function chatBriefing(messages:readonly {id:string;personaId:string;text:string;kind:string;time:number;fictional?:boolean;donation?:unknown}[],options?:{now?:number;startedAt?:number;mode?:string;enabledIds?:string[]}):{since:number;until:number;count:number;speakers:number;items:{ids:string[];question:boolean;donation:boolean}[]};
