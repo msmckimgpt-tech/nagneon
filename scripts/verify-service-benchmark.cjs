@@ -10,13 +10,14 @@ const {EventEmitter}=require('node:events');
 const folder=resolve('artifacts/service-benchmark-ui-'+Date.now());mkdirSync(folder,{recursive:true});
 app.setPath('userData',resolve(folder,'profile'));
 let service,win;const checks=[],errors=[];
+let youtubeCallbacks;const youtubeFactory=options=>{youtubeCallbacks=options;return {async connect(){options.onState({phase:"receiving"});},disconnect(){}};};
 let obsImage;class FixtureObs extends EventEmitter{async connect(){}async disconnect(){this.emit('ConnectionClosed');}async call(type){return type==='GetSceneList'?{scenes:[{sceneName:'격리된 시험 장면'}]}:{imageData:obsImage};}}
 const watchdog=setTimeout(()=>{writeFileSync(resolve(folder,'timeout.json'),JSON.stringify({checks,errors}));app.exit(2);},90000);
 app.whenReady().then(async()=>{
   let failure;
   try{
     const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
-    service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,obsClientFactory:()=>new FixtureObs(),provider:{status:()=>({configured:true,model:'fixture',kind:'fixture'}),react:async()=>({observation:{game:'fixture',scene:'synthetic scene',confidence:0,excitement:0,messages:[]},usage:{total_tokens:0}})}});
+    service=await startServer({port:0,dataDir:resolve(folder,'data'),localSpeech:false,obsClientFactory:()=>new FixtureObs(),youtubeFactory,provider:{status:()=>({configured:true,model:'fixture',kind:'fixture'}),react:async()=>({observation:{game:'fixture',scene:'synthetic scene',confidence:0,excitement:0,messages:[]},usage:{total_tokens:0}})}});
     await fetch(service.url+'/api/onboarding',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({skip:true})});
     win=new BrowserWindow({width:1440,height:960,show:true,title:'BACKSEAT Benchmark QA',webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
     win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});
@@ -44,6 +45,19 @@ app.whenReady().then(async()=>{
     assert.equal(service.obsInput.phase,'disconnected');
     checks.push('OBS connect, scene selection, actual JPEG preview and disconnect through renderer');
     service.studio.configure({...service.studio.settings,mode:'live'});service.studio.start();
+    await js(`document.querySelector('.external-chat-panel').open=true`);
+    await js(`(()=>{for(const [name,value] of [['YouTube 방송 URL','https://youtu.be/abcdefghijk'],['YouTube API 키','test-api-key']]){const input=document.querySelector('[aria-label="'+name+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+    await button('YouTube 채팅 연결');await until(`document.querySelector('.external-chat-panel').textContent.includes('채팅 수신 중')`);
+    youtubeCallbacks.onBatch({liveChatId:'fixture',items:[{id:'external-one',snippet:{type:1,display_message:'실제 플랫폼 원문 <script> 실행 아님',published_at:new Date().toISOString()},author_details:{display_name:'외부 시청자'}}]});
+    await until(`document.querySelector('.external-chat-messages').textContent.includes('실제 플랫폼 원문 <script> 실행 아님')`);
+    assert.equal(await js(`document.querySelectorAll('.external-chat-messages script').length`),0);
+    youtubeCallbacks.onBatch({liveChatId:'fixture',items:[{id:'external-one',snippet:{type:2}}]});
+    await until(`!document.querySelector('.external-chat-messages').textContent.includes('실제 플랫폼 원문')`);
+    await button('외부 채팅 연결 해제');await until(`!document.querySelector('.external-chat-messages')`);
+    assert.equal(await js(`document.querySelector('[aria-label="YouTube API 키"]').value`),'');
+    await js(`document.querySelector('.external-chat-panel').open=false`);
+    checks.push('YouTube connect, escaped original chat, remote deletion, disconnect and cleared key');
+
     const person=service.studio.settings.personas.find(p=>p.enabled);
     const make=(i,text)=>({id:'fixture-'+i,personaId:person.id,name:person.name,color:person.color,kind:'chat',time:Date.now(),text:text||`검증 채팅 ${i} · 함께 게임을 보고 있어요.`});
     service.studio.messages=Array.from({length:100},(_,i)=>make(i));service.studio.publish();

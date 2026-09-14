@@ -31,9 +31,10 @@ import {World,WorldData,migrateWorld} from './world.js';
 import {RequestLifetime,ownProviderRequests} from './request-lifetime.js';
 import {StateFeed} from './state-stream.js';
 import {ObsInput} from './obs-input.js';
+import {externalChatRoutes} from './external-chat-session.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory}={}){
+export async function startServer({port=Number(process.env.PORT)||4318,dataDir=resolve(root,'data'),provider,persist=true,localSpeech=true,speechWorker,soundWorker,browserConnect=false,developmentOrigin,runtime={},obsClientFactory,youtubeFactory}={}){
   const access=createLocalAccess({browserConnect});let expectedHost;
   provider ||= process.env.AI_PROVIDER==='openai'?new OpenAIProvider():new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})});
   if(provider.check)await provider.check();
@@ -98,6 +99,9 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
+  const external=externalChatRoutes(app,studio,{youtubeFactory});
+  const externalState=studio.state.bind(studio);studio.state=()=>({...externalState(),externalChat:external.snapshot()});
+  const externalStop=studio.stop.bind(studio);studio.stop=()=>{external.disconnect();return externalStop();};
   app.post('/api/obs/connect',async(req,res)=>{
     const settings=z.object({port:z.number().int().min(1).max(65535),password:z.string().max(1024)}).strict().parse(req.body);
     if(res.destroyed)return;

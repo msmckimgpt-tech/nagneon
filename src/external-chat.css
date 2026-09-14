@@ -1,0 +1,7 @@
+.external-chat-panel{padding:14px 18px;font-size:12px;min-width:0}
+.external-chat-panel summary{cursor:pointer;font-weight:600}
+.external-chat-panel p{line-height:1.6;overflow-wrap:anywhere}
+.external-chat-panel label{display:block;margin:10px 0}
+.external-chat-panel input{display:block;width:100%;margin-top:5px}
+.external-chat-messages{max-height:240px;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border);margin-top:10px}
+.external-source{font-size:10px;color:var(--muted)}

@@ -56,7 +56,7 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Public context excludes everyone's personal memories. Each speaking persona
 // receives its own memory and only chat/previous frames after its latest entry.
 // Packets still share one model call; this is provenance, not secret isolation.
-export function liveViewerContext(audience,personas,history,previous,{journal,clips,speech='',sound,now=Date.now(),viewing}={}){
+export function liveViewerContext(audience,personas,history,previous,{journal,clips,speech='',sound,now=Date.now(),viewing,externalChat}={}){
   const packets={};
   // Recognition may finish after somebody returns. Its chat timestamp alone
   // does not mean they heard that microphone segment while they were away.
@@ -72,6 +72,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
       ...(journal?{recollections:journal.recall(p.id,speech,Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt).slice(-35).map(m=>m.id):[]).map(e=>({...e,experience:e.kind==='donation'?'witnessed-donation':e.speakerId===p.id?'own-words':'witnessed-words'}))}:{}),
       ...(clips?{clipMemories:clips.recall(p.id,speech,now),arrivalClipMemory:clips.recallArrival(member?.arrivalClip,now)}:{}),
       chatHistory:witnessed.slice(-35),
+      ...(externalChat?{externalChat:externalChat.context(joinedAt)}:{}),
       streamerExpression:streamerExpression(witnessed,{now}),
       chatAttention:chatAttention(witnessed,p,{now}),
       conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),

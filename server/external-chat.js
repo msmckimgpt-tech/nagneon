@@ -9,6 +9,7 @@ export class ExternalChat {
     this.clear();this.source={id:randomUUID(),platform,channelId,sessionId,startedAt:this.now()};this.onChange();return this.source.id;
   }
   clear(){this.source=null;this.messages=[];this.seen.clear();this.onChange();}
+  prune(){const count=this.messages.length,now=this.now();this.messages=this.messages.filter(m=>now-m.receivedAt<=60000);if(count!==this.messages.length)this.onChange();}
   snapshot(){return {source:this.source?{...this.source}:null,messages:this.messages.map(m=>({...m}))};}
   ingest(sourceId,sessionId,items){
     if(!this.source||sourceId!==this.source.id||sessionId!==this.source.sessionId)return false;
@@ -23,7 +24,7 @@ export class ExternalChat {
       if(!text||!name||!Number.isFinite(publishedAt)||publishedAt<this.source.startedAt||publishedAt>now+2000||now-publishedAt>60000)continue;
       this.seen.set(id,now);this.messages.push({id,platform:this.source.platform,sourceId,authorId,name,text,publishedAt,receivedAt:now,kind:'external'});changed=true;
     }
-    this.messages=this.messages.filter(m=>now-m.receivedAt<=60000).slice(-this.limit);
+    const count=this.messages.length;this.messages=this.messages.filter(m=>now-m.receivedAt<=60000).slice(-this.limit);changed ||= count!==this.messages.length;
     for(const [id,at] of this.seen)if(now-at>120000)this.seen.delete(id);
     while(this.seen.size>4000)this.seen.delete(this.seen.keys().next().value);
     if(changed)this.onChange();return changed;
