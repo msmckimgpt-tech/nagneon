@@ -3,7 +3,9 @@ import {z} from 'zod';
 import {Settings} from './schema.js';
 import {OpenAIProvider} from './provider.js';
 
-export const DebugConfig=z.object({enabled:z.boolean(),mode:z.enum(['append','replace']),prompt:z.string().max(60000)}).strict();
+// Preview builds persisted this optional flag. Keep it when reading and saving
+// existing profiles; missing flags retain the current stable debug behavior.
+export const DebugConfig=z.object({tryNewFeatures:z.boolean().optional(),enabled:z.boolean(),mode:z.enum(['append','replace']),prompt:z.string().max(60000)}).strict();
 export const initialDebug=()=>({enabled:false,mode:'append',prompt:''});
 
 // Only the authenticated settings API supplies this configuration. Message and
@@ -25,7 +27,7 @@ export function debugRoutes(app,studio,store,{idle=()=>true}={}){
     const base=new OpenAIProvider({}).payload({settings:studio.settings,history:[],speech:'',adviceRequested:false}).instructions;
     res.json({config:read(),basePrompt:base,settings:structuredClone(studio.settings),revision:revision()});
   });
-  app.put('/api/debug',(req,res)=>{requireIdle();const next=DebugConfig.parse(req.body);store.save(next);config=next;studio.publish();res.json({config:read()});});
+  app.put('/api/debug',(req,res)=>{requireIdle();const next=DebugConfig.parse({...('tryNewFeatures' in config?{tryNewFeatures:config.tryNewFeatures}:{}),...req.body});store.save(next);config=next;studio.publish();res.json({config:read()});});
   app.put('/api/debug/settings',(req,res)=>{
     requireIdle();if(!config.enabled)throw Error('먼저 디버그 모드를 켜주세요.');
     const input=z.object({revision:z.string(),settings:Settings}).strict().parse(req.body);
