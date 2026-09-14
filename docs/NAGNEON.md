@@ -34,11 +34,13 @@
 | 번들 Python·한국어 전사·시스템 소리 분석·공식 CLI 기존 계정 확인 | `artifacts/packaged-runtime-test.json` |
 | 2,452개 파일 / 3,130,267,014바이트 / 소스 81개·ASAR fuses | `artifacts/package-integrity-test.json` |
 | npm audit | 검출 0건 |
+| 격리 통합 worktree | `artifacts/nagneon/integration-check.log`, `integration-engine.log`, `renderer-result.json` |
+| GitHub Windows CI | [전체 검사 통과](https://github.com/msmckimgpt-tech/nagneon/actions/runs/34839044040) |
 
 독립 실행 폴더는 `release/2026-09-14T11-16-22-922Z/app/Nagneon-win32-x64`입니다. 새로운 실제 모델 응답이나 물리 게임 캡처는 이번 브랜드 변경의 검증 범위가 아닙니다.
 
 ## 배포 상태
 
-소스 실행과 미서명 독립 실행 폴더를 준비했습니다. 새 이름의 설치 생성물은 전체 페이로드 해시 검증과 C# 엔진 컴파일을 통과했지만, NSIS 3.12의 전체 패키지 압축에서 메모리 매핑 오류가 발생했습니다. `artifacts/nagneon/installer/makensis-output.log`에 원본 오류가 있습니다. 완성된 설치 파일로 배포하지 않습니다. 기존 설치 수용 차단도 유지하며 서명된 정식 설치·자동 업데이트 완료를 주장하지 않습니다.
+소스 실행과 미서명 독립 실행 폴더를 준비했습니다. NSIS 3.12의 solid 압축은 2GiB를 넘는 원본에서 메모리 매핑 오류가 발생하여 파일별 LZMA 압축으로 변경했습니다([NSIS 이슈](https://sourceforge.net/p/nsis/bugs/1284/)). `artifacts/nagneon/installer/makensis-output.log`에 최초 오류를 보존했습니다. 설치 생성물은 전체 페이로드 해시 검증과 C# 엔진 컴파일을 통과했습니다. 기존 설치 수용 차단을 유지하며 서명된 정식 설치·자동 업데이트 완료를 주장하지 않습니다.
 
 GitHub에는 소스·라이선스·소개 이미지·검증 workflow를 게시합니다. 모델·개인 기록·미완성 설치 파일은 게시하지 않습니다.

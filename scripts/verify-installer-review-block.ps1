@@ -1,5 +1,5 @@
 param(
-  [string]$InstallerPath = 'artifacts/installer-reviewed-fixture/BACKSEAT-Setup.exe',
+  [string]$InstallerPath = 'artifacts/installer-reviewed-fixture/Nagneon-Setup.exe',
   [string]$ReportPath = 'artifacts/installer-review-block-test.json'
 )
 $ErrorActionPreference = 'Stop'
