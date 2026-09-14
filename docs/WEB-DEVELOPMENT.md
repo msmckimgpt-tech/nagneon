@@ -64,7 +64,7 @@ PID·생성 시각·실행 파일·명령 경로가 일치하는 기기 에이�
 - 설치기 테스트 8개: Windows symlink 1개, WSL Windows 파서 1개를 각각
   건너뛰었으며 두 환경을 합쳐 전체 경로 검증. 원문 보존·재적용·백업·충돌
   거부·설치된 래퍼 실행과 PowerShell 구문 검사 포함.
-- `npm run check`: 기준 b4d5248에서 기존 647개 테스트와 TypeScript/Vite 빌드 통과.
+- `npm run check`: 인증 후 기준 7590aba에서 기존 648개 테스트와 TypeScript/Vite 빌드 통과.
 - 실제 로그인된 ChatGPT 웹에서 합성 `mean()` 예제를 정확성·경계값·유지보수
   세 대화로 검토하고, 별도 네 번째 대화에서 원문 세 결과를 종합했다.
   정상 응답 완료를 UI에서 확인한 후 로컬 수집·최종 검토를 수행했다.
@@ -78,12 +78,24 @@ PID·생성 시각·실행 파일·명령 경로가 일치하는 기기 에이�
 웹 종합에는 세 응답의 실제 접근성 트리 발췌를 전달했다. 개별 대화 URL은
 개인 로컬 자료에만 보존하며 공개 저장소에 포함하지 않는다.
 
-## 연결 상태와 남은 단계
+## 연결 상태
 
-별도 웹쫀쿠 런처는 설치·실행·CLI 버전을 확인했으나, 그 프로필의 ChatGPT
-로그인·browser smoke·모델 라우팅 완료는 아직 확인되지 않았다. Computer Use로
-진행하려 했으나 다른 작업의 OBS Windows 방화벽 창이 런처 입력을 가로막았다.
-해당 다른 앱의 권한을 변경하지 않고 대기 상태로 남긴다.
+OBS 입력 방해 해제 후 별도 웹쫀쿠 런처의 ChatGPT 로그인과 browser smoke가
+완료됐다. 사용자가 Google 인증을 직접 완료했고, Computer Use로 후속 설정을
+진행했다. 화면에서 `CODEX WEB GPT READY` 응답과 Smoke test passed를 확인했다.
+Install models로 격리된 보조 CODEX_HOME에 라우팅을 설치했고, doctor의 설정·
+인증 브라우저·Codex 라우트·런처 서비스·루프백 프록시 검사 모두 통과했다.
+보조 Codex 자체도 공식 OAuth로 로그인했다. 실제 `codex exec`에서
+`chatgpt-web/high`를 선택해 웹 응답을 수신했고 종료 코드 0을 확인했다.
+응답은 Markdown 이스케이프된 `WEB\_BRIDGE\_READY`로 보존돼 있다.
+증거는 사용자 도구 폴더 `logs/web-bridge-codex-smoke.log`와
+`runs/web-bridge-smoke.txt`에 있다. `chatgpt-web`만 지정하면 유효 모델이 아니므로
+실제 모델 슬러그를 사용한다. 기본 Codex 앱을 재시작하거나 제공처를 변경하지 않았다.
+
+웹쫀쿠는 browser-only로 운영한다. 이 경로에 로컬 Codex 도구가 없다는 경고는
+예상된 동작이며 파일 전달은 별도로 인증된 RDC 웹 클라이언트에서 수행한다.
+Full MCP 터널은 설치하지 않았다. 런처를 켠 상태에서 `start-web-codex.ps1`로
+보조 CLI를 열고 `/model`에서 필요한 웹 모델을 선택한다.
 
 RDC는 Computer Use로 기기 인증과 ChatGPT 공식 앱 OAuth 연결을 완료했다.
 서버에서 해당 기기의 온라인 상태를 확인했고, 실제 Web 모델이 비민감 fixture를
