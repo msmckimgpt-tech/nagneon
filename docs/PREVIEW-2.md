@@ -58,3 +58,20 @@
 웹 보조 검토는 실제 `chatgpt-web/high` 두 대화와 별도 종합 대화로 수행했다. 원문/도구 완료 receipt는 `artifacts/preview-cli-web-review`에 보존한다. 임시 ChatGPT 대화여서 재방문 가능한 고유 URL은 없다. helper finalize는 진행 중 수정된 subscription-provider.js의 drift를 감지해 거부했으며, 그 검토를 최종 원본 일치로 주장하지 않는다. 로컬에서 변경 diff·공식 2.1.270/0.59.0 CLI·테스트로 다시 판단했다.
 
 검토의 취소 종료 deadline, UTF-8 청크 조립, Claude 인증 enum/stream 출력 옵션은 수정했다. 정규식 `*`가 리터럴이라는 웹 진단은 원본과 테스트로 반증되어 반영하지 않았다. CLI 선택 저장을 무조건 거부하자는 제안은 로그인 전 선택→공식 로그인 버튼 흐름과 충돌하므로 채택하지 않았으며, 선택 저장/설치 준비/실제 인증을 UI와 안내에서 구분했다. 공식 설치 경로는 실제 npm 패키지로 확인했고 임의 셸 문자열은 실행하지 않는다. 사용자 지정 실행 파일은 인증된 로컬 설정의 신뢰 경계다. Gemini @file 해석은 생성한 파일명만 요청 문법으로 전달하며 내부 사용자 텍스트는 다시 CLI 인자로 넣지 않는다. 실제 Google 인증 후 모델 입력 경계 검증은 남은 프리뷰 수용 항목이다.
+
+## 배포 파일 검증 · 2026-09-15 KST
+
+소스 `f1db9da46bf09086c0f6332dba3d3a49c1747447`에서 만든 최종 실행본은 `release/2026-09-14T15-09-05-829Z/app/Nagneon-win32-x64`다. 2,452개 파일, 3,142,448,907바이트, 소스 98개가 일치했다. ASAR SHA-256은 `403749551068d29eb8627b9e56162178ed8e9cb2c4f1c7607064619c9f67904f`다.
+
+- `artifacts/package-integrity-test.json`: 전체 파일/소스 무결성 통과.
+- `artifacts/preview2-runtime.json`: 개발 도구 PATH 제외, 배포 ASAR의 모듈과 번들 Python/음성 모델/YAMNet/공식 Codex 실행. 합성 한국어 전사 4,437 ms, 실제 Astra low 응답 11,069 ms. 물리 마이크 검증은 아니다.
+- `artifacts/preview2-native.json`: 새 프로필로 실제 Nagneon.exe 창 생성·정상 종료·프로필 생성 통과.
+- [Windows CI 34860385768](https://github.com/msmckimgpt-tech/nagneon/actions/runs/34860385768): 660개 테스트/빌드, 설치 엔진 검사, Electron 세로 화면 검증 통과.
+- `artifacts/preview2-delivery.json`: 두 ZIP 안의 총 2,454개 파일을 원본 매니페스트 및 추가 README/프로젝트 라이선스와 SHA-256으로 대조해 통과. 사용자 프로필·키·로그를 포함하지 않는다.
+
+| ZIP | 바이트 | SHA-256 |
+|---|---:|---|
+| Nagneon-v0.1.0-preview.2-windows-x64-app.zip | 860,434,080 | `511465b982c6771ebf1341639cc09acce6394981c5732d395ec460a85f99d02b` |
+| Nagneon-v0.1.0-preview.2-microphone-model.zip | 1,413,591,768 | `f4df520d78681eae58f586e729c68fd4037d90b273b101f0bf6c953c4fa486a7` |
+
+이 검증 기록 추가 커밋은 문서만 변경하며 실행 코드·패키지·ZIP을 변경하지 않는다. 기존 v0.1.0-preview.1 태그와 main은 이번 프리뷰 게시 작업에서 변경하지 않았다.
