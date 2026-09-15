@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {extractFile,listPackage} from '@electron/asar';
 import {defaultSanitizePackageJson} from '@electron/packager';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-const roots={desktop:/\.cjs$/,server:/\.(js|proto)$/,shared:/\.(js|json)$/,dist:/\.(html|js|css|svg|png|woff2?)$/};
+export const packageSourceRoots={desktop:/\.cjs$/,server:/\.(js|proto)$|^server\/legacy-season-versions\.json$/,shared:/\.(js|json)$/,dist:/\.(html|js|css|svg|png|woff2?)$/};
 const workers={'scripts/clip_perception.py':'speech/clip_perception.py','scripts/speech_worker.py':'speech/speech_worker.py','scripts/sound_worker.py':'sound/sound_worker.py','scripts/clip_inspector.py':'speech/clip_inspector.py'};
 
 export async function packageSources(root){
@@ -23,7 +23,7 @@ export async function packageSources(root){
       }
     }
   }
-  for(const [name,extension] of Object.entries(roots))await visit(join(root,name),name,extension);
+  for(const [name,extension] of Object.entries(packageSourceRoots))await visit(join(root,name),name,extension);
   files.push({source:'LICENSE',kind:'archive',target:'LICENSE',sha256:digest(await readFile(join(root,'LICENSE')))});
   const pkg=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
   files.push({source:'package.json',kind:'archive',target:'package.json',sha256:digest(JSON.stringify(defaultSanitizePackageJson(pkg),null,2)+'\n')});
