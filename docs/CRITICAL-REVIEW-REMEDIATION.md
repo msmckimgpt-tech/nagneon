@@ -171,3 +171,5 @@
 - 작업본 npm run check 651/651·빌드 통과. 격리 offscreen Electron synthetic UI 11개 검사에서 기억 등록/삭제·만료 표시 없음 확인. artifacts/critical-review/lore-check.log, artifacts/nagneon/renderer-result.json. 실제 모델 응답의 의미상 회상 품질은 핵심어 선별 테스트와 별개다.
 
 - 새 안정성 정책에 따라 구버전 읽기 호환도 확인했다. 신규 기억의 expiresAt은 옛 스키마가 요구하는 유효한 최댓값(8.64e15)으로 저장한다. 현재 버전의 만료 동작이나 UI 날짜 표시는 없으며 구버전에서 날짜 누락으로 파일을 거절하는 것을 방지한다. 실제 패키지 업데이트/복귀 검증은 릴리즈 단계에서 별도로 수행한다.
+
+- 통합 검증: 원본 a65f3ef → 700cab171d670483b20de76e872df8306902a0f8을 main 628640d의 새 안정성 정책과 격리 squash 통합. npm run check 651/651·빌드와 offscreen Electron synthetic UI 11개 검사 통과. 원본 critical-review-integration/artifacts/critical-review-integration/lore-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·배포 버전은 아직 변경하지 않았다.
