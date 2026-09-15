@@ -29,7 +29,7 @@ export class CommunityActivity {
   interrupt(){this.lastInput=this.s.now();this.active?.controller.abort();}
   async yield(){this.interrupt();await this.active?.promise;}
   close(){this.closed=true;this.interrupt();}
-  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.training.active&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&s.settings.communityActivityEnabled&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
+  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&s.settings.communityActivityEnabled&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
   candidates(now){
     const s=this.s,data=this.data(),people=s.settings.personas.filter(p=>p.enabled&&!p.system&&p.id!==s.settings.managerId&&s.audience.data.members[p.id]?.sessions>0),candidates=[];
     const revisions=new Map(),recentSessions=new Set(s.journal.data.entries.filter(e=>!e.fictional&&e.at<=now&&now-e.at<=604800000).slice().reverse().map(e=>e.sessionId));

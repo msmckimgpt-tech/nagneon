@@ -47,7 +47,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
 
   // Settings must not change mid-broadcast, mid-rehearsal, or while the model is
   // mid-response. These guards keep both the save and the API-key action inert.
-  const locked=state.running||state.busy||!!state.training.active;
+  const locked=state.running||state.busy;
 
   function update<K extends keyof Settings>(field:K,value:Settings[K]){
     setDraft(prev=>({...prev,[field]:value}));

@@ -159,15 +159,3 @@ test('Just Chatting and replies from a stopped session never record game knowled
   const studio=new Studio({provider,knowledge,now:()=>now,random:()=>0,settings:liveSettings({category:'just-chatting'})});t.after(()=>studio.close());studio.start();await studio.react({image:img,speech:'안녕하세요'});assert.deepEqual(knowledge.entries,{});
   studio.stop();studio.configure({...studio.settings,category:'gaming'});now+=3000;studio.start();provider.react=()=>new Promise(r=>release=r);const pending=studio.react({image:img,speech:'보여요?'});studio.stop();release({observation:{game:'Test',scene:'late frame',confidence:1,excitement:0,messages:[]},usage:{}});await pending;assert.deepEqual(knowledge.entries,{});
 });
-
-// ── studio: 가상 기획 방송(directed fantasy)은 개인 목격 지식을 만들지 않는다 ──────────────
-test('directed fantasy frames never become personally witnessed game knowledge',async t=>{
-  let now=100000;const knowledge=new Knowledge();
-  const provider={status:()=>({configured:true}),react:async()=>({observation:{game:'Test',scene:'fantasy boss',confidence:0.95,excitement:0.9,messages:[]},usage:{}})};
-  const studio=new Studio({provider,knowledge,now:()=>now,random:()=>0,settings:liveSettings()});
-  t.after(()=>studio.close());
-  studio.start();
-  studio.director.active={id:'ep1',episodeId:'x',title:'가상 기획',premise:'',cast:[],sessionId:studio.sessionId,sessionStartedAt:studio.startedAt,startedAt:now,stage:0,stageTitle:'무대',totalStages:1,messages:[],choices:[],status:'active'};
-  await studio.react({image:img,speech:'기획 중'});
-  assert.equal(knowledge.get('Test').observations.length,0,'a fantasy scene must not become a witnessed observation');
-});

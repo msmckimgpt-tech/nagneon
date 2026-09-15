@@ -12,7 +12,7 @@ app.whenReady().then(async()=>{
  try{
   const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
   service=await startServer({port:0,persist:false,localSpeech:false,provider:{status:()=>({kind:'codex',configured:false,model:'test',effort:'low',authMessage:'검증용 · 계정 연결 없음'})}});
-  win=new BrowserWindow({width:1440,height:980,show:false,webPreferences:{session:createStudioSession(session,service),contextIsolation:true,sandbox:true}});
+  win=new BrowserWindow({width:1440,height:980,show:false,webPreferences:{offscreen:true,backgroundThrottling:false,session:createStudioSession(session,service),contextIsolation:true,sandbox:true}});
   win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});
   const js=code=>win.webContents.executeJavaScript(code);
   const until=async code=>{for(let i=0;i<150;i++){if(await js(code))return;await new Promise(r=>setTimeout(r,40));}throw Error('Timed out: '+code);};
@@ -42,22 +42,24 @@ app.whenReady().then(async()=>{
    }
   }
   checks.push('portrait 1080x1920 and 850x1500 keep stage and composer visible; 540 and 420 keep navigation accessible');win.setSize(1440,980);
-  for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송 놀이터','방송실']){
+  for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송실']){
    await js(`[...document.querySelectorAll('nav button')].find(b=>b.textContent===${JSON.stringify(label)}).click()`);
    await new Promise(r=>setTimeout(r,150));
    assert.equal(await js('/BACKSEAT|backseat/.test(document.body.innerText)'),false,'visible legacy name '+label);
    assert.equal(await js('/무료|검증|가상|시뮬레이션/.test(document.body.innerText)'),false,'immersive platform wording '+label);
    assert.equal(await js('!!document.querySelector("h1")'),true,label);
   }
-  checks.push('all eight navigation pages render with Nagneon branding');
+  checks.push('all seven navigation pages render with Nagneon branding');
+  assert.equal(await js(`document.body.textContent.includes('방송 놀이터')`),false);
+  checks.push('broadcast playground and scripted practice navigation are absent');
   for(const width of [850,420]){
    win.setSize(width,width===850?1500:900);
-   for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송 놀이터','방송실']){
+   for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송실']){
     await js(`[...document.querySelectorAll('nav button')].find(b=>b.textContent===${JSON.stringify(label)}).click()`);await new Promise(r=>setTimeout(r,120));
     assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true,'page fits '+width+' '+label);
    }
   }
-  checks.push('all eight pages avoid horizontal overflow at 850 and 420 pixels');win.setSize(1440,980);
+  checks.push('all seven pages avoid horizontal overflow at 850 and 420 pixels');win.setSize(1440,980);
   await click('리허설 시작');await until(`document.body.innerText.includes('방송 종료')`);assert.equal(service.studio.running,true);await shot('rehearsal');
   await click('방송 종료');await until(`document.body.innerText.includes('리허설 시작')`);checks.push('rehearsal start and stop through controls');
   await win.loadURL(service.url+'/overlay');await until(`!!document.querySelector('.overlay-shell')`);

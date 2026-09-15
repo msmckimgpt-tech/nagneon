@@ -22,7 +22,7 @@ export function Onboarding({state,onDone}:{state:State;onDone:()=>void}){
     catch(e){setError(e instanceof Error?e.message:'시작 안내를 저장하지 못했습니다.');}finally{setSaving(false);}
   }
   const ready=!!name.trim()&&!!title.trim();
-  const busy=saving||state.busy||state.running||!!state.training.active;
+  const busy=saving||state.busy||state.running;
   return <div className="welcome-shell">
     <header className="welcome-header"><span className="brand"><Brand/></span><button className="text-button" disabled={busy} onClick={()=>void finish()}>튜토리얼 건너뛰기</button></header>
     <main className="welcome-main"><div className="welcome-intro"><span className="eyebrow">WELCOME TO NAGNEON</span><h1 tabIndex={-1} ref={heading}>{['방송을 켜면, 이야기가 찾아옵니다.','어떤 채팅창을 꿈꾸셨나요?','관객이 인사할 준비를 할게요.'][step]}</h1><p>{['나그네처럼 들러, 단골처럼 머무는 관객들을 만나세요.','관객마다 성격은 다르게, 함께하는 분위기는 당신답게.','지금 연결하거나, 리허설로 방송실을 먼저 둘러보세요.'][step]}</p></div>

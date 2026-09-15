@@ -270,15 +270,7 @@ test('comment request marks non-attendees offstream and never claims video analy
 // ---------------------------------------------------------------------------
 // ClipFeatures.comments — training gate
 // ---------------------------------------------------------------------------
-test('no model comment calls run while a training run is active', async ()=>{
-  const clips=new Clips({now:()=>T});
-  const clip=clips.create(baseClip());
-  const studio=fakeStudio({training:{active:true}});
-  const cf=new ClipFeatures(studio,clips);
-  await assert.rejects(cf.comments({id:clip.id,targets:['momo']}),/연습/);
-  assert.equal(studio._spy.react,0);
-  assert.equal(studio.calls,0);
-});
+
 
 // ---------------------------------------------------------------------------
 // ClipFeatures.comments — rejected comments filtered, no partial batch

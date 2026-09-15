@@ -15,7 +15,7 @@ export function ConnectionPanel({state}:{state:State}){
   const logging=['checking','starting','waiting','cancelling'].includes(account.status);
   const probe=state.connectionProbe;
   const checking=probe?.status==='checking';
-  const disabled=state.running||!!state.training.active||state.busy||pending||logging;
+  const disabled=state.running||state.busy||pending||logging;
   async function perform(fn:()=>Promise<unknown>){setPending(true);setError('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'연결 요청에 실패했습니다.');}finally{setPending(false);}}
   async function login(method:'browser'|'device'){await perform(async()=>{if(window.backseat)setAccount(await window.backseat.startAccountLogin(method));});}
   const canLogin=state.provider.kind==='codex'&&window.backseat?.startAccountLogin;
