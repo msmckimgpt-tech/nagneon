@@ -5,7 +5,7 @@ import {api} from './api';
 import type {Message} from './types';
 import './donations.css';
 
-export function DonationToast({messages}:{messages:Message[]}){
+export function DonationToast({messages,publicMode=false}:{messages:Message[];publicMode?:boolean}){
   const [now,setNow]=useState(Date.now());
   const recent=messages.filter(m=>m.kind==='donation'&&m.time<=Date.now()&&Date.now()-m.time<12000).slice(-2);
   const expiry=recent.length?Math.min(...recent.map(m=>m.time+12000)):0;
@@ -15,7 +15,7 @@ export function DonationToast({messages}:{messages:Message[]}){
     return ()=>clearTimeout(timer);
   },[expiry,now]);
   return <div className="donation-toasts" role="status" aria-live="polite">{recent.map(m=><div className="donation-toast" key={m.id}>
-    <Gift size={24}/><div><b>{m.name} · {m.donation?.amount}P</b><p>{m.text}</p><small>응원해 주셔서 고마워요!</small></div>
+    <Gift size={24}/><div><b>{m.name} · {m.donation?.amount}P</b><p>{m.text}</p><small>{publicMode?'AI 관객의 가상 포인트 · 실제 금전 후원이 아닙니다':'응원해 주셔서 고마워요!'}</small></div>
   </div>)}</div>;
 }
 

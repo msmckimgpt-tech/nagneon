@@ -95,3 +95,14 @@
 - main 자체도 npm ci + npm run check 679/679·빌드 통과. 원본 G:/dev/ai/00_game_backseat/artifacts/critical-review-main/.
 - 첫 검토 문서에 지정한 상태 구성 architecture 웹 검토는 Extra High로 전송됨. 성능 탭은 Debugger unattached 오류로 미전송. 종합은 아직 미실행.
 - 전체 개선은 진행 중이며 이번 묶음은 초기 UX와 새 프로필 잔액 수정이다. 배포·성능·비활성 코드 제거·외부 채팅/공개 모드는 남아 있다.
+
+## 2차 수정: 외부 채팅 전송과 공개용 오버레이
+
+- 8-1/8-2: UI 연결 전 안내·확인, 두 플랫폼 서버 연결도 acknowledgeAiTransfer=true 필수. 확인 없는 연결은 transport/auth 시작 전에 거절한다.
+- 모델 컨텍스트만 기본 닉네임 익명화하며 연결마다 별칭 변경. 명시적 shareNames 선택 때만 닉네임 전달. 작성자 ID·sourceId는 전달하지 않는다. 원문 자체에 적힌 개인정보까지 제거한다고 주장하지 않는다. 원문 화면 표시·목격 시각·삭제에 의한 pending 취소는 유지한다.
+- 1-7/8-4/8-5/8-6: private/public 오버레이 설정. private은 캡처 제외, public은 허용. 공개용은 투명도와 별개로 AI 관객·가상 포인트 표시를 유지하고 후원 토스트도 실제 금전 후원과 구분한다.
+- 8절 README 사용 입장·전송 한계 설명 추가. 사용자 확인을 시청자 동의나 AI 제공처 원격 삭제로 오인시키지 않는다.
+- npm run check 683/683 및 빌드 통과. scripts/verify-public-overlay.cjs 실제 Electron 창에서 private → public → private 보호 상태 전환과 공개 표시 확인. synthetic 세션이며 OBS 실제 캡처는 아직 미검증.
+- 증거: artifacts/critical-review/privacy-check.log, artifacts/public-overlay/result.json, artifacts/public-overlay/public.png.
+- 웹 architecture 응답 수신은 브라우저 Debugger unattached 상태로 확인 불가. 전송 당시 URL https://chatgpt.com/c/WEB:21745bb3-6fbd-4057-b576-498683c6c96b . performance는 미전송, synthesis 미실행.
+- 1차 원본 a6466527b36ebe623affe3040db147ca0725b34c 원격 게시 일치. main은 audience-model-selection 통합 잠금 중 57fd39d로 변경됨. 잠금 우회 없이 최신 main에 격리 통합해야 한다.

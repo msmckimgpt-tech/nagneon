@@ -157,6 +157,13 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             </select>
           </label>
           <p className="field-note">게임 프로필은 ‘게임’ 탭에서 추가하고 다듬을 수 있어요.</p>
+          <label className="set-field">오버레이 사용 방식
+            <select value={draft.overlayMode||'private'} onChange={e=>update('overlayMode',e.target.value as Settings['overlayMode'])}>
+              <option value="private">개인용 · 나만 보는 관객</option>
+              <option value="public">공개용 · AI 관객 표시와 함께 방송에 공개</option>
+            </select>
+          </label>
+          <p className="field-note">공개용은 방송 캡처를 허용하고 AI 관객·가상 포인트 표시를 유지해요. 송출 전 OBS 미리보기에서 확인하세요. 개인용 캡처 제외는 캡처 방식에 따라 다를 수 있어요.</p>
         </>;
 
       case 'mood':

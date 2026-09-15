@@ -8,3 +8,6 @@
 .overlay-opacity input{min-width:40px;flex:1;width:auto}
 .overlay-opacity output{min-width:32px;text-align:right;font-variant-numeric:tabular-nums}
 .overlay-chat{min-height:0}
+
+.overlay-public-disclosure{flex-shrink:0;padding:10px 14px;background:#181f2b;color:#edf4f6;font-size:12px;line-height:1.5;border-bottom:1px solid #303b4b}
+.overlay-public-disclosure small{font-size:11px;color:#c5ceda}

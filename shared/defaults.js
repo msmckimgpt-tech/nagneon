@@ -14,6 +14,7 @@ export const games = [
 export const defaults = {
   title: '오늘도 같이 한 판', streamer: '플레이어', gameId: 'auto',
   showStreamerMessages: true,
+  overlayMode: 'private',
   communityActivityEnabled: true,
   speechDevice: 'gpu',
   contextualTranscription: true,
