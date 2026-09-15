@@ -12,7 +12,7 @@ app.whenReady().then(async()=>{
  try{
   const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);
   service=await startServer({port:0,persist:false,localSpeech:false,provider:{status:()=>({kind:'codex',configured:false,model:'test',effort:'low',authMessage:'검증용 · 계정 연결 없음'})}});
-  win=new BrowserWindow({width:1440,height:980,show:false,webPreferences:{session:createStudioSession(session,service),contextIsolation:true,sandbox:true}});
+  win=new BrowserWindow({width:1440,height:980,show:false,webPreferences:{offscreen:true,backgroundThrottling:false,session:createStudioSession(session,service),contextIsolation:true,sandbox:true}});
   win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});
   const js=code=>win.webContents.executeJavaScript(code);
   const until=async code=>{for(let i=0;i<150;i++){if(await js(code))return;await new Promise(r=>setTimeout(r,40));}throw Error('Timed out: '+code);};
@@ -50,6 +50,13 @@ app.whenReady().then(async()=>{
    assert.equal(await js('!!document.querySelector("h1")'),true,label);
   }
   checks.push('all eight navigation pages render with Nagneon branding');
+  await js(`[...document.querySelectorAll('nav button')].find(b=>b.textContent==='방송 놀이터').click()`);
+  await until(`!![...document.querySelectorAll('summary')].find(s=>s.textContent==='예전 기획 방송 기록')`);
+  await js(`[...document.querySelectorAll('summary')].find(s=>s.textContent==='예전 기획 방송 기록').click()`);
+  await until(`document.body.textContent.includes('보관된 기록이 없습니다.')`);
+  assert.equal(await js(`document.body.textContent.includes('다음 장면 열기')`),false);
+  await shot('natural-experiences');checks.push('retired story archive loads on demand without story controls');
+
   for(const width of [850,420]){
    win.setSize(width,width===850?1500:900);
    for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송 놀이터','방송실']){

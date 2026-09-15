@@ -1,5 +1,7 @@
 import {z} from 'zod';
-import {templateFor} from '../shared/seasons.js';
+// Immutable topology validates saved stories only; no stage prompts or runtime engine.
+import versions from './legacy-season-versions.json' with {type:'json'};
+const templateFor=id=>versions.find(v=>v.id===id);
 const time=z.number().finite().nonnegative().max(8.64e15),id=z.string().uuid();
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
 const cast=z.array(z.object({id:actor,name:z.string().max(100)})).max(40);

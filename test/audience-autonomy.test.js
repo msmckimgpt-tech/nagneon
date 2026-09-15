@@ -141,7 +141,8 @@ test('quiet personal favorites produce spectator clips without donation, forbid 
   const observation=result({clipPicks:[{personaId:id,title:'작은 화분 이야기',reason:'같은 취미라 좋아서',signature:'작은 화분'}]}).observation;
   const clips=s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at});assert.equal(clips.length,1);assert.equal(clips[0].creator.id,id);assert.equal(clips[0].source,'spectator');assert.equal(s.economy.data.balance,150);
   assert.equal(s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at}).length,0);
-  for(const path of ['clips','director/clip','seasons/clip','director/start','seasons/resume'])assert.equal((await req(service,path,{})).status,409);
+  assert.equal((await req(service,'clips',{})).status,409);
+  for(const path of ['director/clip','seasons/clip','director/start','seasons/resume'])assert.equal((await req(service,path,{})).status,410);
   s.settings.autoHighlights=false;assert.equal(s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at}).length,0);
   const response=await fetch(service.url+`/api/clips/${clips[0].id}/video?startedAt=${at-1000}&endedAt=${at+1000}&hasAudio=true`,{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'video/webm'},body:Buffer.alloc(120)});assert.equal(response.status,409);assert.equal(s.clips.get(clips[0].id).video,false);
 });

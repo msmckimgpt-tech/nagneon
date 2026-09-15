@@ -1,0 +1,197 @@
+[
+  {
+    "id": "our-room-v1",
+    "version": 1,
+    "start": "opening",
+    "nodes": [
+      {
+        "id": "opening",
+        "choices": [
+          {
+            "id": "radio",
+            "label": "새벽 라디오를 열자",
+            "next": "radio"
+          },
+          {
+            "id": "festival",
+            "label": "우리만의 축제를 열자",
+            "next": "festival"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "radio",
+        "choices": [
+          {
+            "id": "letter",
+            "label": "미래의 우리에게 편지를",
+            "next": "letter"
+          },
+          {
+            "id": "encore",
+            "label": "관객들과 앙코르 무대로",
+            "next": "encore"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "festival",
+        "choices": [
+          {
+            "id": "letter",
+            "label": "함께 만든 편지로 마무리",
+            "next": "letter"
+          },
+          {
+            "id": "encore",
+            "label": "대형 앙코르를 열자",
+            "next": "encore"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "letter",
+        "choices": [],
+        "keepsake": "다음 계절의 편지"
+      },
+      {
+        "id": "encore",
+        "choices": [],
+        "keepsake": "우리 방 앙코르 티켓"
+      }
+    ]
+  },
+  {
+    "id": "starlight-v1",
+    "version": 1,
+    "start": "launch",
+    "nodes": [
+      {
+        "id": "launch",
+        "choices": [
+          {
+            "id": "signal",
+            "label": "미지의 신호를 따라가자",
+            "next": "signal"
+          },
+          {
+            "id": "port",
+            "label": "별들의 항구로 가자",
+            "next": "port"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "signal",
+        "choices": [
+          {
+            "id": "home",
+            "label": "우리 방으로 귀환",
+            "next": "home"
+          },
+          {
+            "id": "gala",
+            "label": "별빛 갈라로 향하기",
+            "next": "gala"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "port",
+        "choices": [
+          {
+            "id": "home",
+            "label": "우리 방으로 귀환",
+            "next": "home"
+          },
+          {
+            "id": "gala",
+            "label": "마지막 갈라를 열자",
+            "next": "gala"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "home",
+        "choices": [],
+        "keepsake": "채팅호 항해일지"
+      },
+      {
+        "id": "gala",
+        "choices": [],
+        "keepsake": "별빛 원정대 휘장"
+      }
+    ]
+  },
+  {
+    "id": "crew-league-v1",
+    "version": 1,
+    "start": "draft",
+    "nodes": [
+      {
+        "id": "draft",
+        "choices": [
+          {
+            "id": "rival",
+            "label": "라이벌과 정면 승부",
+            "next": "rival"
+          },
+          {
+            "id": "camp",
+            "label": "합숙과 성장부터",
+            "next": "camp"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "rival",
+        "choices": [
+          {
+            "id": "final",
+            "label": "결승 무대로",
+            "next": "final"
+          },
+          {
+            "id": "documentary",
+            "label": "우리의 성장 다큐로",
+            "next": "documentary"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "camp",
+        "choices": [
+          {
+            "id": "final",
+            "label": "결승에 도전",
+            "next": "final"
+          },
+          {
+            "id": "documentary",
+            "label": "성장 기록을 남기자",
+            "next": "documentary"
+          }
+        ],
+        "keepsake": null
+      },
+      {
+        "id": "final",
+        "choices": [],
+        "keepsake": "우리 크루 리그 패치"
+      },
+      {
+        "id": "documentary",
+        "choices": [],
+        "keepsake": "크루 성장 다큐 포스터"
+      }
+    ]
+  }
+]

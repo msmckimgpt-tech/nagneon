@@ -89,7 +89,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   const economy=new Economy(world.data.economy,value=>world.part('economy',value));
   const clips=new Clips({data:clipsStore.data,dir:persist?resolve(dataDir,'clip-media'):undefined,save:clipsStore.save});
   const storageStatus=()=>({warnings:stores.flatMap(s=>s.warnings).slice(-6),recovered:stores.filter(s=>s.recoveredFrom).map(s=>s.recoveredFrom)});
-  const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,clipPerception:new ClipPerception(runtime),directorData:episodesStore.data,saveDirector:episodesStore.save,seasonsData:seasonsStore.data,saveSeasons:seasonsStore.save,storageStatus});const app=express();
+  const studio=new Studio({provider,settings:world.data.settings,persist:value=>world.part('settings',value),world,knowledge,audience,journal,economy,clips,clipPerception:new ClipPerception(runtime),storageStatus});const app=express();
   const tutorial=new Tutorial(studio,tutorialStore);
   const probe=new ConnectionProbe(provider,()=>studio.publish());
   const obsInput=new ObsInput({createClient:obsClientFactory,onChange:()=>studio.publish(),onEnd:sourceId=>studio.endVideo({sessionId:studio.sessionId,sourceId})});
@@ -113,7 +113,6 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   }
   app.use((req,res,next)=>access.authenticated(req)?next():res.status(401).json({error:'앱 연결 인증이 필요합니다. Nagneon 창에서 다시 연결하세요.'}));
   app.use(express.json({limit:'3mb'}));
-  app.use((req,res,next)=>req.method==='POST'&&['/api/director/start','/api/director/advance','/api/seasons','/api/seasons/resume','/api/seasons/advance','/api/seasons/propose','/api/seasons/respond'].includes(req.path)?res.status(409).json({error:'새로운 방송 이야기는 일반 채팅에서 자연스럽게 이어집니다. 방송실에서 관객에게 말해주세요.'}):next());
   app.use((req,res,next)=>probe.controller&&!['GET','HEAD'].includes(req.method)&&!['/api/connection/probe/cancel','/api/stop'].includes(req.path)?res.status(409).json({error:'연결 응답 확인을 마친 뒤 다시 시도하세요.'}):next());
   app.use((req,res,next)=>providerChoice?.changing&&!['GET','HEAD'].includes(req.method)&&req.path!=='/api/stop'?res.status(409).json({error:'AI 제공처 변경을 마친 뒤 다시 시도하세요.'}):next());
   app.get('/api/state',(_req,res)=>res.json(studio.state()));
@@ -191,22 +190,19 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/training/start',(req,res)=>res.json(studio.startTraining(z.object({id:z.string().max(60)}).parse(req.body).id)));
   app.post('/api/training/action',(req,res)=>{const {action,text}=z.object({action:z.enum(['response','checklist','moderation']),text:z.string().max(600).default('')}).parse(req.body);res.json(studio.trainingAction(action,text));});
   app.post('/api/training/stop',(_req,res)=>res.json(studio.stopTraining()));
-  app.post('/api/director/start',(req,res)=>res.json(studio.director.start(z.object({episodeId:z.string().max(60),premise:z.string().trim().max(1200).default(''),targets:z.array(z.string().max(40)).min(1).max(8).optional()}).parse(req.body))));
-  app.post('/api/director/advance',async(req,res)=>res.json(await studio.director.advance(z.object({text:z.string().trim().max(1200).default('')}).parse(req.body))));
-  app.post('/api/director/finish',(req,res)=>res.json(studio.director.finish(z.object({status:z.enum(['completed','interrupted'])}).parse(req.body).status)));
+  // Retired story engines: old clients cannot mutate or restart archived stories.
+  const retiredStory=(_req,res)=>res.status(410).json({error:'기획 방송 기능은 종료되었습니다. 관객과의 이야기는 방송실 대화로 이어가세요. 예전 기록은 내보내기에 보관되어 있습니다.'});
+  app.use(['/api/director','/api/seasons'],(req,res,next)=>req.method==='GET'?next():retiredStory(req,res));
+  app.get('/api/seasons/:id',(req,res)=>{
+    const item=seasonsStore.data.seasons.find(s=>s.id===z.string().uuid().parse(req.params.id));
+    if(!item)return res.status(404).json({error:'기록을 찾을 수 없습니다.'});
+    res.json(item);
+  });
+  app.get('/api/story-archive',(_req,res)=>res.json({
+    episodes:episodesStore.data.map(({id,title,startedAt,messages})=>({id,title,startedAt,messageCount:messages.length})),
+    seasons:seasonsStore.data.seasons.map(({id,title,createdAt,chapters})=>({id,title,startedAt:createdAt,messageCount:chapters.reduce((n,c)=>n+c.messages.length,0)}))
+  }));
   const viewerClipOnly=(_req,res)=>res.status(409).json({error:'핫클립은 관객이 마음에 든 순간을 직접 골라 만듭니다.'});
-  app.post('/api/director/clip',viewerClipOnly);
-  app.post('/api/seasons', (req,res)=>res.json(studio.seasons.create(z.object({templateId:z.string().max(60),title:z.string().max(100).default(''),premise:z.string().max(1200).default('')}).parse(req.body))));
-  app.get('/api/seasons/:id',(req,res)=>res.json(studio.seasons.get(z.string().uuid().parse(req.params.id))));
-  app.delete('/api/seasons/:id',(req,res)=>{studio.seasons.remove(z.string().uuid().parse(req.params.id));res.json({ok:true});});
-  app.post('/api/seasons/resume',(req,res)=>res.json(studio.seasons.resume(z.object({id:z.string().uuid(),targets:z.array(z.string().max(40)).min(1).max(8).optional()}).parse(req.body))));
-  app.post('/api/seasons/pause',(_req,res)=>{studio.seasons.pause();res.json({ok:true});});
-  app.post('/api/seasons/advance',async(req,res)=>res.json(await studio.seasons.advance(z.object({text:z.string().trim().max(1200).default('')}).parse(req.body))));
-  app.post('/api/seasons/choose',(req,res)=>res.json(studio.seasons.choose(z.object({id:z.string().uuid(),choiceId:z.string().max(40).optional()}).parse(req.body))));
-  app.post('/api/seasons/clip',viewerClipOnly);
-  app.post('/api/seasons/settings',(req,res)=>res.json(studio.seasons.configure(z.object({autoProposals:z.boolean()}).parse(req.body))));
-  app.post('/api/seasons/propose',async(_req,res)=>res.json(await studio.seasons.propose()));
-  app.post('/api/seasons/respond',(req,res)=>res.json(studio.seasons.respond(z.object({id:z.string().uuid(),action:z.enum(['accept','decline','snooze'])}).parse(req.body))));
   app.post('/api/clips',viewerClipOnly);
   app.get('/api/clips/:id',(req,res)=>res.json(clips.get(z.string().uuid().parse(req.params.id))));
   app.delete('/api/clips/:id',(req,res)=>{clips.remove(z.string().uuid().parse(req.params.id));studio.publish();res.json({ok:true});});
@@ -264,7 +260,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/journal/:id/pin',(req,res)=>{const id=z.string().uuid().parse(req.params.id);const {pinned}=z.object({pinned:z.boolean()}).parse(req.body);journal.pin(id,pinned);studio.publish();res.json({ok:true});});
   app.delete('/api/journal/:id',(req,res)=>{if(studio.busy)throw new Error('관객 응답이 끝난 뒤 기억을 지울 수 있습니다.');studio.moderate('delete',z.string().uuid().parse(req.params.id));studio.queue=[];studio.publish();res.json({ok:true});});
   app.get('/api/diagnostics/reactions',(req,res)=>{if(req.query.download==='true')res.attachment('nagneon-reaction-diagnostics.json');res.set('Cache-Control','no-store').json(studio.reactions.snapshot(studio.queue));});
-  app.get('/api/export',(_req,res)=>{res.attachment(`nagneon-${studio.sessionId || 'session'}.json`).json({exportedAt:new Date().toISOString(),...studio.state(),seasonsArchive:studio.seasons.data,conversationJournal:journal.data});});
+  app.get('/api/export',(_req,res)=>{res.attachment(`nagneon-${studio.sessionId || 'session'}.json`).json({exportedAt:new Date().toISOString(),...studio.state(),seasonsArchive:seasonsStore.data,episodesArchive:episodesStore.data,conversationJournal:journal.data});});
   app.use(express.static(resolve(root,'dist')));
   app.get(['/', '/overlay'],(_req,res)=>res.sendFile(resolve(root,'dist/index.html')));
   app.use((error,_req,res,_next)=>res.status(error instanceof z.ZodError?400:409).json({error:error instanceof z.ZodError?'입력 설정을 확인하세요: '+error.issues.map(i=>i.message).join(', '):error.message || '요청 처리 실패'}));

@@ -68,17 +68,15 @@ test('screen-only replies expire both during model latency and while queued behi
   g.advance(SCREEN_REACTION_TTL_MS);g.s.pump();assert.equal(g.s.queue.length,0);assert.equal(g.s.messages.filter(m=>m.kind==='chat').length,0);
 });
 
-test('spoken answers and explicitly directed conversations are not expired as screen-only reactions',async t=>{
+test('spoken answers are not expired as screen-only reactions',async t=>{
   let release;const f=studio(t,{react:()=>new Promise(r=>release=r)});const job=f.s.react({image:'same',speech:'이 장면에 대해 자세히 설명해 주세요.'});
   f.advance(SCREEN_REACTION_TTL_MS+1);release({observation:obs('질문에 대한 답이에요.')});await job;f.advance(2000);f.s.pump();assert.ok(f.s.messages.some(m=>m.text==='질문에 대한 답이에요.'));
-  f.s.accept(obs('합의한 가상 대화'),f.now()-100000,true,'directed',{expiresAt:0});f.advance(2000);f.s.pump();assert.ok(f.s.messages.some(m=>m.text==='합의한 가상 대화'));
 });
 
-test('requested ambient turns and directed turns bypass an unchanged image',async t=>{
+test('requested ambient turns bypass an unchanged image',async t=>{
   const f=studio(t);await f.s.react({image:'same'});f.advance(6000);
   f.s.autonomy={tick:()=>{},evolve:()=>{},snapshot:()=>({}),stop:()=>{}};f.s.ambient.context('서로의 취향 얘기를 해봐요.');
   await f.s.react({image:'same'});assert.equal(f.requests.length,2);assert.equal(f.requests[1].ambient.id,'taste');
-  f.s.autonomy=null;f.s.director.context=()=>({id:'synthetic-directed',instruction:'합성 기획'});f.advance(6000);await f.s.react({image:'same'});assert.equal(f.requests.length,3);
 });
 
 test('failed inference does not acknowledge input, and a new session starts fresh',async t=>{

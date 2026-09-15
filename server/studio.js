@@ -10,8 +10,6 @@ import { Economy } from './economy.js';
 import { SpecialFeatures } from './special-features.js';
 import { Clips,ClipFeatures } from './clips.js';
 import { TrainingRun } from './training.js';
-import { Director } from './director.js';
-import { StorySeasons } from './seasons.js';
 import {SoundScene} from './sound-scene.js';
 import { ConversationJournal } from './conversation-journal.js';
 import {AudienceAutonomy} from './audience-autonomy.js';
@@ -32,13 +30,12 @@ import {sameViewingVisit,retainPresentReactions} from './live-presence.js';
 import {ReactionDiagnostics} from './reaction-diagnostics.js';
 
 export class Studio extends EventEmitter {
-  constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,clipPerception,directorData=[],saveDirector=()=>{},seasonsData,saveSeasons=()=>{},storageStatus=()=>({warnings:[],recovered:[]})}={}) {
+  constructor({provider,settings=defaults,persist=()=>{},world,now=Date.now,random=Math.random,knowledge=new Knowledge(),audience=new Audience(),journal=new ConversationJournal(),economy,clips,clipPerception,storageStatus=()=>({warnings:[],recovered:[]})}={}) {
     super();this.provider=provider;this.settings=Settings.parse(settings);this.persist=persist;this.now=now;this.random=random;
     this.storageStatus=storageStatus;this.audience=audience;this.journal=journal;this.knowledge=knowledge;this.running=false;this.messages=[];this.events=[];this.queue=[];this.controller=new AbortController();this.epoch=0;
     this.economy=economy || new Economy(undefined,()=>{},now);this.economy.ensureWallets(this.settings.personas);this.special=new SpecialFeatures(this);
     this.clips=clips||new Clips({now});this.clipFeatures=new ClipFeatures(this,this.clips);
-    this.training=new TrainingRun({now});this.trainingMessages=[];this.director=new Director(this,{data:directorData,save:saveDirector});
-    this.seasons=new StorySeasons(this,{data:seasonsData,save:saveSeasons});
+    this.training=new TrainingRun({now});this.trainingMessages=[];
     this.sound=new SoundScene(this);this.viewing=new ViewingContinuity();this.reactions=new ReactionDiagnostics(now);this.resetCounters(); this.timer=setInterval(()=>this.pump(),250);this.timer.unref();
     this.world=world;this.ambient=new Ambient(this);this.community=new Community(this);if(world){world.bind(this);this.autonomy=new AudienceAutonomy(this,world);}
     this.communityActivity=new CommunityActivity(this);
@@ -54,7 +51,7 @@ export class Studio extends EventEmitter {
     if(this.viewing.last?.video?.sourceId===sourceId){this.viewing.reset();this.knowledge.lastSeen=null;this.observation=null;}
     this.publish();return {ok:true};
   }
-  state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},director:this.director.snapshot(),seasons:this.seasons.snapshot(),clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,communityActivity:undefined,posts:this.community.list().reverse(),presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy&&!this.communityActivity?.active,communityActivity:this.communityActivity?.snapshot(),lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
+  state(){return {ambient:this.ambient.snapshot(),sound:this.sound.snapshot(),journal:this.journal.summary(),storage:this.storageStatus(),settings:this.world?.publicSettings()||this.settings,autonomy:this.autonomy?.snapshot(),training:{...this.training.snapshot(),messages:this.trainingMessages},clips:this.clips.list(),economy:this.economy.snapshot(this.settings.personas),audience:this.world?.publicAudience()||{...this.audience.data,communityActivity:undefined,posts:this.community.list().reverse(),presence:this.audience.presence},knowledge:Object.values(this.knowledge.entries),running:this.running,sessionId:this.sessionId,startedAt:this.startedAt,messages:this.messages,events:this.events,observation:this.observation,calls:this.calls,tokens:this.tokens,busy:this.busy&&!this.communityActivity?.active,communityActivity:this.communityActivity?.snapshot(),lastError:this.lastError,provider:this.provider.status(),queued:this.queue.length};}
   publish(){this.emit('state',this.state());}
   receiveSpeech({id,sessionId,text,source='keyboard',capture}){
     this.communityActivity.interrupt();
@@ -67,7 +64,7 @@ export class Studio extends EventEmitter {
       this.queue=this.queue.filter(m=>m.origin!=='live');
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
-      if(this.liveReaction&&(!this.liveReaction.hasSpeech||(!this.liveReaction.directed&&(revisesLiveSituation(text)||adviceIntent(text).refused)))){this.liveReaction.superseded=true;this.liveReaction.controller.abort();}
+      if(this.liveReaction&&(!this.liveReaction.hasSpeech||(revisesLiveSituation(text)||adviceIntent(text).refused))){this.liveReaction.superseded=true;this.liveReaction.controller.abort();}
     }
     this.publish();return {...result,pending:this.speechInbox.pending.length};
   }
@@ -98,24 +95,22 @@ export class Studio extends EventEmitter {
   stop(){
     this.communityActivity?.interrupt();this.sound.stop();this.running=false;this.epoch++;this.controller.abort();this.busy=false;this.audioBusy=false;this.queue=[];this.speechInbox.clear();this.knowledge.lastSeen=null;this.ambient?.reset();
     // Storage failure must never keep the live session or its pending model alive.
-    for(const [label,save] of [['시즌',()=>this.seasons.pause()],['관객',()=>this.audience.stop()],['시청 시간',()=>this.autonomy?.stop()]]){
+    for(const [label,save] of [['관객',()=>this.audience.stop()],['시청 시간',()=>this.autonomy?.stop()]]){
       try{save();}catch(error){this.lastError=`${label} 종료 기록 저장 실패: ${error.message}`;this.log(this.lastError);}
     }
     if(this.training.active)this.training.stop();
-    try{this.director.finish('interrupted');}catch(error){this.log(`기획 방송 기록 저장 실패: ${error.message}`);this.director.active=null;this.director.serial++;}
     this.log('방송 종료 · 대기 반응 취소');this.publish();
   }
   close(){this.communityActivity.close();void this.clipPerception.close();this.stop();clearInterval(this.timer);}
   prepareMessage(personaId,text,kind='chat') {
     const p=this.settings.personas.find(p=>p.id===personaId);
-    return {id:randomUUID(),personaId,name:p?.name || this.settings.streamer,color:p?.color || '#ffffff',text,kind,time:this.now(),...((this.director.active||this.seasons.active)?{fictional:true}:{})};
+    return {id:randomUUID(),personaId,name:p?.name || this.settings.streamer,color:p?.color || '#ffffff',text,kind,time:this.now()};
   }
   publishMessage(msg,{witnesses=this.presentWitnesses()}={}){
-    this.seasons.record(msg);this.messages.push(msg);
-    const directed=this.director.context()||this.seasons.context();
-    if(this.running&&this.settings.mode==='live')try{this.journal.record(msg,{sessionId:this.sessionId,witnesses,title:directed?.title||this.settings.title});}catch(error){this.log(`대화 기억 보관 실패: ${error.message}`);this.lastError='대화는 표시됐지만 기억에 보관하지 못했습니다. '+error.message;}
-    if(this.settings.mode==='live')try{this.audience.message(msg.personaId,directed?`[가상 기획 방송: ${directed.title}] ${msg.text}`:msg.text,this.settings);}catch(error){this.log(`관객 기억 저장 실패: ${error.message}`);this.lastError=error.message;}
-    this.director.record(msg);this.messages=this.messages.slice(-500);this.publish();return msg;
+    this.messages.push(msg);
+    if(this.running&&this.settings.mode==='live')try{this.journal.record(msg,{sessionId:this.sessionId,witnesses,title:this.settings.title});}catch(error){this.log(`대화 기억 보관 실패: ${error.message}`);this.lastError='대화는 표시됐지만 기억에 보관하지 못했습니다. '+error.message;}
+    if(this.settings.mode==='live')try{this.audience.message(msg.personaId,msg.text,this.settings);}catch(error){this.log(`관객 기억 저장 실패: ${error.message}`);this.lastError=error.message;}
+    this.messages=this.messages.slice(-500);this.publish();return msg;
   }
   addMessage(personaId,text,kind='chat'){return this.publishMessage(this.prepareMessage(personaId,text,kind));}
   moderate(action,id){
@@ -165,7 +160,7 @@ export class Studio extends EventEmitter {
       delay+=600+this.random()*1600;
       if(first){delay=Math.max(0,delay-responseWait);first=false;}
       this.reactions.admit(diagnosticId);
-      this.queue.push({...m,origin,chatDriven,...(externalIds?.length?{externalIds}:{}),...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),episodeId:this.director.active?.id,seasonId:this.seasons.active?.id,kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.queue.push({...m,origin,chatDriven,...(externalIds?.length?{externalIds}:{}),...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
@@ -173,7 +168,7 @@ export class Studio extends EventEmitter {
   startTraining(id){if(this.running||this.busy)throw new Error('방송과 관객 응답을 종료한 뒤 연습하세요.');this.training.start(id,this.settings.personas.filter(p=>p.id!==this.settings.managerId));this.trainingMessages=[];this.pump();this.publish();return this.state().training;}
   trainingAction(action,text=''){if(!['response','checklist','moderation'].includes(action))throw new Error('연습 행동을 확인하세요.');if(action==='response'&&!text.trim())throw new Error('응답을 입력하세요.');const entry=this.training.action(action,text);if(action==='response')this.trainingMessages.push({id:randomUUID(),personaId:'streamer',name:this.settings.streamer,color:'#ffffff',text:entry.text,kind:'streamer',time:entry.at});this.trainingMessages=this.trainingMessages.slice(-200);this.publish();return entry;}
   stopTraining(){const report=this.training.stop();this.publish();return report;}
-  pump(){this.externalChat?.prune();if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running){this.communityActivity?.tick();return;}const now=this.now();this.tickAudience();if(!this.autonomy)this.seasons.maybePropose();
+  pump(){this.externalChat?.prune();if(this.training.active){for(const m of this.training.tick()){const p=this.settings.personas.find(p=>p.id===m.personaId);this.trainingMessages.push({...m,id:randomUUID(),name:p?.name||'관객',color:p?.color||'#ffffff',time:this.now()});this.publish();}return;}if(!this.running){this.communityActivity?.tick();return;}const now=this.now();this.tickAudience();
     const count=this.queue.length;this.queue=this.queue.filter(m=>{if(m.origin!=='live')return true;const expired=Number.isFinite(m.expiresAt)&&now>=m.expiresAt,absent=this.settings.mode==='live'&&!sameViewingVisit(this.audience,m.personaId,m.viewingVisit);if(expired||absent){this.reactions.drop(m.diagnosticId,expired?'expired':'absent');return false;}return true;});if(this.queue.length!==count)this.publish();
     const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0){this.communityActivity?.tick();return;}
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled)){this.reactions.drop(m.diagnosticId,'disabled');return;}this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.advice?{advice:true,...(m.adviceRequestId?{adviceRequestId:m.adviceRequestId}:{})}:{}),...(m.chatDriven?{chatDriven:true}:{})});this.reactions.delivered(m.diagnosticId);}catch(error){this.reactions.drop(m.diagnosticId,'delivery-error');this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
@@ -195,7 +190,7 @@ export class Studio extends EventEmitter {
     if(this.now()<this.retryAt)return {skipped:'backoff'};
     if(this.now()-Math.max(this.lastRequest,this.viewing.checkedAt)<this.settings.intervalSeconds*1000&&!speech)return {skipped:'interval'};
     if(speech&&this.now()-this.lastRequest<2000)return {skipped:'interval'};
-    const epoch=this.epoch,directed=this.director.context()||this.seasons.context(),directorSerial=this.director.serial,seasonSerial=this.seasons.serial;
+    const epoch=this.epoch;
     let viewing,frames=[],screenTimeline,idleConversation,watchingCompany;
     if(this.settings.mode==='live'){
       this.tickAudience();if(this.autonomy?.waiting)return {skipped:'audience-arrival'};const witnesses=this.presentWitnesses();
@@ -211,14 +206,14 @@ export class Studio extends EventEmitter {
       for(const id of new Set(witnesses.flatMap(id=>this.externalChat?.context(this.audience.data.members[id].joinedAt).map(m=>m.id)||[])))peerIds.push(id);
       viewing=this.viewing.observe({image,frames,screenTimeline,people:witnesses.map(id=>({id,joinedAt:this.audience.data.members[id].joinedAt})),soundIds,peerIds,scope:this.settings.category+':'+this.settings.gameId,at:this.now()});
       if(!image)this.knowledge.lastSeen=null;
-      const ambient=this.autonomy&&!directed?this.ambient.snapshot():null;
-      if(!speech.trim()&&!directed&&!ambient?.active){
+      const ambient=this.autonomy?this.ambient.snapshot():null;
+      if(!speech.trim()&&!ambient?.active){
         // Animated menus and repeated music change samples without necessarily
         // changing the conversation. Offer company without dropping fresh input.
         if(this.viewing.unchanged(viewing))idleConversation=this.ambient.idle(witnesses);
         else watchingCompany=this.ambient.idle(witnesses,{observing:true});
       }
-      if(!speech.trim()&&!directed&&!ambient?.active&&!idleConversation&&this.viewing.unchanged(viewing)){
+      if(!speech.trim()&&!ambient?.active&&!idleConversation&&this.viewing.unchanged(viewing)){
         // Identical current pixels still count as watching. Do not resurrect a
         // forgotten record or infer viewing while the image is disconnected.
         try{if(image&&this.knowledge.lastSeen&&this.observation?.confidence>=.7&&this.settings.category==='gaming'){
@@ -230,7 +225,7 @@ export class Studio extends EventEmitter {
       }
     }
     let diagnosticId,diagnosticOutcome='accepted';
-    const operation={controller:new AbortController(),hasSpeech:!!speech||!!directed,directed:!!directed,superseded:false,sourceId:idleConversation?undefined:screenTimeline?.sourceId};this.liveReaction=operation;
+    const operation={controller:new AbortController(),hasSpeech:!!speech,superseded:false,sourceId:idleConversation?undefined:screenTimeline?.sourceId};this.liveReaction=operation;
     const signal=AbortSignal.any([this.controller.signal,operation.controller.signal]);
     this.lastRequest=viewing?.at??this.now();this.busy=true;this.lastError='';this.publish();
     try{
@@ -247,10 +242,10 @@ export class Studio extends EventEmitter {
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);
         const name=game.id==='auto'?(this.observation?.game || '알 수 없음'):game.name;
         const adviceRequested=requestsAdvice(speech,this.settings.adviceMode);
-        const ambient=idleConversation||watchingCompany||(!directed?this.ambient.context(speech):null);
+        const ambient=idleConversation||watchingCompany||this.ambient.context(speech);
         // A quiet watcher must be able to notice this turn's result before its
         // excitement has been inferred. Eligibility is not a forced chat.
-        const reactive=!directed&&!ambient?.quiet&&(!!speech.trim()||!this.viewing.unchanged(viewing));
+        const reactive=!ambient?.quiet&&(!!speech.trim()||!this.viewing.unchanged(viewing));
         const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers,company:ambient?.id==='quiet-company',reactive});
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
@@ -263,18 +258,17 @@ export class Studio extends EventEmitter {
         const liveSpeech=witnessedSpeech(this.speechInbox.sources(speechBatch.ids),{sessionId:this.sessionId,now:this.now(),joinedAt:eligiblePersonas.map(p=>this.audience.data.members[p.id]?.joinedAt),endedSources:this.endedVideoSources});
         operation.speechSourceIds=new Set(liveSpeech.map(s=>s.capture?.screen?.sourceId).filter(Boolean));
         const adviceRequestId=speechBatch.ids.at(-1)||(speech?this.messages.findLast(m=>m.kind==='streamer'&&m.text===speech)?.id:undefined);
-        let advicePolicy=directed?undefined:liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
+        let advicePolicy=liveAdvicePolicy(speech,this.settings.adviceMode,this.messages);
         if(advicePolicy?.maxMessages===1&&this.admittedAdvice(adviceRequestId)>0)advicePolicy={allowed:false,scope:'response-reserved',maxMessages:0};
-        this.reserveCall();if(!directed)diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,eligibleViewers:eligiblePersonas.filter(p=>!p.system&&p.id!==this.settings.managerId).length,lurkingEligible:eligiblePersonas.filter(p=>this.audience.presence[p.id]==='lurking').length,company:idleConversation?'idle':watchingCompany?'watching':null,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
+        this.reserveCall();diagnosticId=this.reactions.begin({hasSpeech:!!speech,frameCount:idleConversation?0:frames.length||(image?1:0),present:witnesses.length,eligible:eligiblePersonas.length,eligibleViewers:eligiblePersonas.filter(p=>!p.system&&p.id!==this.settings.managerId).length,lurkingEligible:eligiblePersonas.filter(p=>this.audience.presence[p.id]==='lurking').length,company:idleConversation?'idle':watchingCompany?'watching':null,latestFrameAt:idleConversation?undefined:screenTimeline?.through});
         const responseStartedAt=this.now();
-        const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,directed,ambient,voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
+        const result=await this.provider.react({settings:eligibleSettings,history:[],previous:null,image:idleConversation?undefined:image,frames:idleConversation?[]:frames,screenTimeline:idleConversation?undefined:screenTimeline,speech,viewerKnowledge,adviceRequested,advicePolicy,...personalContext,liveSpeech,transcriptCandidates,ambient,voiceCues:!idleConversation&&this.voiceCues&&this.now()-this.voiceCues.at<30000?this.voiceCues:null},signal);
         this.reactions.generated(diagnosticId,result.observation.messages.length);
         if(epoch!==this.epoch||!this.running){diagnosticOutcome='stopped';return {skipped:'stopped'};}
         this.tokens+=Number(result.usage?.total_tokens)||0;if(operation.superseded){diagnosticOutcome='superseded';return {skipped:'superseded'};}
-        if(directed&&(directorSerial!==this.director.serial||seasonSerial!==this.seasons.serial)){diagnosticOutcome='episode-ended';return {skipped:'episode-ended'};}
         const visualExpiresAt=screenTimeline?screenTimeline.through+VIDEO_REACTION_TTL_MS:capturedAt+SCREEN_REACTION_TTL_MS;
         if(screenTimeline&&!idleConversation&&!operation.hasSpeech&&this.now()>=visualExpiresAt){diagnosticOutcome='stale-screen';this.reactions.reject(diagnosticId,'expired',result.observation.messages.length);this.viewing.acknowledge(viewing);this.observation=null;this.knowledge.lastSeen=null;return {skipped:'stale-screen'};}
-        const observation=directed?result.observation:retainPresentReactions(result.observation,visits,this.audience);
+        const observation=retainPresentReactions(result.observation,visits,this.audience);
         const eligibleMessages=observation.messages.filter(m=>audience.eligible.includes(m.personaId));
         this.reactions.reject(diagnosticId,'absent',result.observation.messages.length-eligibleMessages.length);
         if(idleConversation){
@@ -286,20 +280,20 @@ export class Studio extends EventEmitter {
         }
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){diagnosticOutcome='transcription-review';this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
-        const chatDriven=!speech.trim()&&!directed&&this.viewing.sameExternalInput(viewing);
-        this.accept({...observation,messages:eligibleMessages},capturedAt,!!directed,directed?'directed':'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
-        const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:!!directed});
+        const chatDriven=!speech.trim()&&this.viewing.sameExternalInput(viewing);
+        this.accept({...observation,messages:eligibleMessages},capturedAt,false,'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
+        const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:false});
         for(const d of donations)this.publishMessage(donationMessage(d));
-        if(this.autonomy&&!directed){
+        if(this.autonomy){
           const clipSpeech=this.speechInbox.sources(speechBatch.ids);
           try{this.autonomy.evolve(observation.viewerChanges,speech,witnesses);this.clipFeatures.spectatorPicks(observation,{image,speech:speechBatch.ids.length?clipSpeech.map(e=>e.text).join('\n'):speech,witnesses,capturedAt,liveSpeech:clipSpeech,heardByViewer:Object.fromEntries(Object.entries(personalContext.viewerContext).map(([id,p])=>[id,p.heardSounds]))});}catch(error){this.log(`관객 경험 저장 보류: ${error.message}`);}
         }
-        if(!this.autonomy&&!directed&&this.settings.autoHighlights&&observation.positiveMoment?.positive&&observation.positiveMoment.impact>=.8&&observation.confidence>=.75&&observation.excitement>=.8){
+        if(!this.autonomy&&this.settings.autoHighlights&&observation.positiveMoment?.positive&&observation.positiveMoment.impact>=.8&&observation.confidence>=.75&&observation.excitement>=.8){
           try{this.clips.create({game:result.observation.game,scene:result.observation.scene,title:result.observation.positiveMoment.reason,participants:this.settings.personas.filter(p=>['active','lurking'].includes(this.audience.presence[p.id])).map(p=>({id:p.id,name:p.name})),messages:this.messages,image,sessionId:this.sessionId,source:'automatic-moment',startedAt:this.startedAt,signature:result.observation.positiveMoment.signature,observedAt:this.lastRequest});this.publish();}catch(error){this.log(`자동 핫클립 저장 보류: ${error.message}`);}
         }
-        if(!directed&&this.settings.category!=='just-chatting'&&image&&result.observation.confidence>=0.7){this.knowledge.observe(game.id==='auto'?result.observation.game:game.name,result.observation.scene,capturedAt,game.popularity,witnesses);this.publish();}
+        if(this.settings.category!=='just-chatting'&&image&&result.observation.confidence>=0.7){this.knowledge.observe(game.id==='auto'?result.observation.game:game.name,result.observation.scene,capturedAt,game.popularity,witnesses);this.publish();}
       }
-      if(viewing&&!directed)this.viewing.acknowledge(viewing);
+      if(viewing)this.viewing.acknowledge(viewing);
       this.speechInbox.acknowledge(speechBatch.ids);this.failures=0;this.retryAt=0;return {ok:true};
     }catch(error){diagnosticOutcome=operation.superseded?'superseded':epoch!==this.epoch?'stopped':'error';if(operation.superseded&&epoch===this.epoch)return {skipped:'superseded'};if(epoch===this.epoch){this.failures++;this.retryAt=this.now()+Math.min(60000,3000*2**this.failures);this.lastError=error.message;this.log(error.message);}throw error;}
     finally{this.reactions.finish(diagnosticId,diagnosticOutcome);if(this.liveReaction===operation)this.liveReaction=null;if(epoch===this.epoch){this.busy=false;this.publish();}}

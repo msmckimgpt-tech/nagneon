@@ -46,7 +46,7 @@ export function TrainingPanel({training,onAction}:{training:TrainingState;onActi
         <p>{scenario.description}</p>
         <div className="pinned"><Target size={17}/><div><b>이번 연습 목표</b><p>{scenario.objective}</p></div></div>
         <div className="tags"><span>등장한 채팅 {training.eventsSent}개</span><span>기록한 행동 {training.actions.length}개</span></div>
-        <div className="episode-chat" aria-label="상황 연습 채팅" aria-live="polite">{training.messages.map(m=><p key={m.id}><b style={{color:m.color}}>{m.name}</b> {m.text}</p>)}</div>
+        <div className="training-chat" aria-label="상황 연습 채팅" aria-live="polite">{training.messages.map(m=><p key={m.id}><b style={{color:m.color}}>{m.name}</b> {m.text}</p>)}</div>
         <textarea aria-label="연습 응답 기록" placeholder="이 상황에 어떻게 반응할지 적어보고 기록하세요. (내용은 채점되지 않습니다)" value={text} maxLength={600} onChange={e=>setText(e.target.value)}/>
         <div className="inline-form">
           <button className="primary" disabled={busy||!text.trim()} onClick={()=>void record()}><Send size={15}/> 응답 기록</button>
