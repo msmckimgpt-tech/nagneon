@@ -9,6 +9,7 @@ import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
 import {packageSources,verifyPackageSources,packageSourceRoots} from './lib/package-sources.mjs';
+import {distributionComponents} from './lib/distribution-components.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
@@ -134,7 +135,7 @@ const sourceCheck=await verifyPackageSources(root,folder,sourceManifest);
 if(!sourceCheck.passed)throw Error(sourceCheck.failures.join('\n'));
 for(const name of await files(folder))inventory.push({path:name,bytes:(await lstat(join(folder,name))).size,sha256:await hash(join(folder,name))});
 const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,acceptance:'not yet verified',electron:electronVersion,codex:codexPkg.version,
-  speech:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory};
+  speech:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory,components:distributionComponents(inventory)};
 await writeFile(join(build,'manifest.json'),JSON.stringify(report,null,2));
 await writeFile(join(build,'asar-files.json'),JSON.stringify(archiveFiles,null,2));
 await writeFile(join(root,'artifacts/latest-package.json'),JSON.stringify({folder,manifest:join(build,'manifest.json'),build},null,2));
