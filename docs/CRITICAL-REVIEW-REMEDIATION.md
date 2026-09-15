@@ -241,3 +241,8 @@
 - 6-2의 첫 개선으로 실제 입력이 없는 시간순 화면·발언 당시 화면 설명만 생략한다. 관련 입력이 있으면 기존 설명, 데이터·첨부·출력 계약과 항상 필요한 근거 보호는 보존한다. 합성 텍스트 지시문 3,101바이트 감소. 실제 CLI 4회 응답/침묵 동작은 확인했지만 속도 향상은 입증되지 않았다. 상세 수치·사용량·원문 경로는 RESPONSE-LATENCY.md에 기록한다.
 - 원본 작업 cccb079를 main d60383c 기준 squash 통합한다. 작업본 필수 검사 660/660·빌드 통과. 제품 소스가 바뀌었으므로 기존 0.1.4 후보 패키지는 최신 소스가 아니며 다시 빌드·무결성 및 관련 실행 검증해야 한다. 아직 원격 릴리즈·사용자 설치는 변경하지 않았다.
 - 격리 통합본 660/660 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/contextual-media-check.log. 활성 작업과 모델·검증 증거 보존을 위해 두 worktree를 유지한다.
+
+## 사용자 우선순위: 배포 용량
+
+배포 크기 개선을 최우선으로 전환했다. 현재 후보 4.76GB 중 기본 앱 파일은 약 844MB이며 나머지를 공통 런타임·시스템 소리·마이크 모델·GPU로 분리하는 목록/식별자를 빌더에 추가했다. 실제 기본 앱 단독 실행과 구성 다운로드/설치는 아직 구현 전이다. 진행·의존성·원본 크기는 DISTRIBUTION-SIZE.md에 기록한다. 원본 b15cd72, 작업본 662/662 테스트·빌드 통과 (artifacts/critical-review/distribution-components-check.log).
+- 통합본 662/662 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/distribution-components-check.log. 진행 중 모델·증거와 후속 구현을 위해 worktree를 보존한다.
