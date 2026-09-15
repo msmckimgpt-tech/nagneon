@@ -274,3 +274,7 @@
 ## 경량 0.1.4 배포 수용 기록
 
 원본 b9fdeb9를 a5a2b52 위 squash 통합했다. 제품 소스는 기존 경량 후보와 동일하고 검증 스크립트/증거 문서만 추가했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/lightweight-release-check.log). 고정 구성은 runtime-2026-09-16으로 게시했으며 실제 공개 HTTPS 다운로드/복원/압축본 정리/오프라인 재사용과 전달 ASAR의 GPU 한국어 전사·시스템 소리 인식을 통과했다. 사용자의 격리 데이터 복사본으로 설치·업데이트·재시작·이전 버전 복귀를 통과했고 원본은 유지했다. 소유 테스트 창의 실제 캡처는 합성7초 구성 준비 뒤 시작·교체·트랙 종료를 확인했다. 상세 원본은 DISTRIBUTION-SIZE.md 최신 절에 있다. 기본 앱 ZIP315,237,974바이트/설치844,297,517바이트이며 최종 앱 자산 게시는 다음 단계다. 전체 CRITICAL-REVIEW 원장은 아직 완료하지 않았다.
+
+## 0.1.4 경량 앱 공개 완료
+
+원본 c64f11a의 설치 안내와 배포 기록을 통합했다. 최초 문서 통합 검사는 audience-autonomy HTTP fetch failed 1건과 후속 취소16건으로 실패했다(release-docs-check.log). 해당 테스트를 좁혀 실행한 검사와 전체 재검사 676/676·빌드는 통과했다(release-docs-audience-check.log, release-docs-recheck.log). 간헐 연결 실패의 원인은 미확정이며 최초 실패를 해결된 것으로 표시하지 않는다. v0.1.4와 latest는 a035d03597db87ac8ed7294d844b9006a0bffc71이며 기존 태그/파일을 덮어쓰지 않았다. 앱 ZIP315,237,855바이트·설치844,297,851바이트/89파일, 공개 ZIP SHA-256은 20996b3fb29c10d49d01355386183c3060750cf9640f7190105b1283230c25ac다. 로그인 없는 실제 재다운로드와 원격 digest·원본 해시가 일치했다(작업 artifacts/critical-review/app-public-download-result.json). 포함 소스101개는 최종 통합 소스와 바이트가 일치한다. 이 기록 시점 사용자 설치는0.1.3으로 유지했다. 다음 단계는 사용자 환경 적용/상태 확인과 나머지 전체 리뷰 원장이다. 진행 중 작업/모델/검증 산출물이 있으므로 작업 및 통합 worktree는 보존한다.
