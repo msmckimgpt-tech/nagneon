@@ -64,8 +64,8 @@
 | 5-8 | 긴급 정지 단축키가 F9다. | 대조·개선 예정 |
 | 6-1 | 모델 호출 1회에 프로세스 하나를 fork한다. | 대조·개선 예정 |
 | 6-2 | 13,004자 프롬프트가 매 요청 전송된다. | 대조·개선 예정 |
-| 6-3 | 250ms마다 전체 상태를 직렬화한다. | 대조·개선 예정 |
-| 6-4 | SSE 패치 인코더가 비싸다. | 대조·개선 예정 |
+| 6-3 | 250ms마다 전체 상태를 직렬화한다. | 사실 정정: pump는 변경 시 발행, 별도 상태 확인은 5초. 빈 큐 40회 pump 발행 0회 확인 |
+| 6-4 | SSE 패치 인코더가 비싸다. | 수정: 동일 직렬화 결과 조기 반환·이전 필드 문자열 재사용. 합성 2창 300회에서 15~66% 시간 감소, 전송량 동일 |
 | 6-5 | 3개의 런타임을 동시에 들고 있다. | 1차: 서버 시작 시 음성 워커 기동 제거. 마이크 준비 시 지연 기동 |
 | 6-6 | 이미지가 매 프레임 base64로 왕복한다. | 대조·개선 예정 |
 | 6-7 | 실패 백오프가 관대하다. | 대조·개선 예정 |
@@ -194,3 +194,12 @@
 - 작업본 format:check·653/653 테스트·빌드 통과. 기존 회귀 검사에서 중단 후 늦은 응답, 만료된 화면, 관객 퇴장, 기억 삭제 취소, 개인정보 범위, 조용한 동행의 보상 제외를 검증한다. 원본 artifacts/critical-review/reaction-split-check.log. 모델 응답 품질 개선을 주장하는 변경은 아니다.
 
 - 통합 검증: 원본 64bad79440acfc4144df96f0503c7af4bdb1d193을 main 1ec74ba 기준 squash 통합. 실제 통합본 format:check·653/653 테스트·빌드와 격리 offscreen Electron synthetic UI 11개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/reaction-split-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
+
+## 상태 전송 비용 측정과 중복 직렬화 제거
+
+- 250ms pump와 전체 상태 발행은 다르다. 큐 전달·관객 변경 등이 있을 때 발행하며 서버 health는 5초 간격이다. direct Studio 리허설·빈 큐에서 10초에 해당하는 pump 40회는 상태 발행 0회였다. 실제 방송에서 상태 변경 빈도까지 0이라는 뜻은 아니다.
+- SSE 패치는 그대로 유지한다. 동일 JSON이면 파싱/필드 비교를 생략하고, 변경이 있으면 이전 필드 문자열을 재사용한다. 객체 참조 동일성에 의존하지 않으므로 원본 배열·중첩 객체의 변경도 반영한다. 창마다 현재 직렬화 결과와 필드 문자열을 추가 보관하는 메모리 비용이 있다.
+- 합성 채팅 500개·관객 40개·장부 300개, 창 2개/300회 측정: 동일 상태 1461→493ms, 카운터 변화 1459→1076ms, 채팅 순환 2534→2150ms. 전송량은 각각 0/28584/458780바이트로 동일했다. 실제 방송 FPS나 모델 응답 속도 개선 수치는 아니다. benchmark-state-stream.mjs로 재현 가능하며 기준 소스와 원본 결과는 artifacts/critical-review/state-stream-baseline.mjs, state-stream-before.json, state-stream-after.json에 보존했다.
+- 기존 순환·교정·정렬·삭제·재연결·지연 창 검사에 JSON 변환, 중첩 변경, 직렬화 실패 후 복구 검사를 추가했다.
+
+- 작업본과 통합본 각각 format:check·654/654 테스트·빌드 통과. 통합본 격리 offscreen Electron synthetic UI 11개 검사 통과. 원본 6f7a04079acbc47eb3c4ee6990627a226aac76c8을 main fe35fe8 기준 squash 통합한다. 증거 critical-review-integration/artifacts/critical-review-integration/state-stream-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
