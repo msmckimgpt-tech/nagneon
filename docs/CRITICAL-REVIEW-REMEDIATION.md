@@ -201,3 +201,5 @@
 - SSE 패치는 그대로 유지한다. 동일 JSON이면 파싱/필드 비교를 생략하고, 변경이 있으면 이전 필드 문자열을 재사용한다. 객체 참조 동일성에 의존하지 않으므로 원본 배열·중첩 객체의 변경도 반영한다. 창마다 현재 직렬화 결과와 필드 문자열을 추가 보관하는 메모리 비용이 있다.
 - 합성 채팅 500개·관객 40개·장부 300개, 창 2개/300회 측정: 동일 상태 1461→493ms, 카운터 변화 1459→1076ms, 채팅 순환 2534→2150ms. 전송량은 각각 0/28584/458780바이트로 동일했다. 실제 방송 FPS나 모델 응답 속도 개선 수치는 아니다. benchmark-state-stream.mjs로 재현 가능하며 기준 소스와 원본 결과는 artifacts/critical-review/state-stream-baseline.mjs, state-stream-before.json, state-stream-after.json에 보존했다.
 - 기존 순환·교정·정렬·삭제·재연결·지연 창 검사에 JSON 변환, 중첩 변경, 직렬화 실패 후 복구 검사를 추가했다.
+
+- 작업본과 통합본 각각 format:check·654/654 테스트·빌드 통과. 통합본 격리 offscreen Electron synthetic UI 11개 검사 통과. 원본 6f7a04079acbc47eb3c4ee6990627a226aac76c8을 main fe35fe8 기준 squash 통합한다. 증거 critical-review-integration/artifacts/critical-review-integration/state-stream-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
