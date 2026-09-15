@@ -184,3 +184,6 @@
 - 종료 연결 실패와 HTTP 시작/종료의 상태 조합 검증 통과 (artifacts/critical-review/runtime-tests.log). 전체 검사 원본 artifacts/critical-review/maintainability-check.log.
 
 - 작업본 검증: format:check, 653/653 테스트, 빌드, 격리 offscreen Electron synthetic UI 11개 검사 통과. App.tsx는 JSX 인접 텍스트 조각을 합쳐 비교한 출력 AST가 동일하고 types.ts AST도 동일했다. 원본 artifacts/critical-review/format-emitted-ast.json 및 format-ast.json. 일반 코드 줄 길이는 App/studio/types 100자 이하, style 89자 이하이며 index의 일부 긴 문자열은 내용 보존을 위해 유지했다.
+
+- 통합 검증: 원본 73dade9 → 8aca76258123984161370e0164f6430bcd636ede를 main 547852d 기준 squash 통합. 독립 npm ci 후 LF 규칙 적용, format:check·653/653 테스트·빌드 및 offscreen Electron synthetic UI 11개 검사 통과. 첫 전체 검사 갤러리 fetch 실패는 해당 파일 재검사와 최종 전체 검사에서 통과했으며 원인을 확정하지 않는다. 증거 critical-review-integration/artifacts/critical-review-integration/maintainability-check-final.log, maintainability-gallery-recheck.log, artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
+
