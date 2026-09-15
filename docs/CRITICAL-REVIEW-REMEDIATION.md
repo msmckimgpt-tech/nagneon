@@ -62,8 +62,8 @@
 | 5-6 | 관객을 만들 수도, 고칠 수도 없다. | 사용자 결정: 관객 자율성 유지, 직접 편집 미채택 |
 | 5-7 | 마이크가 GPU를 요구한다. | 대조·개선 예정 |
 | 5-8 | 긴급 정지 단축키가 F9다. | 사용자 결정: 긴급 정지 기능 미채택. 전역 Ctrl+Shift+F9와 IPC 제거, 일반 방송 종료 유지 |
-| 6-1 | 모델 호출 1회에 프로세스 하나를 fork한다. | 대조·개선 예정 |
-| 6-2 | 13,004자 프롬프트가 매 요청 전송된다. | 대조·개선 예정 |
+| 6-1 | 모델 호출 1회에 프로세스 하나를 fork한다. | 측정: CLI 시작 이벤트까지 0.3~0.7초, 응답 완료까지 추가 6.0~9.5초. 상주 방식의 격리 문제와 개선 범위는 RESPONSE-LATENCY.md |
+| 6-2 | 13,004자 프롬프트가 매 요청 전송된다. | 측정: 지시문 36,054바이트, 대화 5~13KB, 입력 1.9~2.1만 토큰. 문맥 최적화·회귀 비교 남음 |
 | 6-3 | 250ms마다 전체 상태를 직렬화한다. | 사실 정정: pump는 변경 시 발행, 별도 상태 확인은 5초. 빈 큐 40회 pump 발행 0회 확인 |
 | 6-4 | SSE 패치 인코더가 비싸다. | 수정: 동일 직렬화 결과 조기 반환·이전 필드 문자열 재사용. 합성 2창 300회에서 15~66% 시간 감소, 전송량 동일 |
 | 6-5 | 3개의 런타임을 동시에 들고 있다. | 1차: 서버 시작 시 음성 워커 기동 제거. 마이크 준비 시 지연 기동 |
@@ -229,3 +229,52 @@
 - 작업본 657/657 테스트·빌드 통과. 한글 구형 기록 fixture 추가 후 해당 검사 재통과. 원본 artifacts/critical-review/profile-guard-check.log, profile-compatibility-final.log, launcher-compatibility/result.json. 원본 작업 af2f8cd를 main 9689bf3 기준 squash 통합한다.
 - 배포 후보 0.1.4는 아직 게시·사용자 적용 전이며 현재 사용자 앱은 0.1.3이다. 실제 사용자 기록 복사본과 영향 있는 장치 검증, 설치 도구 동봉 및 게시가 남아 있다. 활성 작업·모델·증거가 있으므로 작업 및 통합 worktree는 보존한다.
 - 격리 통합본에서도 format:check·657/657 테스트·TypeScript/Vite 빌드 통과 (critical-review-integration/artifacts/critical-review-integration/profile-guard-check.log).
+
+## CLI 지연 구간 측정
+
+- 원본 작업 c30dc91 (main 동기화 335a095). 실제 공식 CLI 합성 대화 4회에서 응답/침묵 의도와 전달 1·1·2·0건 확인. 지시문/스키마/텍스트 크기, spawn·stdin·thread/turn·완성 메시지·종료 이벤트를 기록했다. 원본 및 해석 한계는 RESPONSE-LATENCY.md에 있다. 제품의 모델/추론/프롬프트는 변경하지 않았다.
+- 작업본 필수 검사 657/657·빌드 통과: artifacts/critical-review/latency-phases-check.log. 실제 모델 구간의 속도 개선을 선언하지 않으며 다음 작업은 문맥 기여도 비교, 남은 배포 검증 및 전체 원장 개선이다.
+- 격리 통합본 657/657·빌드 통과: critical-review-integration/artifacts/critical-review-integration/latency-phases-check.log. 작업·통합 worktree는 진행 중 검증과 모델/증거 보존을 위해 유지한다.
+
+## 미디어 문맥 조건화
+
+- 6-2의 첫 개선으로 실제 입력이 없는 시간순 화면·발언 당시 화면 설명만 생략한다. 관련 입력이 있으면 기존 설명, 데이터·첨부·출력 계약과 항상 필요한 근거 보호는 보존한다. 합성 텍스트 지시문 3,101바이트 감소. 실제 CLI 4회 응답/침묵 동작은 확인했지만 속도 향상은 입증되지 않았다. 상세 수치·사용량·원문 경로는 RESPONSE-LATENCY.md에 기록한다.
+- 원본 작업 cccb079를 main d60383c 기준 squash 통합한다. 작업본 필수 검사 660/660·빌드 통과. 제품 소스가 바뀌었으므로 기존 0.1.4 후보 패키지는 최신 소스가 아니며 다시 빌드·무결성 및 관련 실행 검증해야 한다. 아직 원격 릴리즈·사용자 설치는 변경하지 않았다.
+- 격리 통합본 660/660 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/contextual-media-check.log. 활성 작업과 모델·검증 증거 보존을 위해 두 worktree를 유지한다.
+
+## 사용자 우선순위: 배포 용량
+
+배포 크기 개선을 최우선으로 전환했다. 현재 후보 4.76GB 중 기본 앱 파일은 약 844MB이며 나머지를 공통 런타임·시스템 소리·마이크 모델·GPU로 분리하는 목록/식별자를 빌더에 추가했다. 실제 기본 앱 단독 실행과 구성 다운로드/설치는 아직 구현 전이다. 진행·의존성·원본 크기는 DISTRIBUTION-SIZE.md에 기록한다. 원본 b15cd72, 작업본 662/662 테스트·빌드 통과 (artifacts/critical-review/distribution-components-check.log).
+- 통합본 662/662 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/distribution-components-check.log. 진행 중 모델·증거와 후속 구현을 위해 worktree를 보존한다.
+
+## 구성 압축·다운로드·설치
+
+- 원본 b434483. 런타임 gzip 묶음 생성, 고정 카탈로그 기반 스트리밍 다운로드·취소·크기/해시 검증, 임시 디렉터리 복원 후 원자적 공개·재사용을 구현했다. 기능별 UI·경량 앱 시작에는 아직 연결하지 않았다.
+- 실제 기본 앱 파일 ZIP 304,382,635바이트, 88개 항목 해시 일치. 공통 음성/소리/마이크/GPU 묶음은 전 파일 복원 일치. 상세 크기와 재현은 DISTRIBUTION-SIZE.md에 있다. 기존 후보 소스의 구조 검증물이며 사용자 릴리즈로 게시하지 않았다.
+- 첫 분리 캐시 실행은 Windows DLL 경로 길이로 실패했다. 짧은 캐시 루트와 32자리 폴더 식별자로 수정하고 전체 SHA-256 검증은 유지했다. 실제 전달 모듈·분리된 Python/medium/small/GPU/YAMNet, 개발 PATH 제외 한국어 합성 음성과 소리 분석·정상 종료 통과. 실제 모델 호출과 물리 장치·경량 GUI는 미검증이다.
+- 작업본 668/668 테스트·빌드 통과. artifacts/critical-review/runtime-packs-final-check.log 및 components-runtime-short-path-result.json. 새 구성 다운로드 시점은 권장안인 기능 최초 사용을 기준으로 진행하며 사용자 답변이 오면 반영한다. 사용자 설치본과 기존 원격 릴리즈는 변경하지 않았다.
+- 통합본 668/668 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/runtime-packs-check.log. 활성 구현과 모델/압축 파일/검증 증거를 보존하기 위해 두 worktree를 유지한다.
+
+## 경량 앱 구성 연결 통합 (2026-09-16)
+
+- 원본 422fcb1337a31ccb2c24f9b09d464572cc784cb3을 main 0197ff1 위 격리 squash 통합했다. 제품 소스는 원본과 일치하며 기존 통합 원장 내용도 보존했다. 통합 필수 검사 674/674·빌드 통과: artifacts/critical-review-integration/runtime-components-check.log.
+- 최신 실제 후보 release/2026-09-15T18-17-00-406Z: 기본 설치 844,295,048바이트/89파일, ZIP 315,237,318바이트(모든 항목 길이·해시 검증). 기존 공개 앱 ZIP 1,936,656,696바이트보다 약 83.7% 감소. 추가 기능의 구성 다운로드/저장 공간은 별도이며 전체 기능 설치 크기가 84% 감소한 것은 아니다.
+- 작업 worktree artifacts/critical-review/lightweight-native-release.log에서 실제 EXE 온보딩·리허설 시작/정상 중지·앱 종료 통과. lightweight-runtime-release-result.json에서 전달 ASAR·분리 캐시로 합성 한국어 전사/시스템 소리 인식·GPU int8_float16(fallback=false) 통과. 물리 장치 입력이나 실제 모델 대화 검증으로 표시하지 않는다.
+- lightweight-integrity-release.log의 현재 소스/ASAR/전체 파일/실행 fuse 검사 통과. lightweight-zip-result.json은 ZIP 실제 크기와 경로를 기록한다. 분리 구성 카탈로그 URL은 아직 미게시이며 사용자 0.1.3 설치는 유지한다.
+- 다음: 고정 구성 자산 게시와 실제 HTTPS 다운로드, 손상 캐시/기존 설치 재사용, 클립·캡처 경로와 업데이트/데이터 보존 검증. 기존 HTTP 테스트의 간헐 fetch failed 원인은 미확정이며 실패 원본과 좁힌 검사/전체 재검사 성공 모두 DISTRIBUTION-SIZE.md에 기록했다. 전체 리뷰 목표는 계속 진행 중이다.
+
+## 구성 복구·클립 진입 경로 보완
+
+원본 a27608e를 a614d0f 위 squash 통합했다. 충돌 파일은 각각 main 내용이 직전 원본 422fcb1과 동일함을 대조한 뒤 이번 수정으로 해소했고 기존 통합 원장은 보존했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-repair-check.log). 작업본 Electron 합성 화면 UI 4개 검사 통과. 고정 구성 태그 runtime-2026-09-16은 정식 앱과 분리된 구성 자산용이며 이 기록 시점에는 게시 전이다. 다음은 자산 게시·실제 다운로드·기존 설치 업데이트 검증이다. 경량 후보는 제품 소스가 바뀌어 최종 배포 전 다시 빌드해야 한다.
+
+## 설치 후 압축본 정리
+
+원본 a12ac1c를 9817121 위 squash 통합했다. 설치 검증 후 압축 원본을 제거하며, 재실행 시 설치 파일을 해시 검증해 오프라인 재사용한다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-cache-space-check.log). 구성 초안 389380090은 아직 비공개다. gh 업로드 연결 오류 이후 curl/HTTP 1.1로 sound 업로드와 GitHub digest/크기 일치를 확인했으며 나머지 자산 전송은 진행 중이다. 작업/통합 worktree는 진행 중 검증·배포 산출물 때문에 보존한다.
+
+## 경량 0.1.4 배포 수용 기록
+
+원본 b9fdeb9를 a5a2b52 위 squash 통합했다. 제품 소스는 기존 경량 후보와 동일하고 검증 스크립트/증거 문서만 추가했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/lightweight-release-check.log). 고정 구성은 runtime-2026-09-16으로 게시했으며 실제 공개 HTTPS 다운로드/복원/압축본 정리/오프라인 재사용과 전달 ASAR의 GPU 한국어 전사·시스템 소리 인식을 통과했다. 사용자의 격리 데이터 복사본으로 설치·업데이트·재시작·이전 버전 복귀를 통과했고 원본은 유지했다. 소유 테스트 창의 실제 캡처는 합성7초 구성 준비 뒤 시작·교체·트랙 종료를 확인했다. 상세 원본은 DISTRIBUTION-SIZE.md 최신 절에 있다. 기본 앱 ZIP315,237,974바이트/설치844,297,517바이트이며 최종 앱 자산 게시는 다음 단계다. 전체 CRITICAL-REVIEW 원장은 아직 완료하지 않았다.
+
+## 0.1.4 경량 앱 공개 완료
+
+원본 c64f11a의 설치 안내와 배포 기록을 통합했다. 최초 문서 통합 검사는 audience-autonomy HTTP fetch failed 1건과 후속 취소16건으로 실패했다(release-docs-check.log). 해당 테스트를 좁혀 실행한 검사와 전체 재검사 676/676·빌드는 통과했다(release-docs-audience-check.log, release-docs-recheck.log). 간헐 연결 실패의 원인은 미확정이며 최초 실패를 해결된 것으로 표시하지 않는다. v0.1.4와 latest는 a035d03597db87ac8ed7294d844b9006a0bffc71이며 기존 태그/파일을 덮어쓰지 않았다. 앱 ZIP315,237,855바이트·설치844,297,851바이트/89파일, 공개 ZIP SHA-256은 20996b3fb29c10d49d01355386183c3060750cf9640f7190105b1283230c25ac다. 로그인 없는 실제 재다운로드와 원격 digest·원본 해시가 일치했다(작업 artifacts/critical-review/app-public-download-result.json). 포함 소스101개는 최종 통합 소스와 바이트가 일치한다. 이 기록 시점 사용자 설치는0.1.3으로 유지했다. 다음 단계는 사용자 환경 적용/상태 확인과 나머지 전체 리뷰 원장이다. 진행 중 작업/모델/검증 산출물이 있으므로 작업 및 통합 worktree는 보존한다.
