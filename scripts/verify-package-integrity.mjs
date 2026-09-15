@@ -43,7 +43,7 @@ if(prior.passed&&prior.folder!==folder){
     if(harmless)metadataOnly.push(file.path);else changed.push(file.path);
   }
   if(after.length!==before.size)changed.push('runtime file set differs');
-  const adapters=['server/provider.js','server/codex-provider.js','server/local-speech.js','server/local-sound.js','server/schema.js','server/conversation-rhythm.js','shared/defaults.js','shared/model-call-limits.json','desktop/runtime.cjs','server/connection-probe.js','desktop/account-login.cjs'];
+  const adapters=['server/provider.js','server/codex-provider.js','server/local-speech.js','server/local-sound.js','server/schema.js','server/conversation-rhythm.js','shared/defaults.js','desktop/runtime.cjs','server/connection-probe.js','desktop/account-login.cjs'];
   for(const file of adapters){
     if(digest(extractFile(join(prior.folder,'resources/app.asar'),file))!==digest(extractFile(join(folder,'resources/app.asar'),file)))changed.push(file);
   }

@@ -178,7 +178,7 @@ export class Studio extends EventEmitter {
     const index=this.queue.findIndex(m=>m.due<=now && now-(this.lastSpeaker.get(m.personaId) || 0)>=this.settings.slowModeSeconds*1000);if(index<0){this.communityActivity?.tick();return;}
     const [m]=this.queue.splice(index,1);if(!this.settings.personas.some(p=>p.id===m.personaId&&p.enabled)){this.reactions.drop(m.diagnosticId,'disabled');return;}this.lastSpeaker.set(m.personaId,now);try{this.publishMessage({...this.prepareMessage(m.personaId,m.text,m.kind),...(m.advice?{advice:true,...(m.adviceRequestId?{adviceRequestId:m.adviceRequestId}:{})}:{}),...(m.chatDriven?{chatDriven:true}:{})});this.reactions.delivered(m.diagnosticId);}catch(error){this.reactions.drop(m.diagnosticId,'delivery-error');this.lastError=error.message;this.log(`채팅 기록 저장 실패: ${error.message}`);this.publish();}
   }
-  reserveCall(){if(this.calls>=this.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다. 방송을 종료하고 한도를 확인하세요.');this.calls++;}
+  reserveCall(){this.calls++;}
   // 요청 캡처 시점의 목격자 스냅샷: 화면을 함께 본 것으로 인정할, 이번 세션에 실제 입장한(joinedAt>=startedAt) active/lurking 관객.
   // 모델 응답이 지연되어 그 사이 입장/이탈이 생겨도 이 스냅샷을 기준으로 목격을 판단한다(늦게 온 관객은 목격자가 아니다).
   presentWitnesses(){if(this.settings.mode!=='live')return [];return this.settings.personas.filter(p=>p.enabled&&['active','lurking'].includes(this.audience.presence[p.id])&&this.audience.data.members[p.id]?.joinedAt>=this.startedAt).map(p=>p.id);}

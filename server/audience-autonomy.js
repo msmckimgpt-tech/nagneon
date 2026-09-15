@@ -72,7 +72,6 @@ export class AudienceAutonomy {
     if(path==='points'&&!s.settings.pointsEnabled)throw new Error('포인트 기능이 꺼져 있습니다.');
     if(s.settings.personas.length>=40)throw new Error('현재 방송실의 관객 자리가 가득 찼습니다.');
     if(Object.keys(this.world.data.autonomy.receipts).length>=10000)throw new Error('이 프로필의 만남 기록 한도에 도달했습니다.');
-    if(s.calls>=s.settings.maxCalls)throw new Error('세션 모델 호출 한도에 도달했습니다.');
     // Resolve the authoritative stored source before holding points. Never use
     // a caller's copied title/scene or grant an old origin a new reading.
     if(path!=='clip'&&clip)throw Error('클립 유입 경로를 확인하세요.');
@@ -119,7 +118,7 @@ export class AudienceAutonomy {
     const s=this.studio,now=s.now();this.seconds+=Math.min(2,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;
     if(now-this.lastSaved>=60000){this.world.change(d=>{d.autonomy.broadcastSeconds=this.seconds;});this.lastSaved=now;}
     if(now<this.nextCheck)return;this.nextCheck=now+60000;
-    if(s.busy||this.pending||this.waiting||s.calls>=s.settings.maxCalls||s.settings.personas.length>=40||now-this.world.data.autonomy.lastArrivalAt<300000)return;
+    if(s.busy||this.pending||this.waiting||s.settings.personas.length>=40||now-this.world.data.autonomy.lastArrivalAt<300000)return;
     // No catch-up bursts after suspend, no waiting character pool. Rates are
     // simulation choices: a 3% chance/minute after ten minutes of actual uptime.
     const used=new Set(Object.values(this.world.data.autonomy.receipts).filter(r=>r.status==='completed').map(r=>r.source.clipId));

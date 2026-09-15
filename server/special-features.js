@@ -42,7 +42,6 @@ export class SpecialFeatures {
     const prior=s.economy.data.purchases.find(p=>p.kind===kind&&p.key===key&&p.status==='completed');if(prior&&kind==='thought')return prior;
     const retry=s.economy.data.purchases.find(p=>p.id===requestId);if(retry)return s.economy.purchase(requestId,kind,key,retry.cost).receipt;
     if(s.busy)throw new Error('관객이 응답 중입니다. 잠시 뒤 다시 실행하세요.');
-    if(s.calls>=s.settings.maxCalls)throw new Error('세션 모델 호출 한도에 도달했습니다.');
     const held=kind==='contract'?s.economy.reserveContract(quoteId,requestId,s.sessionId):s.economy.purchase(requestId,kind,key,rules.prices[kind]);if(held.existing)return held.receipt;
     const epoch=s.epoch;s.busy=true;if(s.controller.signal.aborted)s.controller=new AbortController();s.reserveCall();s.publish();
     try{

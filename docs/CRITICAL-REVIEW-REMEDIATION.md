@@ -123,3 +123,15 @@
 - 통합본 npm run check: 686/686 테스트와 빌드 통과. 격리 Electron 기본 UI 9개 검사 및 공개 오버레이 캡처 보호 전환 검사 통과.
 - 원본 증거: G:/dev/ai/00_game_backseat-worktrees/critical-review-integration/artifacts/critical-review-integration/check.log, artifacts/nagneon/renderer-result.json, artifacts/public-overlay/result.json.
 - 전체 목표는 진행 중. 시간 기준 이용 한도, 기획 기능 제거, 상태 구성/성능, 배포 용량, 기타 원장 항목이 남아 있다. OBS 캡처·외부 플랫폼 실연결과 최종 릴리즈는 별도 검증 후 진행한다.
+
+## 사용자 결정 수정: 시간과 횟수로 방송을 제한하지 않음
+
+- 사용자는 시간 안내만 하는 방식도 심리적 부담을 줄 수 있다고 정정했다. 시간 제한·카운트다운·만료 알림을 추가하지 않는다.
+- 세션 모델 호출 상한과 미디어·관객 생성의 연동 차단을 제거한다. 기존 maxCalls 설정은 로드 시 제거되며 자동 중단을 만들지 않는다.
+- 연결 화면의 접힌 사용량 참고에서 요청 횟수·제공처 보고 토큰·반응 간격 기준의 10분 예상 요청을 볼 수 있다. 계정 잔량이나 요금으로 해석하지 않는다.
+- 요청 실패 백오프, 동시에 실행하는 요청 수, 자동 커뮤니티 방문 시간당 6회 정책은 유지한다.
+- 이번 변경의 원본 검증 로그: artifacts/critical-review/no-session-limit-check.log. 전체 리뷰 개선은 계속 진행 중이다.
+
+- 검증: 첫 전체 실행 685/686 (clip-arrival-memory 서버 재연결 fetch failed). 해당 파일 재실행 12/12, 최종 전체 npm run check 686/686와 TypeScript/Vite 빌드 통과. 최종 로그 artifacts/critical-review/no-session-limit-check-final.log. 패키지 무결성 목록의 제거된 설정 파일 참조를 정리했고 node --check 통과.
+
+- 통합: 원본 121248aacbf273bec601080bac5006a896e501c7 + main a502993. 통합본 686/686 및 빌드, 격리 실제 Electron synthetic UI 9개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/no-session-limit.log 및 artifacts/nagneon/renderer-result.json. 실행 중 사용자 앱 적용과 릴리즈는 아직 하지 않았다.

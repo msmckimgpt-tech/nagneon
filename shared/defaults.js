@@ -19,7 +19,7 @@ export const defaults = {
   speechDevice: 'gpu',
   contextualTranscription: true,
   streamerStyle: '친근한 한국어 트위치식 채팅. 적당한 드립과 응원, 요청할 때만 훈수.', adviceMode: 'on-request',
-  mode: 'rehearsal', intervalSeconds: 12, maxCalls: 120, chatPace: 3,
+  mode: 'rehearsal', intervalSeconds: 12, chatPace: 3,
   managerId: 'luna', managerRules: '스포일러 금지. 요청 전 훈수 자제. 비하 금지. 같은 말 도배 금지.',
   blockedWords: [], slowModeSeconds: 3, spoilerGuard: true,
   personas, games

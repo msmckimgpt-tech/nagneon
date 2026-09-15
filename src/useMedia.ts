@@ -119,7 +119,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       const s=stateRef.current;if(disposed||!s?.running||s.sessionId!==session)return;
       try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');speechVersion++;return result;});}
       catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');return;}
-      const current=stateRef.current;if(disposed||pendingSpeech.current.items.length||inFlight||!current?.running||current.sessionId!==session||current.busy||current.calls>=current.settings.maxCalls)return;
+      const current=stateRef.current;if(disposed||pendingSpeech.current.items.length||inFlight||!current?.running||current.sessionId!==session||current.busy)return;
       if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt)return;
       inFlight=true;
       const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;

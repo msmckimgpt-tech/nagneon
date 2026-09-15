@@ -67,7 +67,6 @@ export class StorySeasons {
     const {person,message}=candidates[0],source={type:'public-chat',id:message.id,excerpt:message.text.slice(0,600),at:message.time,fictional:!!message.fictional};
     const templateId=/우주|별빛|상상|원정/.test(source.excerpt)?'starlight-v1':/도전|실패|성공|결승|리그|승부/.test(source.excerpt)?'crew-league-v1':'our-room-v1',template=templateFor(templateId);
     // Persist the attempt before consuming a call. Automatic failures never retry every pump.
-    if(s.calls>=s.settings.maxCalls)throw new Error('세션 API 호출 한도에 도달했습니다.');
     this.commit({...this.data,lastAttemptAt:s.now(),lastAttemptSession:s.sessionId});s.reserveCall();s.busy=true;const epoch=s.epoch,serial=this.serial;s.publish();
     try{
       const result=await s.provider.react({settings:{...s.settings,personas:[person],chatPace:1,webSearch:false},history:[],previous:null,speech:'이 대화에서 떠오른 다음 방송 기획을 한 가지 제안해주세요.',special:{kind:'audience-proposal',private:true,fictional:true,source,template:{title:template.title,description:template.description},instruction:'source의 공개 발언에 구체적으로 연결해 이 가상 시즌을 열자는 짧은 초대장을 본인 말투로 쓴다. 한 가지 제안만 한다. 이미 외부 행사를 준비하거나 다른 관객과 몰래 합의했다고 만들지 않는다. 스트리머가 거절하거나 미뤄도 괜찮은 제안이다.'}},s.controller.signal);
@@ -85,7 +84,7 @@ export class StorySeasons {
     if(action==='accept'){season=this.make(p.templateId,'',`${p.name}의 제안: ${p.text}`.slice(0,1200));proposal.status='accepted';proposal.seasonId=season.id;next.seasons.push(season);}else{proposal.status=action==='snooze'?'snoozed':'declined';proposal.snoozedUntil=action==='snooze'?this.studio.now()+86400000:0;}
     this.commit(next);this.studio.publish();return structuredClone(season||proposal);
   }
-  maybePropose(){const s=this.studio,now=s.now();if(!this.data.settings.autoProposals||!s.running||s.settings.mode!=='live'||s.busy||s.director.active||this.active||s.training.active||s.queue.length||s.calls>=s.settings.maxCalls||now<this.autoRetryAt||now-this.data.lastAttemptAt<3600000||this.data.lastAttemptSession===s.sessionId||now-s.startedAt<600000||s.messages.length<20||this.data.proposals.filter(p=>['suggested','snoozed'].includes(p.status)).length>=6)return;
+  maybePropose(){const s=this.studio,now=s.now();if(!this.data.settings.autoProposals||!s.running||s.settings.mode!=='live'||s.busy||s.director.active||this.active||s.training.active||s.queue.length||now<this.autoRetryAt||now-this.data.lastAttemptAt<3600000||this.data.lastAttemptSession===s.sessionId||now-s.startedAt<600000||s.messages.length<20||this.data.proposals.filter(p=>['suggested','snoozed'].includes(p.status)).length>=6)return;
     this.autoRetryAt=now+3600000;void this.propose({automatic:true}).catch(error=>{s.lastError=error.message;s.publish();});
   }
 }
