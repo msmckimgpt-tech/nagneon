@@ -210,3 +210,5 @@
 - README에 메모리·CPU별 권장 출발 규모 표를 별도로 추가했다. 수치는 실측 보증이 아닌 운영 제안임을 명시하며 모델 제공처 지연과 로컬 음성 처리 부하를 구분한다.
 - 긴급 정지 단축키 재설정 구현은 사용자 정정 직후 철회했다. 새 설정 파일·UI·IPC를 제품에 남기지 않는다. 기존 전역 Ctrl+Shift+F9 등록, studio:panic IPC와 preload/renderer 연동도 제거했다. 일반 방송 종료 버튼의 media.stopAll과 서버 stop, 앱 종료 정리는 유지한다. 기존 Ctrl+Shift+F10 클릭 통과 기능은 별개다.
 - 101명 관객의 추가 생성·목격자 보존·시청 시간·디스크 저장·재시작 읽기 검사 통과 (artifacts/critical-review/unlimited-audience-tests.log). 이전 80명 기록 제한을 기대하던 검사는 모든 120명 기록 보존으로 갱신했다. 새 대규모 기록은 구버전의 40명 스키마가 읽지 못하므로 이전 버전 복귀는 별도 호환성 검토가 필요하다.
+
+- 작업본 및 통합본 각각 format:check·655/655 테스트·빌드 통과. 통합 빌드 완료 후 격리 offscreen Electron synthetic UI 11개 검사 통과. 원본 24447ef8eff083413751df6fb4c4e00c3cc9d838을 main 71d35d6 기준 squash 통합한다. 증거 critical-review-integration/artifacts/critical-review-integration/no-caps-no-panic-check.log, no-caps-ui-final.out 및 artifacts/nagneon/renderer-result.json. 실행 중 설치 앱은 아직 이전 버전이므로 앱 교체 시 전역 단축키 해제도 적용된다.
