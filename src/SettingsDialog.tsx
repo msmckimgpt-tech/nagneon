@@ -8,7 +8,6 @@ import {ConnectionPanel} from './ConnectionPanel';
 import {CrowdPresets} from './CrowdPresets';
 import type {Game,Settings,State} from './types';
 import './settings-dialog.css';
-import modelCallLimits from '../shared/model-call-limits.json';
 
 // The tabbed settings editor. It owns a private draft of the settings and only
 // commits it when the user saves; personas are intentionally never edited or
@@ -229,14 +228,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
               <input type="number" min={5} max={120} value={draft.intervalSeconds}
                 onChange={e=>update('intervalSeconds',Number(e.target.value))}/>
             </label>
-            <label className="set-field">세션 모델 호출 한도
-              <input type="number" min={1} max={modelCallLimits.max} step={1} value={draft.maxCalls}
-                onChange={e=>update('maxCalls',Number(e.target.value))}/>
-            </label>
           </div>
-          <button type="button" className="secondary" disabled={locked||pending}
-            onClick={()=>update('maxCalls',modelCallLimits.generous)}>넉넉하게 · 10만 회</button>
-          <p className="field-note">화면은 응답을 기다리는 동안에도 0.5초마다 모으고, 최근 16초에서 최대 8장을 시간순으로 전달해요. 간격이 길거나 응답이 늦으면 일부 장면을 놓칠 수 있어요. 방송당 1~100만 회까지 설정할 수 있어요. Nagneon 자체 한도이며 ChatGPT 계정의 사용 한도를 변경하지는 않습니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
+          <p className="field-note">화면은 응답을 기다리는 동안에도 0.5초마다 모으고, 최근 16초에서 최대 8장을 시간순으로 전달해요. 간격이 길거나 응답이 늦으면 일부 장면을 놓칠 수 있어요. 간격을 늘리면 자동 화면 반응 요청이 줄어들어요. 계정 제공처의 사용 한도는 별도로 적용됩니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
         </>;
 
       case 'manager':
@@ -310,7 +303,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
             <input type="checkbox" checked={draft.communityActivityEnabled!==false} onChange={e=>update('communityActivityEnabled',e.target.checked)}/>
-            <span>관객의 커뮤니티 활동 허용<small>앱이 켜져 있을 때 클립을 감상하거나 갤러리를 읽고 댓글·추천·방송 후기를 스스로 결정해요. 방송 응답을 우선하며 자동 방문은 시간당 최대 6회, 세션 호출 한도 안에서 진행해요. 꺼 두면 방문을 쉽니다.</small></span>
+            <span>관객의 커뮤니티 활동 허용<small>앱이 켜져 있을 때 클립을 감상하거나 갤러리를 읽고 댓글·추천·방송 후기를 스스로 결정해요. 방송 응답을 우선하며 자동 방문은 시간당 최대 6회 진행해요. 꺼 두면 방문을 쉽니다.</small></span>
           </label>
           <label className="set-check">
             <input type="checkbox" checked={draft.pointsEnabled}

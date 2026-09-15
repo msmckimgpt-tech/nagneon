@@ -91,9 +91,9 @@ test('auto proposals are opt-in, live-only, once per session/hour with meaningfu
   s.start();for(let i=0;i<20;i++)s.addMessage('momo','같이 다음 방송을 생각해요 '+i);advance(700000);s.seasons.maybePropose();assert.equal(s.calls,0);s.seasons.configure({autoProposals:true});s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);s.seasons.maybePropose();assert.equal(s.calls,1);const attempt=s.seasons.data.lastAttemptAt;s.stop();advance(86400000);s.seasons.maybePropose();assert.equal(s.seasons.data.lastAttemptAt,attempt);s.start();s.seasons.maybePropose();assert.equal(s.calls,0);for(let i=0;i<20;i++)s.addMessage('momo','다시 생각해봐요 '+i);advance(600000);s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);
 });
 
-test('failed automatic generation persists its attempted session and respects quota on a fresh instance',async t=>{
+test('failed automatic generation persists its attempted session and waits for enough session context on a fresh instance',async t=>{
   let saved;const {s,advance}=setup(t,{saveSeasons:d=>saved=structuredClone(d),provider:{status:()=>({configured:true}),react:async()=>{throw new Error('network');}}});s.seasons.configure({autoProposals:true});s.start();for(let i=0;i<20;i++)s.addMessage('momo','기획 '+i);advance(700000);s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);assert.equal(saved.lastAttemptSession,s.sessionId);advance(1000);s.seasons.maybePropose();assert.equal(s.calls,1);assert.equal(s.busy,false);
-  const second=setup(t,{seasonsData:saved}).s;second.start();second.calls=second.settings.maxCalls;for(let i=0;i<20;i++)second.addMessage('momo','기획 '+i);second.seasons.maybePropose();assert.equal(second.seasons.data.proposals.length,0);
+  const second=setup(t,{seasonsData:saved}).s;second.start();for(let i=0;i<20;i++)second.addMessage('momo','기획 '+i);second.seasons.maybePropose();assert.equal(second.seasons.data.proposals.length,0);
 });
 
 test('public API persists/resumes a season across servers and exports complete history',async()=>{
