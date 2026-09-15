@@ -33,3 +33,11 @@
 - 포함 소스 97개/파일 2,476개 해시·ASAR 보호·실행 퓨즈 검사 통과. 원본 artifacts/critical-review/package-integrity.log.
 - 개발 런타임을 PATH에서 제외한 실제 패키지 모듈 검사 통과. GPU int8_float16, 합성 한국어 음성·YAMNet/시스템 대화·공식 CLI 기존 계정 상태 확인. 실시간 모델 호출은 하지 않았다. 원본 artifacts/packaged-runtime-test.json 및 artifacts/critical-review/packaged-runtime.log.
 - 이는 실제 GUI 시작·업데이트·원본 기록 복귀 및 실제 장치 검증을 대체하지 않는다. 정식 릴리즈/사용자 적용은 계속 보류 상태다.
+
+## 실제 창과 업데이트 검증
+
+- 실제 Nagneon.exe를 격리 프로필과 로컬 임시 디버그 포트로 실행했다. 온보딩, 제거된 panic API 부재, 방송 놀이터 부재, 리허설 시작·일반 종료, 화면 캡처, 정상 프로세스 종료 통과. 검증 도구는 scripts/verify-packaged-ui.mjs이며 계정 모델 호출·장치 캡처는 하지 않는다.
+- 0.1.3 패키지를 별도 설치 루트에 설치하고 실제 API로 시험 제목·공통 기억을 저장했다. 같은 프로필에 0.1.4를 업데이트하고 두 기록의 보존·정상 UI·종료를 확인했다. 설치기는 파일 복사·해시 대조와 업데이트 전 백업을 수행했다.
+- 0.1.3 스키마는 업데이트된 world의 settings.maxCalls 누락을 거절했다 (artifacts/critical-review/rollback-compatibility.json). 새 프로필을 그대로 옛 버전에 연결하는 복귀는 지원하지 않는다. 업데이트 전 백업을 별도 프로필로 복사한 뒤 실제 0.1.3 실행·기록 확인·종료에 성공했고, 현재 0.1.4 world 파일 해시는 동일했다.
+- 원본: artifacts/critical-review/install-old.log, install-update.log, packaged-ui-pass.log, packaged-ui-old.log, packaged-ui-updated.log, packaged-ui-rollback.log. 실제 화면은 artifacts/packaged-ui/run-MkZ0fS/studio.png 및 각 run 폴더에 있다. 완료 후 해당 패키지·시험 설치 경로의 프로세스 잔류 없음.
+- 남음: 설치/실행 경로에서 호환되지 않는 직접 다운그레이드 방지, 실제 사용자 기록 복사본 확인, 영향 있는 장치 검증과 배포물 게시·실제 사용자 적용.
