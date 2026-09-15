@@ -235,3 +235,9 @@
 - 원본 작업 c30dc91 (main 동기화 335a095). 실제 공식 CLI 합성 대화 4회에서 응답/침묵 의도와 전달 1·1·2·0건 확인. 지시문/스키마/텍스트 크기, spawn·stdin·thread/turn·완성 메시지·종료 이벤트를 기록했다. 원본 및 해석 한계는 RESPONSE-LATENCY.md에 있다. 제품의 모델/추론/프롬프트는 변경하지 않았다.
 - 작업본 필수 검사 657/657·빌드 통과: artifacts/critical-review/latency-phases-check.log. 실제 모델 구간의 속도 개선을 선언하지 않으며 다음 작업은 문맥 기여도 비교, 남은 배포 검증 및 전체 원장 개선이다.
 - 격리 통합본 657/657·빌드 통과: critical-review-integration/artifacts/critical-review-integration/latency-phases-check.log. 작업·통합 worktree는 진행 중 검증과 모델/증거 보존을 위해 유지한다.
+
+## 미디어 문맥 조건화
+
+- 6-2의 첫 개선으로 실제 입력이 없는 시간순 화면·발언 당시 화면 설명만 생략한다. 관련 입력이 있으면 기존 설명, 데이터·첨부·출력 계약과 항상 필요한 근거 보호는 보존한다. 합성 텍스트 지시문 3,101바이트 감소. 실제 CLI 4회 응답/침묵 동작은 확인했지만 속도 향상은 입증되지 않았다. 상세 수치·사용량·원문 경로는 RESPONSE-LATENCY.md에 기록한다.
+- 원본 작업 cccb079를 main d60383c 기준 squash 통합한다. 작업본 필수 검사 660/660·빌드 통과. 제품 소스가 바뀌었으므로 기존 0.1.4 후보 패키지는 최신 소스가 아니며 다시 빌드·무결성 및 관련 실행 검증해야 한다. 아직 원격 릴리즈·사용자 설치는 변경하지 않았다.
+- 격리 통합본 660/660 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/contextual-media-check.log. 활성 작업과 모델·검증 증거 보존을 위해 두 worktree를 유지한다.
