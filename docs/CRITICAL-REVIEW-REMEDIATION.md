@@ -115,3 +115,11 @@
 - 1-5 정정: SettingsDialog.tsx에는 이미 방송/분위기/연결/매니저/미디어/게임/디버그 7개 탭이 있다. 제목 태그 개수만으로 분류 부재를 판단한 원문은 부정확하다. 고급 옵션의 설명과 화면 가독성은 계속 검토한다.
 - 2차 원본 커밋 57201445a729837b04aeb7a9ec20cc2360872d31 원격 게시 일치. 현재 브랜치는 전체 목표 진행 중이므로 worktree와 원격 브랜치를 보존한다.
 - 사용자 추가 결정: 호출 제한을 시간 기준으로 전환하고 세션 예상 사용량을 안내한다. 당분간 무료 공개·MIT 유지, 배포 편의와 용량부터 개선한다. 유료 서명 구매나 라이선스 변경은 이번 작업에서 수행하지 않는다.
+
+## 첫 통합 검증
+
+- 대상 main: 57fd39d (관객 모델 선택 0.1.3). 원본 작업 a646652 → 5720144 → 61a934fceb10362b2f0cc76860a259d85c4c0d2d를 이 작업 단위로 squash 통합한다.
+- README 충돌은 모델 선택 안내와 외부 채팅·공개 방송 안내를 모두 보존해 해결했다. 모델 선택 기능을 유지한다.
+- 통합본 npm run check: 686/686 테스트와 빌드 통과. 격리 Electron 기본 UI 9개 검사 및 공개 오버레이 캡처 보호 전환 검사 통과.
+- 원본 증거: G:/dev/ai/00_game_backseat-worktrees/critical-review-integration/artifacts/critical-review-integration/check.log, artifacts/nagneon/renderer-result.json, artifacts/public-overlay/result.json.
+- 전체 목표는 진행 중. 시간 기준 이용 한도, 기획 기능 제거, 상태 구성/성능, 배포 용량, 기타 원장 항목이 남아 있다. OBS 캡처·외부 플랫폼 실연결과 최종 릴리즈는 별도 검증 후 진행한다.

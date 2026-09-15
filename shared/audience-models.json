@@ -1,0 +1,8 @@
+{
+  "models": [
+    {"id": "gpt-6-astra", "label": "GPT-6 Astra", "efforts": ["low", "medium", "high", "xhigh"]},
+    {"id": "gpt-5.4-mini", "label": "GPT-5.4 mini · 경량", "efforts": ["none", "low", "medium", "high", "xhigh"]},
+    {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna · 초경량", "efforts": ["none", "low", "medium", "high", "xhigh", "max"]}
+  ],
+  "effortLabels": {"none": "없음 · 빠른 반응 우선", "low": "낮음", "medium": "보통", "high": "높음", "xhigh": "매우 높음", "max": "최대"}
+}
