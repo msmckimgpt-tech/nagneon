@@ -192,3 +192,5 @@
 
 - 포매팅 이후 514줄이던 reactInput을 170줄의 호출 조정으로 줄이고 화면 준비, 리허설, 관객별 요청 구성, 응답 수용, 경험 저장을 별도 메서드로 분리했다. 동작 순서·중단/교체된 요청·관객 목격·기억 삭제·전사 보류·후원 조건을 유지한다.
 - 작업본 format:check·653/653 테스트·빌드 통과. 기존 회귀 검사에서 중단 후 늦은 응답, 만료된 화면, 관객 퇴장, 기억 삭제 취소, 개인정보 범위, 조용한 동행의 보상 제외를 검증한다. 원본 artifacts/critical-review/reaction-split-check.log. 모델 응답 품질 개선을 주장하는 변경은 아니다.
+
+- 통합 검증: 원본 64bad79440acfc4144df96f0503c7af4bdb1d193을 main 1ec74ba 기준 squash 통합. 실제 통합본 format:check·653/653 테스트·빌드와 격리 offscreen Electron synthetic UI 11개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/reaction-split-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
