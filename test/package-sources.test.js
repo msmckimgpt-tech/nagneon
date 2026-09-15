@@ -9,6 +9,7 @@ async function fixture(){
   const files={'LICENSE':'MIT fixture','scripts/clip_perception.py':'perception','desktop/main.cjs':'main','server/temporal-new.js':'sequence','shared/config.json':'{}','dist/index.html':'<html/>','dist/assets/app.js':'screen code','package.json':JSON.stringify({name:'test',version:'1.0.0',scripts:{start:'node private'}}),'package-lock.json':'{}','scripts/speech_worker.py':'microphone','scripts/sound_worker.py':'sound','scripts/clip_inspector.py':'clips'};
   files['shared/temporal-policy.d.ts']='export declare const VIDEO_SAMPLE_MS:number;';
   files['server/youtube-chat.proto']='syntax = "proto2";';
+  files['server/legacy-season-versions.json']='{"legacy":true}';
   for(const [file,text] of Object.entries(files)){await mkdir(dirname(join(source,file)),{recursive:true});await writeFile(join(source,file),text);}
   const snapshot=await packageSources(source);await mkdir(join(folder,'resources'),{recursive:true});
   for(const file of snapshot.files){const to=file.kind==='archive'?join(stage,file.target):join(folder,'resources',file.target);await mkdir(dirname(to),{recursive:true});
@@ -17,7 +18,8 @@ async function fixture(){
   return {root,source,stage,folder,snapshot,archive:join(folder,'resources/app.asar')};
 }
 test('complete delivered source comparison includes new modules, frontend assets and all worker scripts',async()=>{
-  const f=await fixture(),result=await verifyPackageSources(f.source,f.folder,f.snapshot);assert.equal(result.passed,true);assert.equal(result.matchingSources,12);
+  const f=await fixture(),result=await verifyPackageSources(f.source,f.folder,f.snapshot);assert.equal(result.passed,true);assert.equal(result.matchingSources,13);
+  assert.ok(f.snapshot.files.some(file=>file.source==='server/legacy-season-versions.json'));
   assert.ok(f.snapshot.files.some(file=>file.source==='server/youtube-chat.proto'));
   assert.ok(f.snapshot.files.some(file=>file.source==='server/temporal-new.js'));assert.ok(f.snapshot.files.some(file=>file.source==='dist/assets/app.js'));
   assert.deepEqual(f.snapshot.buildInputs.map(file=>file.source),['package-lock.json','package.json','shared/temporal-policy.d.ts']);assert.ok(!f.snapshot.files.some(file=>file.source.endsWith('.d.ts')||file.source==='package-lock.json'));
@@ -45,4 +47,11 @@ test('source directory links and unsupported files are rejected without followin
   const f=await fixture();await mkdir(join(f.root,'private'));await writeFile(join(f.root,'private','secret.js'),'not to package');await symlink(join(f.root,'private'),join(f.source,'server/linked'),process.platform==='win32'?'junction':'dir');
   await assert.rejects(packageSources(f.source),/link/);assert.equal(await readFile(join(f.root,'private','secret.js'),'utf8'),'not to package');
   const other=await fixture();await writeFile(join(other.source,'server/debug.txt'),'not to package');await assert.rejects(packageSources(other.source),/Unexpected/);
+});
+
+test('legacy metadata permission does not allow arbitrary or nested server JSON',async()=>{
+  for(const name of ['private.json','nested/legacy-season-versions.json']){
+    const f=await fixture(),file=join(f.source,'server',name);await mkdir(dirname(file),{recursive:true});await writeFile(file,'{"private":true}');
+    await assert.rejects(packageSources(f.source),/Unexpected package source/);
+  }
 });

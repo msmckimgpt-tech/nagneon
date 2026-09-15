@@ -8,7 +8,7 @@ import {packager} from '@electron/packager';
 import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
-import {packageSources,verifyPackageSources} from './lib/package-sources.mjs';
+import {packageSources,verifyPackageSources,packageSourceRoots} from './lib/package-sources.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
@@ -36,10 +36,10 @@ async function run(bin,args,cwd=root){
 
 // Allowlisted source staging excludes all personal data, recordings, .env,
 // development environments and credentials regardless of .gitignore contents.
-for(const [dir,extension] of [['desktop',/\.cjs$/],['server',/\.(js|proto)$/],['shared',/\.(js|json)$/],['dist',/\.(html|js|css|svg|png|woff2?)$/]]){
+for(const [dir,extension] of Object.entries(packageSourceRoots)){
   for(const name of await files(join(root,dir))){
     if(dir==='shared'&&name.endsWith('.d.ts'))continue; // Tracked build input, not runtime JavaScript.
-    if(!extension.test(name))throw new Error('검토되지 않은 배포 소스 파일: '+dir+'/'+name);
+    if(!extension.test(dir+'/'+name))throw new Error('검토되지 않은 배포 소스 파일: '+dir+'/'+name);
     const target=join(stage,dir,name);await mkdir(dirname(target),{recursive:true});await cp(join(root,dir,name),target);
   }
 }

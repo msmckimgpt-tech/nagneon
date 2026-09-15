@@ -212,3 +212,9 @@
 - 101명 관객의 추가 생성·목격자 보존·시청 시간·디스크 저장·재시작 읽기 검사 통과 (artifacts/critical-review/unlimited-audience-tests.log). 이전 80명 기록 제한을 기대하던 검사는 모든 120명 기록 보존으로 갱신했다. 새 대규모 기록은 구버전의 40명 스키마가 읽지 못하므로 이전 버전 복귀는 별도 호환성 검토가 필요하다.
 
 - 작업본 및 통합본 각각 format:check·655/655 테스트·빌드 통과. 통합 빌드 완료 후 격리 offscreen Electron synthetic UI 11개 검사 통과. 원본 24447ef8eff083413751df6fb4c4e00c3cc9d838을 main 71d35d6 기준 squash 통합한다. 증거 critical-review-integration/artifacts/critical-review-integration/no-caps-no-panic-check.log, no-caps-ui-final.out 및 artifacts/nagneon/renderer-result.json. 실행 중 설치 앱은 아직 이전 버전이므로 앱 교체 시 전역 단축키 해제도 적용된다.
+
+## 배포 후보 사전 검사
+
+- 실제 packageSources 검사에서 server/legacy-season-versions.json이 허용 목록에 없어 패키징 불가임을 재현했다. 이 파일만 명시적으로 허용하고 스테이징/무결성 검사에서 같은 목록을 사용하도록 통일했다. 임의 JSON과 하위 폴더의 동명 JSON은 계속 거절한다.
+- 0.1.4는 배포 후보이며 아직 릴리즈 합격/게시/사용자 적용 상태가 아니다. 작업본 656/656 테스트와 빌드 통과. artifacts/critical-review/package-candidate-check.log, package-source-check.log.
+- 설치된 0.1.3 매니페스트 기준 GPU 1538MiB·마이크 모델 1460MiB·기본 음성 모델 464MiB가 주요 용량이다. 기능을 임의로 삭제하지 않고 배포 후보를 검증한다. 기존 설치 런타임은 읽기 소스로만 사용하며 작업별 .models에 복사하고 빌더가 핀 버전/해시를 다시 대조한다.
