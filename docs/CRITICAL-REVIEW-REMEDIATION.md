@@ -62,8 +62,8 @@
 | 5-6 | 관객을 만들 수도, 고칠 수도 없다. | 사용자 결정: 관객 자율성 유지, 직접 편집 미채택 |
 | 5-7 | 마이크가 GPU를 요구한다. | 대조·개선 예정 |
 | 5-8 | 긴급 정지 단축키가 F9다. | 사용자 결정: 긴급 정지 기능 미채택. 전역 Ctrl+Shift+F9와 IPC 제거, 일반 방송 종료 유지 |
-| 6-1 | 모델 호출 1회에 프로세스 하나를 fork한다. | 대조·개선 예정 |
-| 6-2 | 13,004자 프롬프트가 매 요청 전송된다. | 대조·개선 예정 |
+| 6-1 | 모델 호출 1회에 프로세스 하나를 fork한다. | 측정: CLI 시작 이벤트까지 0.3~0.7초, 응답 완료까지 추가 6.0~9.5초. 상주 방식의 격리 문제와 개선 범위는 RESPONSE-LATENCY.md |
+| 6-2 | 13,004자 프롬프트가 매 요청 전송된다. | 측정: 지시문 36,054바이트, 대화 5~13KB, 입력 1.9~2.1만 토큰. 문맥 최적화·회귀 비교 남음 |
 | 6-3 | 250ms마다 전체 상태를 직렬화한다. | 사실 정정: pump는 변경 시 발행, 별도 상태 확인은 5초. 빈 큐 40회 pump 발행 0회 확인 |
 | 6-4 | SSE 패치 인코더가 비싸다. | 수정: 동일 직렬화 결과 조기 반환·이전 필드 문자열 재사용. 합성 2창 300회에서 15~66% 시간 감소, 전송량 동일 |
 | 6-5 | 3개의 런타임을 동시에 들고 있다. | 1차: 서버 시작 시 음성 워커 기동 제거. 마이크 준비 시 지연 기동 |
@@ -229,3 +229,9 @@
 - 작업본 657/657 테스트·빌드 통과. 한글 구형 기록 fixture 추가 후 해당 검사 재통과. 원본 artifacts/critical-review/profile-guard-check.log, profile-compatibility-final.log, launcher-compatibility/result.json. 원본 작업 af2f8cd를 main 9689bf3 기준 squash 통합한다.
 - 배포 후보 0.1.4는 아직 게시·사용자 적용 전이며 현재 사용자 앱은 0.1.3이다. 실제 사용자 기록 복사본과 영향 있는 장치 검증, 설치 도구 동봉 및 게시가 남아 있다. 활성 작업·모델·증거가 있으므로 작업 및 통합 worktree는 보존한다.
 - 격리 통합본에서도 format:check·657/657 테스트·TypeScript/Vite 빌드 통과 (critical-review-integration/artifacts/critical-review-integration/profile-guard-check.log).
+
+## CLI 지연 구간 측정
+
+- 원본 작업 c30dc91 (main 동기화 335a095). 실제 공식 CLI 합성 대화 4회에서 응답/침묵 의도와 전달 1·1·2·0건 확인. 지시문/스키마/텍스트 크기, spawn·stdin·thread/turn·완성 메시지·종료 이벤트를 기록했다. 원본 및 해석 한계는 RESPONSE-LATENCY.md에 있다. 제품의 모델/추론/프롬프트는 변경하지 않았다.
+- 작업본 필수 검사 657/657·빌드 통과: artifacts/critical-review/latency-phases-check.log. 실제 모델 구간의 속도 개선을 선언하지 않으며 다음 작업은 문맥 기여도 비교, 남은 배포 검증 및 전체 원장 개선이다.
+- 격리 통합본 657/657·빌드 통과: critical-review-integration/artifacts/critical-review-integration/latency-phases-check.log. 작업·통합 worktree는 진행 중 검증과 모델/증거 보존을 위해 유지한다.
