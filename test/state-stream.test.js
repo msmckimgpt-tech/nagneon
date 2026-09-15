@@ -7,6 +7,25 @@ import {startServer} from '../server/index.js';
 
 function receive(state,frame){if(!frame)return state;const data=JSON.parse(frame.split('data: ')[1]);return frame.startsWith('event:')?applyStatePatch(state,data):data;}
 const msg=i=>({id:String(i),personaId:'fixture',text:'검증 채팅 '+i+' '.repeat(80),time:i});
+
+test('cached wire fields retain JSON semantics, nested edits and recovery after encoding failure',()=>{
+  const encoder=new StateStream();
+  const source={messages:[msg(1)],clock:new Date(0),optional:undefined,settings:{pace:1},value:NaN};
+  let client=receive(null,encoder.encode(source));
+  assert.deepEqual(client,JSON.parse(JSON.stringify(source)));
+  assert.equal(encoder.encode(source),'');
+  source.settings.pace=2;source.clock.setTime(1000);
+  client=receive(client,encoder.encode(source));
+  assert.deepEqual(client,JSON.parse(JSON.stringify(source)));
+  source.circular=source;
+  assert.throws(()=>encoder.encode(source),/circular/i);
+  delete source.circular;delete source.settings;
+  client=receive(client,encoder.encode(source));
+  source.settings={pace:2};
+  client=receive(client,encoder.encode(source));
+  assert.deepEqual(client,JSON.parse(JSON.stringify(source)));
+  assert.equal(encoder.encode(source),'');
+});
 test('stalled window coalesces snapshots and display changes and drops its drain listener on close',()=>{
   let source={messages:[msg(1)],settings:{showStreamerMessages:true}},accept=false;
   const response=new EventEmitter(),frames=[];response.write=frame=>{frames.push(frame);return accept;};
