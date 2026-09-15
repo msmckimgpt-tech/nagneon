@@ -674,6 +674,146 @@ export class Studio extends EventEmitter {
       return { skipped: 'interval' };
     if (speech && this.now() - this.lastRequest < 2000) return { skipped: 'interval' };
     const epoch = this.epoch;
+    const prepared = this.prepareReactionViewing({ image, video, speech });
+    if (prepared.skipped) return prepared;
+    const { viewing, frames, screenTimeline, idleConversation, watchingCompany } = prepared;
+    image = prepared.image;
+    let diagnosticId,
+      diagnosticOutcome = 'accepted';
+    const operation = {
+      controller: new AbortController(),
+      hasSpeech: !!speech,
+      superseded: false,
+      sourceId: idleConversation ? undefined : screenTimeline?.sourceId,
+    };
+    this.liveReaction = operation;
+    const signal = AbortSignal.any([this.controller.signal, operation.controller.signal]);
+    this.lastRequest = viewing?.at ?? this.now();
+    this.busy = true;
+    this.lastError = '';
+    this.publish();
+    try {
+      if (
+        speech &&
+        !speechBatch.ids.length &&
+        !(this.messages.at(-1)?.kind === 'streamer' && this.messages.at(-1)?.text === speech)
+      ) {
+        this.queue = this.queue.filter((m) => m.origin !== 'live');
+        this.addMessage('streamer', speech, 'streamer');
+      }
+      if (this.settings.mode === 'rehearsal') {
+        const rehearsal = this.reactRehearsal(speech);
+        if (rehearsal) return rehearsal;
+      } else {
+        const context = this.prepareLiveReaction({
+          speech,
+          speechBatch,
+          speechHearers,
+          viewing,
+          screenTimeline,
+          idleConversation,
+          watchingCompany,
+          operation,
+        });
+        const {
+          eligiblePersonas,
+          eligibleSettings,
+          witnesses,
+          personalContext,
+          transcriptCandidates,
+          viewerKnowledge,
+          liveSpeech,
+          adviceRequested,
+          advicePolicy,
+          ambient,
+        } = context;
+        this.reserveCall();
+        diagnosticId = this.reactions.begin({
+          hasSpeech: !!speech,
+          frameCount: idleConversation ? 0 : frames.length || (image ? 1 : 0),
+          present: witnesses.length,
+          eligible: eligiblePersonas.length,
+          eligibleViewers: eligiblePersonas.filter(
+            (p) => !p.system && p.id !== this.settings.managerId,
+          ).length,
+          lurkingEligible: eligiblePersonas.filter(
+            (p) => this.audience.presence[p.id] === 'lurking',
+          ).length,
+          company: idleConversation ? 'idle' : watchingCompany ? 'watching' : null,
+          latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
+        });
+        const responseStartedAt = this.now();
+        const result = await this.provider.react(
+          {
+            settings: eligibleSettings,
+            history: [],
+            previous: null,
+            image: idleConversation ? undefined : image,
+            frames: idleConversation ? [] : frames,
+            screenTimeline: idleConversation ? undefined : screenTimeline,
+            speech,
+            viewerKnowledge,
+            adviceRequested,
+            advicePolicy,
+            ...personalContext,
+            liveSpeech,
+            transcriptCandidates,
+            ambient,
+            voiceCues:
+              !idleConversation && this.voiceCues && this.now() - this.voiceCues.at < 30000
+                ? this.voiceCues
+                : null,
+          },
+          signal,
+        );
+        const accepted = this.acceptLiveReaction({
+          context,
+          result,
+          operation,
+          epoch,
+          diagnosticId,
+          responseStartedAt,
+          speech,
+          speechBatch,
+          viewing,
+          screenTimeline,
+          idleConversation,
+          image,
+        });
+        if (accepted) {
+          diagnosticOutcome = accepted.outcome;
+          return accepted.result;
+        }
+      }
+      if (viewing) this.viewing.acknowledge(viewing);
+      this.speechInbox.acknowledge(speechBatch.ids);
+      this.failures = 0;
+      this.retryAt = 0;
+      return { ok: true };
+    } catch (error) {
+      diagnosticOutcome = operation.superseded
+        ? 'superseded'
+        : epoch !== this.epoch
+          ? 'stopped'
+          : 'error';
+      if (operation.superseded && epoch === this.epoch) return { skipped: 'superseded' };
+      if (epoch === this.epoch) {
+        this.failures++;
+        this.retryAt = this.now() + Math.min(60000, 3000 * 2 ** this.failures);
+        this.lastError = error.message;
+        this.log(error.message);
+      }
+      throw error;
+    } finally {
+      this.reactions.finish(diagnosticId, diagnosticOutcome);
+      if (this.liveReaction === operation) this.liveReaction = null;
+      if (epoch === this.epoch) {
+        this.busy = false;
+        this.publish();
+      }
+    }
+  }
+  prepareReactionViewing({ image, video, speech }) {
     let viewing,
       frames = [],
       screenTimeline,
@@ -796,365 +936,353 @@ export class Studio extends EventEmitter {
         return { skipped: 'unchanged-input' };
       }
     }
-    let diagnosticId,
-      diagnosticOutcome = 'accepted';
-    const operation = {
-      controller: new AbortController(),
-      hasSpeech: !!speech,
-      superseded: false,
-      sourceId: idleConversation ? undefined : screenTimeline?.sourceId,
-    };
-    this.liveReaction = operation;
-    const signal = AbortSignal.any([this.controller.signal, operation.controller.signal]);
-    this.lastRequest = viewing?.at ?? this.now();
-    this.busy = true;
-    this.lastError = '';
-    this.publish();
-    try {
-      if (
-        speech &&
-        !speechBatch.ids.length &&
-        !(this.messages.at(-1)?.kind === 'streamer' && this.messages.at(-1)?.text === speech)
-      ) {
-        this.queue = this.queue.filter((m) => m.origin !== 'live');
-        this.addMessage('streamer', speech, 'streamer');
-      }
-      if (this.settings.mode === 'rehearsal') {
-        const lines = speech
-          ? [
-              '말 들었어요! 오늘은 어떤 플레이 보여줄 건가요?',
-              'ㅋㅋㅋ 채팅이랑 얘기하면서 하니까 방송 같네',
-              '저도 같이 볼게요 🍿',
-            ]
-          : [
-              '오늘 방송 출석! 다들 어서 와요 👋',
-              '팝콘 준비 완료 🍿',
-              '오늘은 무슨 게임 하나요?',
-              '방장 오늘 텐션 좋은데 ㅋㅋ',
-              '이런 편한 분위기 좋다',
-              '다들 채팅 규칙 한 번씩 확인해주세요',
-            ];
-        const active = this.settings.personas.filter((p) => p.enabled && !p.system);
-        const offset = Math.floor(this.random() * lines.length);
-        if (!active.length) {
-          this.addMessage(
-            this.settings.managerId,
-            '지금은 리허설입니다. 관객이 아직 없어요. 화면 배치와 채팅 입력을 먼저 살펴보세요.',
-            'notice',
-          );
-          return { ok: true, rehearsal: true };
-        }
-        this.accept(
-          {
-            game: '리허설',
-            scene: '첫 인사를 나누며 방송을 준비하고 있어요.',
-            confidence: 0,
-            excitement: 0.35,
-            messages: active.slice(0, this.settings.chatPace).map((p, i) => ({
-              personaId: p.id,
-              text: lines[(offset + i) % lines.length],
-              kind: 'chat',
-              spoiler: false,
-            })),
-          },
-          this.now(),
-          false,
-          'live',
-        );
-      } else {
-        const game = this.settings.games.find((g) => g.id === this.settings.gameId);
-        const name = game.id === 'auto' ? this.observation?.game || '알 수 없음' : game.name;
-        const adviceRequested = requestsAdvice(speech, this.settings.adviceMode);
-        const ambient = idleConversation || watchingCompany || this.ambient.context(speech);
-        // A quiet watcher must be able to notice this turn's result before its
-        // excitement has been inferred. Eligibility is not a forced chat.
-        const reactive = !ambient?.quiet && (!!speech.trim() || !this.viewing.unchanged(viewing));
-        const audience = this.audience.context(
-          this.settings,
-          speech,
-          this.observation?.excitement || 0,
-          { hearers: speechHearers, company: ambient?.id === 'quiet-company', reactive },
-        );
-        operation.loreIds = new Set(audience.lore.map((item) => item.id));
-        const eligiblePersonas = this.settings.personas.filter((p) =>
-          audience.eligible.includes(p.id),
-        );
-        const eligibleSettings = { ...this.settings, personas: eligiblePersonas };
-        const witnesses = this.presentWitnesses().filter(
-            (id) => !speechHearers || speechHearers.includes(id),
-          ),
-          capturedAt = this.lastRequest;
-        const visits = new Map(
-          eligiblePersonas.map((p) => [p.id, this.audience.data.members[p.id]?.joinedAt]),
-        );
-        const personalContext = liveViewerContext(
-          audience,
-          eligiblePersonas,
-          this.messages,
-          screenTimeline?.sourceChanged ? null : this.observation,
-          {
-            journal: this.journal,
-            clips: this.clips,
-            speech,
-            sound: this.sound,
-            now: capturedAt,
-            viewing,
-            externalChat: this.externalChat,
-          },
-        );
-        operation.externalIds = [
-          ...new Set(
-            Object.values(personalContext.viewerContext).flatMap((p) =>
-              (p.externalChat || []).map((m) => m.id),
-            ),
-          ),
+    return { image, viewing, frames, screenTimeline, idleConversation, watchingCompany };
+  }
+
+  reactRehearsal(speech) {
+    const lines = speech
+      ? [
+          '말 들었어요! 오늘은 어떤 플레이 보여줄 건가요?',
+          'ㅋㅋㅋ 채팅이랑 얘기하면서 하니까 방송 같네',
+          '저도 같이 볼게요 🍿',
+        ]
+      : [
+          '오늘 방송 출석! 다들 어서 와요 👋',
+          '팝콘 준비 완료 🍿',
+          '오늘은 무슨 게임 하나요?',
+          '방장 오늘 텐션 좋은데 ㅋㅋ',
+          '이런 편한 분위기 좋다',
+          '다들 채팅 규칙 한 번씩 확인해주세요',
         ];
-        const transcriptCandidates = this.settings.contextualTranscription
-          ? this.speechInbox.candidates(speechBatch.ids)
-          : [];
-        const viewerKnowledge =
-          this.settings.category === 'just-chatting'
-            ? null
-            : viewerKnowledgeByPersona(
-                this.knowledge.get(name, game.popularity),
-                eligiblePersonas,
-                { popularity: game.popularity },
-              );
-        const liveSpeech = witnessedSpeech(this.speechInbox.sources(speechBatch.ids), {
-          sessionId: this.sessionId,
-          now: this.now(),
-          joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
-          endedSources: this.endedVideoSources,
-        });
-        operation.speechSourceIds = new Set(
-          liveSpeech.map((s) => s.capture?.screen?.sourceId).filter(Boolean),
-        );
-        const adviceRequestId =
-          speechBatch.ids.at(-1) ||
-          (speech
-            ? this.messages.findLast((m) => m.kind === 'streamer' && m.text === speech)?.id
-            : undefined);
-        let advicePolicy = liveAdvicePolicy(speech, this.settings.adviceMode, this.messages);
-        if (advicePolicy?.maxMessages === 1 && this.admittedAdvice(adviceRequestId) > 0)
-          advicePolicy = { allowed: false, scope: 'response-reserved', maxMessages: 0 };
-        this.reserveCall();
-        diagnosticId = this.reactions.begin({
-          hasSpeech: !!speech,
-          frameCount: idleConversation ? 0 : frames.length || (image ? 1 : 0),
-          present: witnesses.length,
-          eligible: eligiblePersonas.length,
-          eligibleViewers: eligiblePersonas.filter(
-            (p) => !p.system && p.id !== this.settings.managerId,
-          ).length,
-          lurkingEligible: eligiblePersonas.filter(
-            (p) => this.audience.presence[p.id] === 'lurking',
-          ).length,
-          company: idleConversation ? 'idle' : watchingCompany ? 'watching' : null,
-          latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
-        });
-        const responseStartedAt = this.now();
-        const result = await this.provider.react(
-          {
-            settings: eligibleSettings,
-            history: [],
-            previous: null,
-            image: idleConversation ? undefined : image,
-            frames: idleConversation ? [] : frames,
-            screenTimeline: idleConversation ? undefined : screenTimeline,
-            speech,
-            viewerKnowledge,
-            adviceRequested,
-            advicePolicy,
-            ...personalContext,
-            liveSpeech,
-            transcriptCandidates,
-            ambient,
-            voiceCues:
-              !idleConversation && this.voiceCues && this.now() - this.voiceCues.at < 30000
-                ? this.voiceCues
-                : null,
-          },
-          signal,
-        );
-        this.reactions.generated(diagnosticId, result.observation.messages.length);
-        if (epoch !== this.epoch || !this.running) {
-          diagnosticOutcome = 'stopped';
-          return { skipped: 'stopped' };
-        }
-        this.tokens += Number(result.usage?.total_tokens) || 0;
-        if (operation.superseded) {
-          diagnosticOutcome = 'superseded';
-          return { skipped: 'superseded' };
-        }
-        const visualExpiresAt = screenTimeline
-          ? screenTimeline.through + VIDEO_REACTION_TTL_MS
-          : capturedAt + SCREEN_REACTION_TTL_MS;
-        if (
-          screenTimeline &&
-          !idleConversation &&
-          !operation.hasSpeech &&
-          this.now() >= visualExpiresAt
-        ) {
-          diagnosticOutcome = 'stale-screen';
-          this.reactions.reject(diagnosticId, 'expired', result.observation.messages.length);
-          this.viewing.acknowledge(viewing);
-          this.observation = null;
-          this.knowledge.lastSeen = null;
-          return { skipped: 'stale-screen' };
-        }
-        const observation = retainPresentReactions(result.observation, visits, this.audience);
-        const eligibleMessages = observation.messages.filter((m) =>
-          audience.eligible.includes(m.personaId),
-        );
-        this.reactions.reject(
-          diagnosticId,
-          'absent',
-          result.observation.messages.length - eligibleMessages.length,
-        );
-        if (idleConversation) {
-          // A chat opportunity is not a fresh visual observation, achievement,
-          // donation trigger, clip pick or evidence of changed preferences.
-          this.reactions.reject(diagnosticId, 'pace', Math.max(0, eligibleMessages.length - 1));
-          this.accept(
-            { ...observation, messages: eligibleMessages.slice(0, 1) },
-            capturedAt,
-            true,
-            'live',
-            {
-              diagnosticId,
-              responseStartedAt,
-              externalIds: operation.externalIds,
-              loreIds: [...operation.loreIds],
-              chatDriven: true,
-              visits,
-              advicePolicy,
-              expiresAt: capturedAt + SCREEN_REACTION_TTL_MS,
-            },
-          );
-          this.viewing.acknowledge(viewing);
-          this.failures = 0;
-          this.retryAt = 0;
-          return { ok: true };
-        }
-        const correction = this.correctTranscripts(
-          result.observation.transcriptCorrections,
-          transcriptCandidates,
-        );
-        if (correction.rejected) {
-          diagnosticOutcome = 'transcription-review';
-          this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');
-          this.speechInbox.acknowledge(speechBatch.ids);
-          return { ok: true, transcriptionNeedsReview: true };
-        }
-        const chatDriven = !speech.trim() && this.viewing.sameExternalInput(viewing);
-        this.accept({ ...observation, messages: eligibleMessages }, capturedAt, false, 'live', {
+    const active = this.settings.personas.filter((p) => p.enabled && !p.system);
+    const offset = Math.floor(this.random() * lines.length);
+    if (!active.length) {
+      this.addMessage(
+        this.settings.managerId,
+        '지금은 리허설입니다. 관객이 아직 없어요. 화면 배치와 채팅 입력을 먼저 살펴보세요.',
+        'notice',
+      );
+      return { ok: true, rehearsal: true };
+    }
+    this.accept(
+      {
+        game: '리허설',
+        scene: '첫 인사를 나누며 방송을 준비하고 있어요.',
+        confidence: 0,
+        excitement: 0.35,
+        messages: active.slice(0, this.settings.chatPace).map((p, i) => ({
+          personaId: p.id,
+          text: lines[(offset + i) % lines.length],
+          kind: 'chat',
+          spoiler: false,
+        })),
+      },
+      this.now(),
+      false,
+      'live',
+    );
+  }
+
+  prepareLiveReaction({
+    speech,
+    speechBatch,
+    speechHearers,
+    viewing,
+    screenTimeline,
+    idleConversation,
+    watchingCompany,
+    operation,
+  }) {
+    const game = this.settings.games.find((g) => g.id === this.settings.gameId);
+    const name = game.id === 'auto' ? this.observation?.game || '알 수 없음' : game.name;
+    const adviceRequested = requestsAdvice(speech, this.settings.adviceMode);
+    const ambient = idleConversation || watchingCompany || this.ambient.context(speech);
+    // A quiet watcher must be able to notice this turn's result before its
+    // excitement has been inferred. Eligibility is not a forced chat.
+    const reactive = !ambient?.quiet && (!!speech.trim() || !this.viewing.unchanged(viewing));
+    const audience = this.audience.context(
+      this.settings,
+      speech,
+      this.observation?.excitement || 0,
+      { hearers: speechHearers, company: ambient?.id === 'quiet-company', reactive },
+    );
+    operation.loreIds = new Set(audience.lore.map((item) => item.id));
+    const eligiblePersonas = this.settings.personas.filter((p) => audience.eligible.includes(p.id));
+    const eligibleSettings = { ...this.settings, personas: eligiblePersonas };
+    const witnesses = this.presentWitnesses().filter(
+        (id) => !speechHearers || speechHearers.includes(id),
+      ),
+      capturedAt = this.lastRequest;
+    const visits = new Map(
+      eligiblePersonas.map((p) => [p.id, this.audience.data.members[p.id]?.joinedAt]),
+    );
+    const personalContext = liveViewerContext(
+      audience,
+      eligiblePersonas,
+      this.messages,
+      screenTimeline?.sourceChanged ? null : this.observation,
+      {
+        journal: this.journal,
+        clips: this.clips,
+        speech,
+        sound: this.sound,
+        now: capturedAt,
+        viewing,
+        externalChat: this.externalChat,
+      },
+    );
+    operation.externalIds = [
+      ...new Set(
+        Object.values(personalContext.viewerContext).flatMap((p) =>
+          (p.externalChat || []).map((m) => m.id),
+        ),
+      ),
+    ];
+    const transcriptCandidates = this.settings.contextualTranscription
+      ? this.speechInbox.candidates(speechBatch.ids)
+      : [];
+    const viewerKnowledge =
+      this.settings.category === 'just-chatting'
+        ? null
+        : viewerKnowledgeByPersona(this.knowledge.get(name, game.popularity), eligiblePersonas, {
+            popularity: game.popularity,
+          });
+    const liveSpeech = witnessedSpeech(this.speechInbox.sources(speechBatch.ids), {
+      sessionId: this.sessionId,
+      now: this.now(),
+      joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
+      endedSources: this.endedVideoSources,
+    });
+    operation.speechSourceIds = new Set(
+      liveSpeech.map((s) => s.capture?.screen?.sourceId).filter(Boolean),
+    );
+    const adviceRequestId =
+      speechBatch.ids.at(-1) ||
+      (speech
+        ? this.messages.findLast((m) => m.kind === 'streamer' && m.text === speech)?.id
+        : undefined);
+    let advicePolicy = liveAdvicePolicy(speech, this.settings.adviceMode, this.messages);
+    if (advicePolicy?.maxMessages === 1 && this.admittedAdvice(adviceRequestId) > 0)
+      advicePolicy = { allowed: false, scope: 'response-reserved', maxMessages: 0 };
+    return {
+      game,
+      audience,
+      eligiblePersonas,
+      eligibleSettings,
+      witnesses,
+      capturedAt,
+      visits,
+      personalContext,
+      transcriptCandidates,
+      viewerKnowledge,
+      liveSpeech,
+      adviceRequested,
+      advicePolicy,
+      adviceRequestId,
+      ambient,
+    };
+  }
+
+  acceptLiveReaction({
+    context,
+    result,
+    operation,
+    epoch,
+    diagnosticId,
+    responseStartedAt,
+    speech,
+    speechBatch,
+    viewing,
+    screenTimeline,
+    idleConversation,
+    image,
+  }) {
+    const {
+      capturedAt,
+      visits,
+      audience,
+      advicePolicy,
+      transcriptCandidates,
+      adviceRequestId,
+      witnesses,
+      personalContext,
+      game,
+    } = context;
+    this.reactions.generated(diagnosticId, result.observation.messages.length);
+    if (epoch !== this.epoch || !this.running) {
+      return { outcome: 'stopped', result: { skipped: 'stopped' } };
+    }
+    this.tokens += Number(result.usage?.total_tokens) || 0;
+    if (operation.superseded) {
+      return { outcome: 'superseded', result: { skipped: 'superseded' } };
+    }
+    const visualExpiresAt = screenTimeline
+      ? screenTimeline.through + VIDEO_REACTION_TTL_MS
+      : capturedAt + SCREEN_REACTION_TTL_MS;
+    if (
+      screenTimeline &&
+      !idleConversation &&
+      !operation.hasSpeech &&
+      this.now() >= visualExpiresAt
+    ) {
+      this.reactions.reject(diagnosticId, 'expired', result.observation.messages.length);
+      this.viewing.acknowledge(viewing);
+      this.observation = null;
+      this.knowledge.lastSeen = null;
+      return { outcome: 'stale-screen', result: { skipped: 'stale-screen' } };
+    }
+    const observation = retainPresentReactions(result.observation, visits, this.audience);
+    const eligibleMessages = observation.messages.filter((m) =>
+      audience.eligible.includes(m.personaId),
+    );
+    this.reactions.reject(
+      diagnosticId,
+      'absent',
+      result.observation.messages.length - eligibleMessages.length,
+    );
+    if (idleConversation) {
+      // A chat opportunity is not a fresh visual observation, achievement,
+      // donation trigger, clip pick or evidence of changed preferences.
+      this.reactions.reject(diagnosticId, 'pace', Math.max(0, eligibleMessages.length - 1));
+      this.accept(
+        { ...observation, messages: eligibleMessages.slice(0, 1) },
+        capturedAt,
+        true,
+        'live',
+        {
           diagnosticId,
           responseStartedAt,
           externalIds: operation.externalIds,
           loreIds: [...operation.loreIds],
-          chatDriven,
+          chatDriven: true,
           visits,
           advicePolicy,
-          adviceRequestId,
-          screenSourceId: screenTimeline?.sourceId,
-          ...(operation.hasSpeech ? {} : { expiresAt: visualExpiresAt }),
-        });
-        const donations = this.economy.reward({
-          observation,
-          settings: this.settings,
-          audience: this.audience,
-          hasInput: !chatDriven && (!!image || !!speech),
-          paid: false,
-        });
-        for (const d of donations) this.publishMessage(donationMessage(d));
-        if (this.autonomy) {
-          const clipSpeech = this.speechInbox.sources(speechBatch.ids);
-          try {
-            this.autonomy.evolve(observation.viewerChanges, speech, witnesses);
-            this.clipFeatures.spectatorPicks(observation, {
-              image,
-              speech: speechBatch.ids.length ? clipSpeech.map((e) => e.text).join('\n') : speech,
-              witnesses,
-              capturedAt,
-              liveSpeech: clipSpeech,
-              heardByViewer: Object.fromEntries(
-                Object.entries(personalContext.viewerContext).map(([id, p]) => [id, p.heardSounds]),
-              ),
-            });
-          } catch (error) {
-            this.log(`관객 경험 저장 보류: ${error.message}`);
-          }
-        }
-        if (
-          !this.autonomy &&
-          this.settings.autoHighlights &&
-          observation.positiveMoment?.positive &&
-          observation.positiveMoment.impact >= 0.8 &&
-          observation.confidence >= 0.75 &&
-          observation.excitement >= 0.8
-        ) {
-          try {
-            this.clips.create({
-              game: result.observation.game,
-              scene: result.observation.scene,
-              title: result.observation.positiveMoment.reason,
-              participants: this.settings.personas
-                .filter((p) => ['active', 'lurking'].includes(this.audience.presence[p.id]))
-                .map((p) => ({ id: p.id, name: p.name })),
-              messages: this.messages,
-              image,
-              sessionId: this.sessionId,
-              source: 'automatic-moment',
-              startedAt: this.startedAt,
-              signature: result.observation.positiveMoment.signature,
-              observedAt: this.lastRequest,
-            });
-            this.publish();
-          } catch (error) {
-            this.log(`자동 핫클립 저장 보류: ${error.message}`);
-          }
-        }
-        if (
-          this.settings.category !== 'just-chatting' &&
-          image &&
-          result.observation.confidence >= 0.7
-        ) {
-          this.knowledge.observe(
-            game.id === 'auto' ? result.observation.game : game.name,
-            result.observation.scene,
-            capturedAt,
-            game.popularity,
-            witnesses,
-          );
-          this.publish();
-        }
-      }
-      if (viewing) this.viewing.acknowledge(viewing);
-      this.speechInbox.acknowledge(speechBatch.ids);
+          expiresAt: capturedAt + SCREEN_REACTION_TTL_MS,
+        },
+      );
+      this.viewing.acknowledge(viewing);
       this.failures = 0;
       this.retryAt = 0;
-      return { ok: true };
-    } catch (error) {
-      diagnosticOutcome = operation.superseded
-        ? 'superseded'
-        : epoch !== this.epoch
-          ? 'stopped'
-          : 'error';
-      if (operation.superseded && epoch === this.epoch) return { skipped: 'superseded' };
-      if (epoch === this.epoch) {
-        this.failures++;
-        this.retryAt = this.now() + Math.min(60000, 3000 * 2 ** this.failures);
-        this.lastError = error.message;
-        this.log(error.message);
+      return { outcome: 'accepted', result: { ok: true } };
+    }
+    const correction = this.correctTranscripts(
+      result.observation.transcriptCorrections,
+      transcriptCandidates,
+    );
+    if (correction.rejected) {
+      this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');
+      this.speechInbox.acknowledge(speechBatch.ids);
+      return {
+        outcome: 'transcription-review',
+        result: { ok: true, transcriptionNeedsReview: true },
+      };
+    }
+    const chatDriven = !speech.trim() && this.viewing.sameExternalInput(viewing);
+    this.accept({ ...observation, messages: eligibleMessages }, capturedAt, false, 'live', {
+      diagnosticId,
+      responseStartedAt,
+      externalIds: operation.externalIds,
+      loreIds: [...operation.loreIds],
+      chatDriven,
+      visits,
+      advicePolicy,
+      adviceRequestId,
+      screenSourceId: screenTimeline?.sourceId,
+      ...(operation.hasSpeech ? {} : { expiresAt: visualExpiresAt }),
+    });
+    this.recordReactionExperience({
+      observation,
+      result,
+      speech,
+      speechBatch,
+      chatDriven,
+      image,
+      witnesses,
+      capturedAt,
+      personalContext,
+      game,
+    });
+  }
+  recordReactionExperience({
+    observation,
+    result,
+    speech,
+    speechBatch,
+    chatDriven,
+    image,
+    witnesses,
+    capturedAt,
+    personalContext,
+    game,
+  }) {
+    const donations = this.economy.reward({
+      observation,
+      settings: this.settings,
+      audience: this.audience,
+      hasInput: !chatDriven && (!!image || !!speech),
+      paid: false,
+    });
+    for (const d of donations) this.publishMessage(donationMessage(d));
+    if (this.autonomy) {
+      const clipSpeech = this.speechInbox.sources(speechBatch.ids);
+      try {
+        this.autonomy.evolve(observation.viewerChanges, speech, witnesses);
+        this.clipFeatures.spectatorPicks(observation, {
+          image,
+          speech: speechBatch.ids.length ? clipSpeech.map((e) => e.text).join('\n') : speech,
+          witnesses,
+          capturedAt,
+          liveSpeech: clipSpeech,
+          heardByViewer: Object.fromEntries(
+            Object.entries(personalContext.viewerContext).map(([id, p]) => [id, p.heardSounds]),
+          ),
+        });
+      } catch (error) {
+        this.log(`관객 경험 저장 보류: ${error.message}`);
       }
-      throw error;
-    } finally {
-      this.reactions.finish(diagnosticId, diagnosticOutcome);
-      if (this.liveReaction === operation) this.liveReaction = null;
-      if (epoch === this.epoch) {
-        this.busy = false;
+    }
+    if (
+      !this.autonomy &&
+      this.settings.autoHighlights &&
+      observation.positiveMoment?.positive &&
+      observation.positiveMoment.impact >= 0.8 &&
+      observation.confidence >= 0.75 &&
+      observation.excitement >= 0.8
+    ) {
+      try {
+        this.clips.create({
+          game: result.observation.game,
+          scene: result.observation.scene,
+          title: result.observation.positiveMoment.reason,
+          participants: this.settings.personas
+            .filter((p) => ['active', 'lurking'].includes(this.audience.presence[p.id]))
+            .map((p) => ({ id: p.id, name: p.name })),
+          messages: this.messages,
+          image,
+          sessionId: this.sessionId,
+          source: 'automatic-moment',
+          startedAt: this.startedAt,
+          signature: result.observation.positiveMoment.signature,
+          observedAt: this.lastRequest,
+        });
         this.publish();
+      } catch (error) {
+        this.log(`자동 핫클립 저장 보류: ${error.message}`);
       }
+    }
+    if (
+      this.settings.category !== 'just-chatting' &&
+      image &&
+      result.observation.confidence >= 0.7
+    ) {
+      this.knowledge.observe(
+        game.id === 'auto' ? result.observation.game : game.name,
+        result.observation.scene,
+        capturedAt,
+        game.popularity,
+        witnesses,
+      );
+      this.publish();
     }
   }
   async transcribe(buffer, mime, requestSignal) {

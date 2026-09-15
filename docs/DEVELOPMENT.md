@@ -12,6 +12,20 @@
 
 ## 작업과 검사
 
+### 반응 처리 책임
+
+`Studio.reactInput()`은 호출 순서·실행 중 상태·취소·오류와 최종 정리를 관리한다. 세부 처리는 다음 메서드에서 확인한다.
+
+- `prepareReactionViewing()`: 프레임 시간·목격자·소리·채팅 변화와 동일 입력의 재호출 여부.
+- `reactRehearsal()`: 계정 호출 없는 기본 리허설 응답.
+- `prepareLiveReaction()`: 관객별 목격 범위·관련 기억·훈수 정책과 모델 요청 컨텍스트.
+- `acceptLiveReaction()`: 방송 세대·취소·화면 유효 시간·전사 교정 확인 후 응답 수용. 조기 종료 결과와 진단 결과를 호출자에게 함께 반환한다.
+- `recordReactionExperience()`: 수용된 반응의 가상 후원·관객 변화·클립·지식 저장. 조용한 동행이나 거절된 반응은 이 단계로 진입하지 않는다.
+
+요청 준비와 응답 수용 사이에는 모델 호출을 기다리는 구간이 있다. 관객 방문 시각과 요청 당시의 기억·외부 채팅 ID를 보존하고, 응답 시점의 방송 상태를 다시 검사한다. 관련 회귀 검사는 `temporal-viewing`, `viewing-continuity`, `reaction-diagnostics`, `community-lore`, `speech-flow`에 있다.
+
+### 명령
+
 작업별 worktree에서 `npm ci`로 의존성을 설치한다. 저장 프로필·포트·빌드 결과·로그는 다른 작업과 공유하지 않는다. 상세 통합·원격 게시 규칙은 [병렬 개발](PARALLEL-DEVELOPMENT.md)을 따른다.
 
 ```powershell
