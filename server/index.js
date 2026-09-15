@@ -43,6 +43,7 @@ import { RequestLifetime, ownProviderRequests } from './request-lifetime.js';
 import { StateFeed } from './state-stream.js';
 import { ObsInput } from './obs-input.js';
 import { externalChatRoutes } from './external-chat-session.js';
+import { RuntimeComponents } from './runtime-components.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export async function startServer({
@@ -116,6 +117,13 @@ export async function startServer({
   const speech = speechWorker || new LocalSpeech(runtime.speech);
   const sound = soundWorker || new LocalSound(runtime.sound);
   const clipInspector = new ClipInspector(runtime.clips);
+  const runtimeComponents = runtime.components ? new RuntimeComponents(runtime.components) : null;
+  if (runtimeComponents) {
+    runtime.speech.prepare = (signal, device) =>
+      runtimeComponents.prepare('microphone', signal, device);
+    runtime.sound.prepare = (signal) => runtimeComponents.prepare('sound', signal);
+    runtime.clipPerception.prepare = (signal) => runtimeComponents.prepare('perception', signal);
+  }
   const providerStatus = provider.status.bind(provider);
   provider.status = () => ({
     ...providerStatus(),
@@ -294,11 +302,34 @@ export async function startServer({
       obsInput: obsInput.snapshot(),
       debug: debug.summary(),
       externalChat: external.snapshot(),
+      ...(runtimeComponents ? { runtimeComponents: runtimeComponents.snapshot() } : {}),
     }),
     beforeStop: [
       ['외부 채팅', () => external.disconnect()],
       ['OBS', () => obsInput.disconnect()],
     ],
+  });
+  if (runtimeComponents) runtimeComponents.onChange = () => studio.publish();
+  app.post('/api/runtime/prepare', async (req, res) => {
+    const { feature } = z
+      .object({ feature: z.enum(['microphone', 'sound', 'clips', 'perception']) })
+      .strict()
+      .parse(req.body);
+    const controller = new AbortController();
+    const disconnect = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    res.on('close', disconnect);
+    try {
+      await runtimeComponents?.prepare(feature, controller.signal, studio.settings.speechDevice);
+      if (!controller.signal.aborted) res.json({ ok: true });
+    } finally {
+      res.off('close', disconnect);
+    }
+  });
+  app.post('/api/runtime/cancel', (_req, res) => {
+    runtimeComponents?.cancel();
+    res.json({ ok: true });
   });
   app.post('/api/obs/connect', async (req, res) => {
     const settings = z
@@ -848,6 +879,7 @@ export async function startServer({
         }
       };
       const tasks = [
+        invoke(() => runtimeComponents?.close()),
         requests.close(),
         invoke(() => tutorial.operation),
         invoke(() => probe.cancel()),

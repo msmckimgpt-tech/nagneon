@@ -1,4 +1,5 @@
 import { CommunityLore } from './CommunityLore';
+import { RuntimeDownloads } from './RuntimeDownloads';
 import { GuidedTutorial, FirstViewerStatus } from './GuidedTutorial';
 import { TextReactions } from './TextReactions';
 import { Brand } from './Brand';
@@ -399,6 +400,7 @@ export function App() {
             </div>
           </header>
           <main>
+            <RuntimeDownloads state={state} activeOnly />
             <FirstViewerStatus state={state} onView={() => setTab('audience')} />
             {state.tutorial?.status === 'paused' && (
               <div className="first-viewer-status">

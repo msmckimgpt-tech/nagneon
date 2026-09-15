@@ -19,7 +19,7 @@ export class LocalSound {
     child.on('close',()=>{if(this.child===child){this.child=null;this.fail('로컬 소리 프로세스가 종료되었습니다. 다시 연결해주세요.');}});
   }
   fail(message){this.ready=false;this.error=message;const p=this.pending;this.pending=null;p?.reject(Error(message));}
-  async prepare(signal){this.start();const start=Date.now();while(!this.ready){if(signal.aborted)throw Error('소리 연결을 취소했습니다.');if(this.error)throw Error(this.error);if(Date.now()-start>45000)throw Error('소리 모델 준비 시간이 초과됐습니다.');await new Promise(r=>setTimeout(r,100));}return true;}
+  async prepare(signal){if(this.runtime.prepare)await this.runtime.prepare(signal);signal.throwIfAborted();this.start();const start=Date.now();while(!this.ready){if(signal.aborted)throw Error('소리 연결을 취소했습니다.');if(this.error)throw Error(this.error);if(Date.now()-start>45000)throw Error('소리 모델 준비 시간이 초과됐습니다.');await new Promise(r=>setTimeout(r,100));}return true;}
   analyze(buffer,signal){
     if(!this.ready)throw Error(this.error||'소리 모델을 준비 중입니다.');if(this.pending)throw Error('이전 소리를 분석하고 있습니다.');
     return new Promise((resolve,reject)=>{const id=randomUUID();const clean=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);};const abort=()=>{if(this.pending?.id===id)this.pending=null;clean();reject(Error('소리 분석을 취소했습니다.'));};const timer=setTimeout(abort,30000);signal.addEventListener('abort',abort,{once:true});this.pending={id,resolve:v=>{clean();resolve(v);},reject:e=>{clean();reject(e);}};if(signal.aborted){abort();return;}this.child.stdin.write(JSON.stringify({id,audio:buffer.toString('base64')})+'\n');});

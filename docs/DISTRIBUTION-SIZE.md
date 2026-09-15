@@ -16,7 +16,7 @@
 
 기본 앱 파일은 전체의 약 17.7%다. 이는 분류 결과이며 **경량 배포본의 실행·다운로드 완료 수치가 아니다**. 전체 기능을 설치하면 원래 구성의 공간은 여전히 필요하다. 모델 품질을 임의로 낮추거나 CPU/GPU 선택을 바꾸지 않는다.
 
-## 구현과 남은 작업
+## 초기 분류 단계 기록
 
 - scripts/lib/distribution-components.mjs가 각 파일을 하나의 구성에 배정하고 파일 경로·크기·SHA-256으로 구성 식별자를 만든다. 파일 순서·앱 버전/시각에 의존하지 않아 같은 런타임을 재사용할 수 있다. 패키지 빌더의 매니페스트에 이 정보를 기록한다. 경로 모호성·중복·무결성 누락을 거절한다.
 - 아직 모든 파일을 동봉하는 기존 패키지를 빌드한다. 새 메타데이터만으로 기본 앱이 단독 실행되지는 않는다. runtime.cjs의 모든 음성 파일 필수 검사, 설치기 전체 복사, 기능별 준비 흐름을 함께 수정해야 한다.
@@ -45,3 +45,18 @@
 원본: artifacts/latest-runtime-packs.json, artifacts/critical-review/runtime-packs-real.log, base-zip-result.json, base-zip.log(초기 .NET 압축 어셈블리 로딩 실패), base-zip-retry.log, components-runtime-result.json(긴 경로 실패), components-runtime-short-path-result.json. 빌더/다운로드/복원 회귀는 작업본 668/668·빌드 통과 (runtime-packs-final-check.log). 다운로드 네트워크는 합성 Response 검증이며 실제 배포 호스트 다운로드는 아직 미검증이다.
 
 짧은 캐시 경로에서 실제 전달 모듈과 분리한 Python·medium·small·GPU·YAMNet을 연결해 재검증했다. 개발 PATH를 제외한 합성 한국어 전사·시스템 소리/대사 인식, GPU 사용(fallback=false), 정상 종료 통과. 실제 계정 모델 호출·물리 장치 입력·경량 앱 GUI 시작 검사는 하지 않았다. 원본 components-runtime-short-path-result.json은 passed=true다.
+
+## 경량 앱과 기능별 준비 연결
+
+- `package-windows.mjs --components`는 Python·모델·GPU를 제외하고 앱·공식 CLI·처리 스크립트만 동봉한다. 기존 전체 동봉 빌드도 유지한다. 분리 구성의 내용 식별자가 앱에 고정한 카탈로그와 일치해야 빌드된다.
+- 기본 실행에는 추가 구성이나 네트워크 다운로드가 필요 없다. 실제 경량 Nagneon.exe에서 격리 프로필로 온보딩·방송 시작/종료·앱 종료를 확인했다. 프로필의 runtime 디렉터리는 생성되지 않았다. 최초 실행 시험은 합성 리허설이며 실제 모델 응답·마이크/화면 입력 검증과 구분한다.
+- 연결 화면에 필요한 다운로드 크기·진행·취소·오류를 표시한다. 마이크/시스템 소리/클립 준비 시 필요한 구성만 요청한다. GPU 설정과 medium 모델을 유지한다. 중복 요청은 공유하고 한 요청의 취소가 다른 요청을 중단하지 않는다. 앱 종료는 진행 중 다운로드를 취소하고 정리를 기다린다. 준비 실패 시 마이크가 재시도를 반복하지 않는다.
+- 일반 앱의 캐시는 LocalAppData/Nagneon/runtime이며 업데이트별 디렉터리 밖에 둔다. 격리 검증은 지정한 프로필 아래 별도 캐시를 사용한다. 재시작 후 처음 사용할 때 설치 파일 해시를 확인한다.
+- 다운로드 시점 질문은 아직 답변 전이다. 기능 첫 사용 시 설치를 잠정 적용했다. 사용자 확정 선택으로 기록하지 않는다.
+- 합성 다운로드를 사용하는 실제 Electron UI에서 시작 시 요청 0회, 진행 표시, 420px 폭 넘침 없음, 취소 후 자동 재시도 없음, 정상 종료를 확인했다. `artifacts/runtime-components-ui/result.json`, `progress.png`. HTTP 인증·공통 구성 공유·CPU/GPU 선택·취소·종료 회귀를 포함한 필수 검사 674개와 빌드 통과 (`runtime-components-qualified-check.log`).
+
+### 출시 전 남은 검증
+
+카탈로그의 v0.1.4 주소는 아직 게시되지 않았다. 공개 호스트 다운로드 성공이나 정식 배포 완료로 해석하지 않는다. 고정 구성 자산 게시·실제 HTTPS 다운로드, 기존 설치 재사용/업데이트와 데이터 보존, 손상 캐시 복구, 화면 연결 뒤 클립 활성화 경로 및 긴 다운로드 뒤 실제 캡처를 마무리해야 한다. 기존 0.1.3 사용자 앱은 교체하지 않았다. 현재 작업·통합 worktree는 진행 중 코드와 검증 산출물이 있어 보존한다.
+
+최종 문구 수정 뒤 전체 검사 1회에서 기존 clip-recording-routes의 로컬 HTTP `fetch failed`가 발생했다. 좁힌 해당 테스트와 전체 재검사는 통과(674/674·빌드)했으나 간헐적 원인은 미확정이다. `runtime-components-release-check.log` 실패 원본, `runtime-components-http-race-check.log`, `runtime-components-release-recheck.log`를 함께 보존한다. 실패가 해결되었다고 표시하지 않는다.

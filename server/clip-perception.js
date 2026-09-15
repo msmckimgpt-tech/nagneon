@@ -33,6 +33,7 @@ export class ClipPerception {
     const controller=new AbortController(),operation={controller,promise:null};this.active=operation;
     const combined=AbortSignal.any([signal,controller.signal]);
     operation.promise=(async()=>{
+      if(this.runtime.clipPerception?.prepare)await this.runtime.clipPerception.prepare(combined);
       const sources=await this.sources(clips,clip,combined),identity=clipMediaIdentity(clip);
       const result=await this.run({sources},combined);
       const frames=[],audio=[];

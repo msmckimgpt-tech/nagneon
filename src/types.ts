@@ -96,6 +96,18 @@ export type SoundState = {
   };
 };
 export type State = {
+  runtimeComponents?: {
+    components: Array<{
+      id: string;
+      label: string;
+      status: 'idle' | 'checking' | 'downloading' | 'installing' | 'ready' | 'error';
+      downloadedBytes: number;
+      downloadBytes: number;
+      installedBytes: number;
+      installBytes: number;
+      error: string;
+    }>;
+  };
   tutorial?: TutorialState;
   debug?: { enabled: boolean; customPrompt: boolean };
   providerChoice?: {

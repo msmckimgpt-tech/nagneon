@@ -14,7 +14,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const captureVideo=useRef<HTMLVideoElement|null>(null),wasRunning=useRef(false),captureEpoch=useRef(0),acquiringMic=useRef(false);
   const temporal=useRef(new TemporalFrames());const [captureRevision,setCaptureRevision]=useState(0);
   const [sharing,setSharing]=useState(false),[mic,setMic]=useState(false),[micPreparing,setMicPreparing]=useState(false),[level,setLevel]=useState(0),[transcript,setTranscript]=useState(''),[delivery,setDelivery]=useState('');
-  const micRetryAt=useRef(0);
+  const micRetryAt=useRef(0),runtimeMicRequested=useRef(false);
   const micPreparation=useRef<AbortController|null>(null);
   const capturePreparation=useRef<AbortController|null>(null),[capturePreparing,setCapturePreparing]=useState<CapturePhase|null>(null);
   const recording=useRef(false),recorder=useRef<MediaRecorder|null>(null),context=useRef<AudioContext|null>(null);
@@ -31,11 +31,17 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   function cancelCapture(){captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;setCapturePreparing(null);}
   function stopScreen(){cancelCapture();endFrames();clipUploads.current?.dispose();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setOutputStream(null);setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}captureVideo.current=null;}
   function stopMic(){clipUploads.current?.dispose();epoch.current++;micPreparation.current?.abort();micPreparation.current=null;setMicPreparing(false);recording.current=false;speechQueue.current?.reset();speechQueue.current=null;if(recorder.current?.state==='recording')recorder.current.stop();micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
-  function stopAll(){stopScreen();stopMic();pendingSpeech.current.clear();}
+  function stopAll(){runtimeMicRequested.current=false;stopScreen();stopMic();pendingSpeech.current.clear();}
   async function share(sourceId?:string,options={systemAudio:false,picture:true}){
     if(capturePreparation.current)return;
     const ticket=++captureEpoch.current,preparation=new AbortController();capturePreparation.current=preparation;
     try{
+      if(stateRef.current?.runtimeComponents&&(options.systemAudio||stateRef.current.settings.clipBufferEnabled)){
+        setCapturePreparing('source');
+        const response=await fetch('/api/runtime/prepare',{method:'POST',headers:{'X-Backseat-Client':'studio','Content-Type':'application/json'},body:JSON.stringify({feature:options.systemAudio?'sound':'clips'}),signal:preparation.signal});
+        const result=await response.json();if(!response.ok)throw Error(result.error||'추가 구성 준비 실패');
+        preparation.signal.throwIfAborted();
+      }
       const prepared=await prepareCapture({signal:preparation.signal,onPhase:setCapturePreparing,picture:options.picture,acquisitionTimeoutMs:sourceId?30000:0,acquire:async()=>{
         if(sourceId&&window.backseat)await window.backseat.selectSource(sourceId,options.systemAudio);
         if(preparation.signal.aborted)throw new DOMException('화면 연결 취소','AbortError');
@@ -75,6 +81,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   async function startMic(){
     if(acquiringMic.current||micStream.current)return;
     if(!stateRef.current?.running||stateRef.current.settings.mode!=='live'){errorRef.current('실제 AI 방송을 시작한 뒤 마이크를 켜주세요.');return;}
+    runtimeMicRequested.current=true;
     acquiringMic.current=true;const generation=++epoch.current,preparation=new AbortController();micPreparation.current=preparation;setMicPreparing(true);
     try{
       const response=await fetch('/api/audio/prepare',{method:'POST',headers:{'X-Backseat-Client':'studio'},signal:preparation.signal});const prepared=await response.json();if(!response.ok)throw Error(prepared.error||'음성 인식기를 준비하지 못했습니다.');
@@ -104,12 +111,12 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
         rec.start();const timer=setTimeout(()=>{if(rec.state==='recording')rec.stop();},VOICE_MAX_MS);
       }
       segment();
-    }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+' 자동으로 다시 연결합니다.');}}
+    }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;const components=stateRef.current?.runtimeComponents;const needed=['audio','microphone',...(stateRef.current?.settings.speechDevice==='gpu'?['gpu']:[])];const needsPreparation=components&&needed.some(id=>components.components.find(c=>c.id===id)?.status!=='ready');if(needsPreparation)runtimeMicRequested.current=false;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+(needsPreparation?' 구성을 준비한 뒤 마이크를 다시 켜주세요.':' 자동으로 다시 연결합니다.'));}}
     finally{acquiringMic.current=false;if(micPreparation.current===preparation){micPreparation.current=null;setMicPreparing(false);}}
   }
   useEffect(()=>{
     if(!state?.running||state.settings.mode!=='live')return;
-    const reconnect=()=>{if(!recording.current&&Date.now()>=micRetryAt.current)void startMic();};
+    const reconnect=()=>{const current=stateRef.current;if(current?.runtimeComponents){if(!runtimeMicRequested.current)return;const needed=['audio','microphone',...(current.settings.speechDevice==='gpu'?['gpu']:[])];if(needed.some(id=>current.runtimeComponents!.components.find(c=>c.id===id)?.status!=='ready'))return;}if(!recording.current&&Date.now()>=micRetryAt.current)void startMic();};
     reconnect();const timer=setInterval(reconnect,1000);navigator.mediaDevices.addEventListener('devicechange',reconnect);
     return()=>{clearInterval(timer);navigator.mediaDevices.removeEventListener('devicechange',reconnect);};
   },[state?.running,state?.sessionId,state?.settings.mode]);
