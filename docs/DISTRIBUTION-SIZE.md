@@ -1,5 +1,7 @@
 # 배포 용량 개선 — 최우선 진행
 
+**현재 배포:** [0.1.4](https://github.com/msmckimgpt-tech/nagneon/releases/tag/v0.1.4), 기본 앱 ZIP **315,237,855바이트**, 설치 **844,297,851바이트/89파일**. 기존 앱 ZIP 대비 약83.7% 감소다. 추가 음성·GPU 구성은 별도이며 전체 기능의 총 설치 공간이 이 비율로 줄어든 것은 아니다. 아래는 각 단계 당시 상태와 원본 증거를 보존한 기록이다.
+
 2026-09-16 사용자가 배포 크기 문제를 다른 리뷰 개선보다 먼저 해결하도록 지시했다. 원래 리뷰 전체 범위는 유지한다.
 
 ## 실제 기준
@@ -80,3 +82,11 @@
 - 실제 공개 다운로드 캐시로 전달 ASAR의 한국어 전사·시스템 소리 인식·GPU int8_float16 실행 통과, CPU fallback 없음 (`published-runtime-execution.json`). 물리 마이크나 실제 AI 모델 요청은 이 검사의 범위가 아니다.
 - 사용자 앱이 꺼진 상태에서 데이터만 격리 복사했다. 0.1.3 설치→0.1.4 업데이트 전후 데이터 및 백업 해시 일치, 실제 업데이트 EXE 실행·재시작, 별도 복귀 프로필에서 0.1.3 실행·종료 통과. 관객6명 설정·방송 제목·잔액 보존. 원본 사용자 프로필은 변경하지 않았다. 이 복사본의 lore는0개이므로 비어 있지 않은 추억 보존 근거는 기존 별도 fixture 검사를 사용한다. 원본 `lightweight-update-result.json`, `lightweight-updated-profile-native.log`, `lightweight-updated-profile-restart.log`, `lightweight-profile-restart-preservation.json`, `lightweight-profile-recovery-native.log`.
 - 전달 소스와 실제 Windows 테스트 창으로 화면 캡처를 확인했다. 구성 설치는 합성7초 지연이며 첫 화면 연결7.727초, 다음 화면1.370초; 픽셀 일치·이전 트랙 종료·창 닫기 후 미리보기/트랙 종료 통과. 물리 마이크·시스템 오디오·사용자 화면·AI 호출 없음. `artifacts/capture-preparation-native-1789498248347/result.json`. 이전 검증 스크립트의 옛 온보딩/DOM 문구 및 SSE 대기 누락 실패는 각 고유 증거 폴더에 보존했다. 현재 검사는 실제 방송 시작 상태와 트랙 종료를 확인한다.
+
+## 0.1.4 공개
+
+main a035d03597db87ac8ed7294d844b9006a0bffc71을 v0.1.4 태그로 공개했다. 앱 ZIP, install-tools ZIP, SHA256SUMS.txt를 게시했고 원격 자산 크기·digest를 대조했다. latest도 v0.1.4다. `app-release-published.json`, `app-release-acceptance.json`에 기록했다. 설치 도구 ZIP은 현재 설치/실행/호환성 스크립트와 INSTALL.md 네 파일의 내용 해시를 확인했다.
+
+최종 패키지는 `release/2026-09-15T18-58-04-697Z`다. 최초 통합 원본 대조에서 작업 폴더와 통합 폴더의 줄바꿈 차이를 발견해 CRLF/LF 외 차이가 없음을 확인하고 재생성했다. 최종 통합 소스101개와 실제 패키지의 바이트가 일치한다 (`package-line-ending-comparison.json`, `final-integrated-source.json`). 새 EXE 실행·종료, 공개 다운로드로 설치한 GPU/음성 실행, 파일/fuse 무결성 검사를 다시 통과했다 (`final-integrated-native.log`, `final-integrated-runtime.json`, `final-integrated-integrity.log`). 업데이트/재시작/복귀·화면 캡처 근거는 줄바꿈만 다른 앞선 후보와 동일한 동작 코드에 대한 위 검증을 재사용한다.
+
+앱 공개와 사용자 컴퓨터 적용은 별도다. 이 기록 시점에는 실제 사용자 0.1.3을 교체하지 않았다. 전체 리뷰의 다른 개선과 사용 종료 작업 공간 정리도 계속 진행한다.
