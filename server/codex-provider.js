@@ -41,7 +41,7 @@ export function resolveCodexBin(env=process.env,{platform=process.platform,arch=
 
 // Official CLI owns and refreshes the login. This app never reads auth.json.
 export class CodexProvider extends OpenAIProvider {
-  constructor(env=process.env,spawner=spawn){super(env);this.spawn=spawner;this.bin=resolveCodexBin(env);this.env={...process.env,...env};this.compactInstructions=env.BACKSEAT_COMPACT_INSTRUCTIONS!=='0';this.minimalSkillContext=env.BACKSEAT_MINIMAL_SKILL_CONTEXT!=='0';this.available=false;this.authState='checking';this.authMessage='로그인 상태 확인 중';}
+  constructor(env=process.env,spawner=spawn){super({...env,BACKSEAT_SHARED_VIEWER_CONTEXT:env.BACKSEAT_SHARED_VIEWER_CONTEXT??'1'});this.spawn=spawner;this.bin=resolveCodexBin(env);this.env={...process.env,...env};this.compactInstructions=env.BACKSEAT_COMPACT_INSTRUCTIONS!=='0';this.minimalSkillContext=env.BACKSEAT_MINIMAL_SKILL_CONTEXT!=='0';this.available=false;this.authState='checking';this.authMessage='로그인 상태 확인 중';}
   async check(){
     const result=await new Promise(resolve=>{
       const child=this.spawn(this.bin,['login','status'],{windowsHide:true,timeout:10000,env:this.env});let text='';
