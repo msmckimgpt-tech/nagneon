@@ -8,6 +8,7 @@ import {pathToFileURL} from 'node:url';
 import {randomUUID,createHash} from 'node:crypto';
 import {extractAll} from '@electron/asar';
 import assert from 'node:assert/strict';
+import {installRuntimePack} from '../server/runtime-pack.js';
 const option=name=>process.argv.find(a=>a.startsWith('--'+name+'='))?.slice(name.length+3);
 const folder=option('folder')||JSON.parse(await readFile(resolve('artifacts/latest-package.json'),'utf8')).folder;
 const reportPath=resolve(option('report')||'artifacts/packaged-runtime-test.json');
@@ -31,12 +32,28 @@ const [{LocalSpeech},{LocalSound},{CodexProvider},{defaults},{Settings}]=await P
 const require=createRequire(pathToFileURL(join(appRoot,'package.json')));
 const {packagedRuntime}=require(join(appRoot,'desktop/runtime.cjs'));
 const runtime=packagedRuntime(join(folder,'resources'));
+let componentIds;
+if(option('components-catalog')){
+  const catalog=JSON.parse(await readFile(option('components-catalog'),'utf8'));
+  assert.equal(catalog.verified,true,'Component packing must finish before runtime validation');
+  const roots={};componentIds={};
+  for(const component of catalog.components){
+    const installed=await installRuntimePack({archive:join(catalog.output,component.archive.name),component,cache:catalog.cache||join(catalog.output,'verified')});
+    roots[component.id]=join(installed.path,'resources');componentIds[component.id]=component.contentId;
+  }
+  assert.ok(roots.audio&&roots.sound&&roots.microphone&&roots.gpu);
+  runtime.speech.python=join(roots.audio,'speech/python/python.exe');
+  runtime.speech.model=join(roots.microphone,'speech/microphone-model');
+  runtime.speech.modelName='medium';runtime.speech.gpuLibraries=join(roots.gpu,'speech/gpu');
+  runtime.sound.python=runtime.speech.python;runtime.sound.model=join(roots.sound,'sound/model');
+  runtime.sound.speechModel=join(roots.sound,'speech/model');
+}
 // Child processes cannot find the development Node/Python/Codex through PATH.
 process.env.PATH=join(process.env.SystemRoot,'System32')+';'+process.env.SystemRoot;
 delete process.env.PYTHONHOME;delete process.env.PYTHONPATH;
 const speech=new LocalSpeech(runtime.speech);
 const sound=new LocalSound(runtime.sound);
-const report={folder,appRoot,archiveSha256,extractedDeliveredArchive:!!archiveSha256,checkedAt:new Date().toISOString(),restrictedPath:true,deliveredModules:true,syntheticAudio:true,liveModel:false,checks:[]};
+const report={folder,appRoot,archiveSha256,componentIds,extractedDeliveredArchive:!!archiveSha256,checkedAt:new Date().toISOString(),restrictedPath:true,deliveredModules:true,syntheticAudio:true,liveModel:false,checks:[]};
 try{
   speech.start();const start=Date.now();
   while(!speech.ready&&Date.now()-start<30000){if(speech.error)throw new Error(speech.error);await new Promise(r=>setTimeout(r,100));}
