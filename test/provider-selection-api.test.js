@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {startServer} from '../server/index.js';
+import {hostedModelEnv} from '../server/provider-choice.js';
+import {OpenAIProvider} from '../server/provider.js';
 
 test('provider API persists nonsecret choice, keeps audio, and rejects unsafe transitions',async()=>{
   const folder=await mkdtemp(resolve('artifacts/provider-selection-'));
@@ -29,4 +31,22 @@ test('provider API persists nonsecret choice, keeps audio, and rejects unsafe tr
     await post('stop',{});release();assert.equal((await pending).ok,false);assert.equal(service.studio.provider.status().kind,'codex');
     assert.deepEqual(JSON.parse(await readFile(resolve(folder,'provider-choice.json'),'utf8')),{kind:'codex'});
   }finally{release?.();await service?.close();await rm(folder,{recursive:true,force:true});}
+});
+
+test('hosted model API restores saved configuration and resets stale probes',async()=>{
+  const folder=await mkdtemp(resolve('artifacts/hosted-selection-'));let service;
+  const fake=config=>new OpenAIProvider({OPENAI_API_KEY:'fixture-secret',...hostedModelEnv(config)});
+  const options={port:0,dataDir:folder,localSpeech:false,providerFactories:{codex:fake,openai:fake}};
+  const config={kind:'codex',model:'gpt-5.4-mini',effort:'none'};
+  const post=async body=>fetch(service.url+'/api/connection/provider',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(body)});
+  try{
+    service=await startServer(options);const response=await post(config);assert.equal(response.ok,true);assert.deepEqual((await response.json()).config,config);
+    assert.equal(service.studio.provider.model,config.model);assert.equal(service.studio.provider.effort,'none');
+    assert.deepEqual(JSON.parse(await readFile(resolve(folder,'provider-choice.json'),'utf8')),config);
+    await service.close();service=await startServer(options);assert.equal(service.studio.provider.model,config.model);assert.equal(service.studio.provider.effort,'none');
+    assert.equal(service.studio.state().connectionProbe.status,'untested');
+    assert.equal((await post({...config,effort:'invalid'})).ok,false);assert.equal(service.studio.provider.effort,'none');
+    service.studio.running=true;assert.equal((await post({kind:'codex'})).ok,false);service.studio.running=false;
+    assert.equal((await post({kind:'codex'})).ok,true);assert.equal(service.studio.provider.model,'gpt-6-astra');
+  }finally{await service?.close();await rm(folder,{recursive:true,force:true});}
 });

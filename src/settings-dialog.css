@@ -157,3 +157,4 @@
 .debug-toggle input[type=checkbox]{width:auto;margin:0}
 .debug-panel textarea{font-family:Consolas,monospace;line-height:1.6}
 .debug-panel details{margin:16px 0}
+.provider-picker-fields{border:0;padding:0;margin:12px 0;min-width:0;display:grid;gap:12px}

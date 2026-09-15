@@ -83,7 +83,12 @@ test('declining or snoozing a proposal does not punish affinity or charge points
 });
 
 test('auto proposals are opt-in, live-only, once per session/hour with meaningful conversation and no catch-up',async t=>{
-  const {s,advance}=setup(t);s.start();for(let i=0;i<20;i++)s.addMessage('momo','같이 다음 방송을 생각해요 '+i);advance(700000);s.seasons.maybePropose();assert.equal(s.calls,0);s.seasons.configure({autoProposals:true});s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);s.seasons.maybePropose();assert.equal(s.calls,1);const attempt=s.seasons.data.lastAttemptAt;s.stop();advance(86400000);s.seasons.maybePropose();assert.equal(s.seasons.data.lastAttemptAt,attempt);s.start();s.seasons.maybePropose();assert.equal(s.calls,0);for(let i=0;i<20;i++)s.addMessage('momo','다시 생각해봐요 '+i);advance(600000);s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);
+  const {s,advance}=setup(t);
+  // This test drives a virtual clock and invokes maybePropose itself. A real
+  // 250ms pump can otherwise generate unrelated live chat during setImmediate
+  // on a loaded host, contaminating the proposal-only call count.
+  clearInterval(s.timer);
+  s.start();for(let i=0;i<20;i++)s.addMessage('momo','같이 다음 방송을 생각해요 '+i);advance(700000);s.seasons.maybePropose();assert.equal(s.calls,0);s.seasons.configure({autoProposals:true});s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);s.seasons.maybePropose();assert.equal(s.calls,1);const attempt=s.seasons.data.lastAttemptAt;s.stop();advance(86400000);s.seasons.maybePropose();assert.equal(s.seasons.data.lastAttemptAt,attempt);s.start();s.seasons.maybePropose();assert.equal(s.calls,0);for(let i=0;i<20;i++)s.addMessage('momo','다시 생각해봐요 '+i);advance(600000);s.seasons.maybePropose();await new Promise(r=>setImmediate(r));assert.equal(s.calls,1);
 });
 
 test('failed automatic generation persists its attempted session and respects quota on a fresh instance',async t=>{

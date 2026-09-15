@@ -1,9 +1,14 @@
 import {z} from 'zod';
+import audienceModels from '../shared/audience-models.json' with {type:'json'};
+
+const hostedFields={model:z.enum(audienceModels.models.map(m=>m.id)).optional(),effort:z.enum(Object.keys(audienceModels.effortLabels)).optional()};
 
 export const ProviderSelection=z.discriminatedUnion('kind',[
-  z.object({kind:z.literal('codex')}).strict(),z.object({kind:z.literal('openai')}).strict(),
+  z.object({kind:z.literal('codex'),...hostedFields}).strict(),z.object({kind:z.literal('openai'),...hostedFields}).strict(),
   z.object({kind:z.literal('ollama'),model:z.string().trim().min(1).max(200),base:z.string().max(200).default('http://127.0.0.1:11434'),contextSize:z.number().int().min(4096).max(131072).default(65536)}).strict()
-]);
+]).refine(config=>config.kind==='ollama'||!config.effort||(config.model?audienceModels.models.find(m=>m.id===config.model).efforts.includes(config.effort):['low','medium','high','xhigh'].includes(config.effort)),{message:'선택한 모델에서 지원하는 추론 수준을 선택해주세요.'});
+
+export const hostedModelEnv=config=>({...config?.model?{OPENAI_MODEL:config.model}:{},...config?.effort?{OPENAI_REASONING_EFFORT:config.effort}:{}});
 
 // Stable facade: Studio and desktop account helpers keep the same reference.
 // Audio overrides belong to this facade, not the replaceable inference backend.
@@ -13,10 +18,17 @@ export class ProviderChoice {
     this.proxy=new Proxy(this,{get:(target,key)=>{
       if(key in target){const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}
       const backend=['bin','env'].includes(key)?this.codex():this.active;const value=backend[key];return typeof value==='function'?value.bind(backend):value;
-    },set:(target,key,value)=>{if(key==='key'){target.active.key=value;return true;}Reflect.set(target,key,value);return true;}});
+    },set:(target,key,value)=>{if(key==='key'){target.active.key=value;if(target.backends[target.config.kind])target.backends[target.config.kind].key=value;return true;}Reflect.set(target,key,value);return true;}});
   }
   codex(){return this.backends.codex??=this.factories.codex();}
-  create(config){return config.kind==='ollama'?this.factories.ollama(config):config.kind==='codex'?this.codex():(this.backends.openai??=this.factories.openai());}
+  create(config){
+    if(config.kind==='ollama')return this.factories.ollama(config);
+    const base=config.kind==='codex'?this.codex():(this.backends.openai??=this.factories.openai());
+    if(!config.model&&!config.effort)return base;
+    const candidate=this.factories[config.kind](config);
+    candidate.key=base.key; // Keep an in-memory API key across model changes; never persist it.
+    return candidate;
+  }
   snapshot(){return {config:{...this.config},changing:this.changing};}
   status(){return {...this.active.status(),kind:this.config.kind};}
   async check(...args){return this.active.check?.(...args);}

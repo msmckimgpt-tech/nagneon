@@ -5,7 +5,7 @@ import express from 'express';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
-import {ProviderChoice,ProviderSelection} from './provider-choice.js';
+import {ProviderChoice,ProviderSelection,hostedModelEnv} from './provider-choice.js';
 import {OllamaProvider} from './ollama-provider.js';
 import { CodexProvider } from './codex-provider.js';
 import { Knowledge } from './knowledge.js';
@@ -52,7 +52,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
     const selectionStore=useStore('provider-choice',ProviderSelection.nullable(),()=>null);
     const initial=selectionStore.data||(process.env.AI_PROVIDER==='ollama'?{kind:'ollama',model:process.env.OLLAMA_MODEL||'unconfigured',base:process.env.OLLAMA_BASE_URL||'http://127.0.0.1:11434',contextSize:Number(process.env.OLLAMA_CONTEXT_SIZE||65536)}:{kind:process.env.AI_PROVIDER==='openai'?'openai':'codex'});
     providerChoice=new ProviderChoice({initial,save:selectionStore.save,factories:providerFactories||{
-      codex:()=>new CodexProvider({...process.env,...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})}),openai:()=>new OpenAIProvider(),
+      codex:config=>new CodexProvider({...process.env,...hostedModelEnv(config),...(runtime.codexBin?{CODEX_BIN:runtime.codexBin}:{})}),openai:config=>new OpenAIProvider({...process.env,...hostedModelEnv(config)}),
       ollama:config=>new OllamaProvider({OLLAMA_MODEL:config.model,OLLAMA_BASE_URL:config.base,OLLAMA_CONTEXT_SIZE:config.contextSize})
     }});provider=providerChoice.proxy;
   }
