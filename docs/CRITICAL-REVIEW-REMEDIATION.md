@@ -221,3 +221,11 @@
 
 - 0.1.4 실제 Windows 패키지 생성 완료: release/2026-09-15T16-46-46-632Z/app/Nagneon-win32-x64, 2,476파일/4,755,244,557바이트. 포함 소스 97개 현재 파일과 일치 (artifacts/critical-review/candidate-source-integrity.json). 아직 실제 패키지 실행·업데이트 검증 전이므로 배포 합격이 아니다.
 - 통합 검사: 최초 655/656 (microphone-recovery-http 첫 fetch failed), 해당 파일과 최종 전체 검사 656/656·빌드 통과. 원본 artifacts/critical-review-integration/package-candidate-check.log, package-microphone-recheck.log, package-candidate-check-final.log. 반복된 로컬 HTTP 시험의 일시 연결 오류 원인 진단은 미해결로 남긴다. 원본 작업 b64e7336ce3a4f23a8fec3935cea54aefa42a511을 main 882503e 기준 squash 통합.
+
+## 패키지 실행·업데이트와 구버전 호환 보호
+
+- 실제 GUI, 합성 GPU 음성 런타임, 0.1.3→0.1.4 설치와 기록 보존, 별도 백업 복사본으로 구버전 복구를 확인했다. 상세 근거와 미검증 범위는 RELEASE-0.1.4.md에 기록한다.
+- 새 설치/실행 도구는 실제 EXE 버전으로 알려진 비호환을 읽기 전용 검사한다. 새 world를 구버전에 연결하는 설치 요청·실행 Inspect를 거절하고 포인터/기록을 보존했다. 한글 JSON은 Windows PowerShell 5.1에서도 UTF-8로 읽는다. 설치 도구 묶음에 Profile-Compatibility.ps1을 포함해야 한다.
+- 작업본 657/657 테스트·빌드 통과. 한글 구형 기록 fixture 추가 후 해당 검사 재통과. 원본 artifacts/critical-review/profile-guard-check.log, profile-compatibility-final.log, launcher-compatibility/result.json. 원본 작업 af2f8cd를 main 9689bf3 기준 squash 통합한다.
+- 배포 후보 0.1.4는 아직 게시·사용자 적용 전이며 현재 사용자 앱은 0.1.3이다. 실제 사용자 기록 복사본과 영향 있는 장치 검증, 설치 도구 동봉 및 게시가 남아 있다. 활성 작업·모델·증거가 있으므로 작업 및 통합 worktree는 보존한다.
+- 격리 통합본에서도 format:check·657/657 테스트·TypeScript/Vite 빌드 통과 (critical-review-integration/artifacts/critical-review-integration/profile-guard-check.log).

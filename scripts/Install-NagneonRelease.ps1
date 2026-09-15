@@ -6,6 +6,7 @@ param(
     [switch]$Register
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
 function Write-JsonAtomic($Path, $Value) {
     $temp = $Path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
     [IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
@@ -28,10 +29,10 @@ New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 $lock = [IO.File]::Open((Join-Path $InstallRoot 'update.lock'),'OpenOrCreate','ReadWrite','None')
 try {
     $configPath = Join-Path $InstallRoot 'current.json'
-    $old = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { $null }
+    $old = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
     $storageFile = Join-Path $env:APPDATA 'Nagneon/storage.json'
     if ($Register -and (Test-Path -LiteralPath $storageFile)) {
-        $registeredProfile = (Get-Content -LiteralPath $storageFile -Raw | ConvertFrom-Json).profile
+        $registeredProfile = (Get-Content -LiteralPath $storageFile -Raw -Encoding UTF8 | ConvertFrom-Json).profile
         if ($Profile -and [IO.Path]::GetFullPath($Profile) -ne $registeredProfile) { throw 'Use app settings to change the registered storage location.' }
         $Profile = $registeredProfile
         if ($old) { $old.profile = $registeredProfile }
@@ -47,6 +48,7 @@ try {
     if (-not [IO.Path]::IsPathRooted($Profile)) { throw 'An absolute profile is required.' }
     $Profile = (Resolve-Path -LiteralPath $Profile).Path
     if (-not (Test-Path -LiteralPath (Join-Path $Profile 'data'))) { throw 'Existing profile data is required.' }
+    Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion (Get-Item -LiteralPath (Join-Path $PackageFolder 'Nagneon.exe')).VersionInfo.ProductVersion
     $active = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('Nagneon.exe','electron.exe') -and ($_.ExecutablePath -like ($InstallRoot + '\*') -or $_.CommandLine -like ('*' + $Profile + '*')) }
     if ($active) { throw 'Close Nagneon normally before updating. No processes were stopped.' }
     $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
@@ -70,6 +72,7 @@ try {
     }
     Write-JsonAtomic (Join-Path $backup 'package-inventory.json') $inventory
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-InstalledNagneon.ps1') -Destination (Join-Path $InstallRoot 'Start-InstalledNagneon.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1') -Destination (Join-Path $InstallRoot 'Profile-Compatibility.ps1') -Force
     [IO.File]::WriteAllText((Join-Path $InstallRoot 'Start-Nagneon.cmd'), "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Start-InstalledNagneon.ps1`" -InstallRoot `"%~dp0.`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
     Write-JsonAtomic $configPath ([ordered]@{version=$Version;executable=$relativeExe;profile=$Profile;exeSha256=(Get-FileHash -LiteralPath (Join-Path $destination 'Nagneon.exe')).Hash;backup=$backup})
     if ($Register) {
