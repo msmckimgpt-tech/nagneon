@@ -53,3 +53,16 @@ test('runtime extraction rejects traversal and cannot overwrite an existing arch
   const bad={...f.component,files:[{path:'resources/../../outside',bytes:1,sha256:hash('x')}]};
   await assert.rejects(installRuntimePack({...f,component:bad}),/path/);
 });
+
+test('repair preserves a damaged install on cancellation and replaces it only with verified files',async()=>{
+  const f=await fixture(),installed=await installRuntimePack(f),path=join(installed.path,f.component.files[0].path);
+  await writeFile(path,'damaged');
+  const controller=new AbortController();
+  await assert.rejects(installRuntimePack({...f,repair:true,signal:controller.signal,onProgress:()=>controller.abort()}));
+  assert.equal(await readFile(path,'utf8'),'damaged');
+  assert.deepEqual(await readdir(f.cache),[installed.path.split(/[\\/]/).at(-1)]);
+  const repaired=await installRuntimePack({...f,repair:true});
+  assert.equal(repaired.path,installed.path);assert.equal(repaired.reused,false);
+  assert.deepEqual(await readFile(path),f.data[0]);
+  assert.deepEqual(await readdir(f.cache),[installed.path.split(/[\\/]/).at(-1)]);
+});
