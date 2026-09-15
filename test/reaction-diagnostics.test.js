@@ -72,5 +72,5 @@ test('diagnostic HTTP export is authenticated, uncached, content-free and does n
  const endpoint=app.url+'/api/diagnostics/reactions?download=true';assert.equal((await fetch(endpoint)).status,401);
  const id=app.studio.reactions.begin({hasSpeech:true});app.studio.reactions.generated(id,0);app.studio.reactions.finish(id,'accepted');
  app.studio.lastError='PRIVATE-ERROR';app.studio.messages.push({id:'PRIVATE-ID',text:'PRIVATE-CHAT'});
- const response=await fetch(endpoint,{headers:{Authorization:'Bearer '+app.accessToken}});assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/attachment.*backseat-reaction-diagnostics.json/);assert.equal(response.headers.get('cache-control'),'no-store');const raw=await response.text();assert.ok(!raw.includes('PRIVATE'));assert.equal(JSON.parse(raw).summary.modelSilent,1);assert.equal(calls,0);
+ const response=await fetch(endpoint,{headers:{Authorization:'Bearer '+app.accessToken}});assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/attachment.*nagneon-reaction-diagnostics.json/);assert.equal(response.headers.get('cache-control'),'no-store');const raw=await response.text();assert.ok(!raw.includes('PRIVATE'));assert.equal(JSON.parse(raw).summary.modelSilent,1);assert.equal(calls,0);
 });

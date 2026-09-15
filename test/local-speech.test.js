@@ -58,7 +58,7 @@ import {startServer} from '../server/index.js';
 import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-test('service startup and audio preparation honor the stored CPU selection',async()=>{
+test('service startup stays idle and on-demand audio preparation honors the stored CPU selection',async()=>{
  const dataDir=mkdtempSync(join(tmpdir(),'nagneon-gpu-settings-'));
  const provider=()=>({status:()=>({configured:false,model:'test',effort:'low'})});
  let service=await startServer({port:0,dataDir,provider:provider(),localSpeech:false});
@@ -66,7 +66,7 @@ test('service startup and audio preparation honor the stored CPU selection',asyn
  const calls=[];const speech={start:device=>calls.push(['start',device]),prepare:async(_signal,device)=>calls.push(['prepare',device]),close:async()=>{}};
  service=await startServer({port:0,dataDir,provider:provider(),speechWorker:speech});
  try{
-  assert.deepEqual(calls,[['start','cpu']]);
+  assert.deepEqual(calls,[]);
   const response=await fetch(service.url+'/api/audio/prepare',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,Origin:service.url,'X-Backseat-Client':'studio'}});
   assert.equal(response.status,200);assert.deepEqual(calls.at(-1),['prepare','cpu']);
  }finally{await service.close();}

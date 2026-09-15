@@ -106,3 +106,12 @@
 - 증거: artifacts/critical-review/privacy-check.log, artifacts/public-overlay/result.json, artifacts/public-overlay/public.png.
 - 웹 architecture 응답 수신은 브라우저 Debugger unattached 상태로 확인 불가. 전송 당시 URL https://chatgpt.com/c/WEB:21745bb3-6fbd-4057-b576-498683c6c96b . performance는 미전송, synthesis 미실행.
 - 1차 원본 a6466527b36ebe623affe3040db147ca0725b34c 원격 게시 일치. main은 audience-model-selection 통합 잠금 중 57fd39d로 변경됨. 잠금 우회 없이 최신 main에 격리 통합해야 한다.
+
+## 3차 수정: 마이크 지연 기동·내보내기 파일명
+
+- 6-5: 서버 시작의 speech.start 제거. 기존 /api/audio/prepare에서 저장된 장치 선택으로 워커를 기동한다. 설정의 GPU 기본값은 변경하지 않는다. 처음 마이크를 켤 때 모델 준비 시간은 여전히 필요하며 감소했다고 주장하지 않는다.
+- 로컬 음성·실제 자식 프로세스 충돌/취소/복구·진단 HTTP 회귀 통과: artifacts/critical-review/lazy-speech-tests.log.
+- 4-1: 서버의 Content-Disposition 내보내기·진단 파일명도 nagneon으로 통일. 내부 IPC/프로필 식별자 호환은 유지.
+- 1-5 정정: SettingsDialog.tsx에는 이미 방송/분위기/연결/매니저/미디어/게임/디버그 7개 탭이 있다. 제목 태그 개수만으로 분류 부재를 판단한 원문은 부정확하다. 고급 옵션의 설명과 화면 가독성은 계속 검토한다.
+- 2차 원본 커밋 57201445a729837b04aeb7a9ec20cc2360872d31 원격 게시 일치. 현재 브랜치는 전체 목표 진행 중이므로 worktree와 원격 브랜치를 보존한다.
+- 사용자 추가 결정: 호출 제한을 시간 기준으로 전환하고 세션 예상 사용량을 안내한다. 당분간 무료 공개·MIT 유지, 배포 편의와 용량부터 개선한다. 유료 서명 구매나 라이선스 변경은 이번 작업에서 수행하지 않는다.

@@ -263,14 +263,14 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.get('/api/journal',(req,res)=>res.json(journal.list(z.object({viewerId:z.string().max(80).optional(),query:z.string().max(300).optional(),pinned:z.enum(['true','false']).optional().transform(v=>v==='true'),offset:z.coerce.number().int().min(0).max(4000).default(0),limit:z.coerce.number().int().min(1).max(40).default(30)}).parse(req.query))));
   app.post('/api/journal/:id/pin',(req,res)=>{const id=z.string().uuid().parse(req.params.id);const {pinned}=z.object({pinned:z.boolean()}).parse(req.body);journal.pin(id,pinned);studio.publish();res.json({ok:true});});
   app.delete('/api/journal/:id',(req,res)=>{if(studio.busy)throw new Error('관객 응답이 끝난 뒤 기억을 지울 수 있습니다.');studio.moderate('delete',z.string().uuid().parse(req.params.id));studio.queue=[];studio.publish();res.json({ok:true});});
-  app.get('/api/diagnostics/reactions',(req,res)=>{if(req.query.download==='true')res.attachment('backseat-reaction-diagnostics.json');res.set('Cache-Control','no-store').json(studio.reactions.snapshot(studio.queue));});
-  app.get('/api/export',(_req,res)=>{res.attachment(`backseat-${studio.sessionId || 'session'}.json`).json({exportedAt:new Date().toISOString(),...studio.state(),seasonsArchive:studio.seasons.data,conversationJournal:journal.data});});
+  app.get('/api/diagnostics/reactions',(req,res)=>{if(req.query.download==='true')res.attachment('nagneon-reaction-diagnostics.json');res.set('Cache-Control','no-store').json(studio.reactions.snapshot(studio.queue));});
+  app.get('/api/export',(_req,res)=>{res.attachment(`nagneon-${studio.sessionId || 'session'}.json`).json({exportedAt:new Date().toISOString(),...studio.state(),seasonsArchive:studio.seasons.data,conversationJournal:journal.data});});
   app.use(express.static(resolve(root,'dist')));
   app.get(['/', '/overlay'],(_req,res)=>res.sendFile(resolve(root,'dist/index.html')));
   app.use((error,_req,res,_next)=>res.status(error instanceof z.ZodError?400:409).json({error:error instanceof z.ZodError?'입력 설정을 확인하세요: '+error.issues.map(i=>i.message).join(', '):error.message || '요청 처리 실패'}));
   const server=await new Promise((resolve,reject)=>{const s=app.listen(port,'127.0.0.1',()=>resolve(s));s.on('error',reject);});
   expectedHost=`127.0.0.1:${server.address().port}`;
-  if(localSpeech)speech.start(studio.settings.speechDevice);
+  // Start the local worker only when the renderer requests audio preparation.
   const health=setInterval(()=>studio.publish(),5000);health.unref();
   return {server,studio,obsInput,url:`http://${expectedHost}`,accessToken:access.token,close:()=>{
     if(closing)return closing;
