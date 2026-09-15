@@ -21,18 +21,21 @@ let active,s;
 const provider=new CodexProvider({...process.env,OPENAI_MODEL:report.model,OPENAI_REASONING_EFFORT:report.effort},(bin,args,options)=>{
  const child=spawn(bin,args,options);if(args[0]!=='exec'||!active)return child;
  const row=active;const ms=()=>Math.round(performance.now()-row.monotonicStart);row.spawnMs=ms();let buffer='';
- child.stdout.on('data',chunk=>{buffer+=chunk;let n;while((n=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,n);buffer=buffer.slice(n+1);try{const e=JSON.parse(line);if(e.type==='turn.started')row.turnStartedMs=ms();if(e.type==='item.completed'&&e.item?.type==='agent_message')row.messageCompletedMs=ms();if(e.type==='turn.completed')row.turnCompletedMs=ms();}catch{}}if(buffer.length>1_000_000)buffer='';});
+ child.once('spawn',()=>row.processSpawnedMs=ms());
+ child.stdin.once('finish',()=>row.inputWrittenMs=ms());
+ child.stdout.on('data',chunk=>{row.firstStdoutMs??=ms();buffer+=chunk;let n;while((n=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,n);buffer=buffer.slice(n+1);try{const e=JSON.parse(line);row.firstJsonEventMs??=ms();if(e.type==='thread.started')row.threadStartedMs=ms();if(e.type==='turn.started')row.turnStartedMs=ms();if(e.type==='item.completed'&&e.item?.type==='agent_message')row.messageCompletedMs=ms();if(e.type==='turn.completed')row.turnCompletedMs=ms();}catch{}}if(buffer.length>1_000_000)buffer='';});
  child.on('close',()=>row.processClosedMs=ms());return child;
 });
 const react=provider.react.bind(provider);
 provider.react=async(args,signal)=>{
+ const payload=provider.payload(args);active.payloadBytes={instructions:Buffer.byteLength(payload.instructions),text:Buffer.byteLength(payload.input[0].content[0].text),outputSchema:Buffer.byteLength(JSON.stringify(payload.text.format.schema)),images:payload.input[0].content.filter(c=>c.type==='input_image').length};
  active.modelStartedAt=Date.now();const result=await react(args,signal);active.modelReturnedAt=Date.now();active.providerMs=active.modelReturnedAt-active.modelStartedAt;
  active.observation=result.observation;active.usage=result.usage;return result;
 };
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 try{
  await provider.check();assert.equal(provider.available,true);assert.equal(provider.model,report.model);assert.equal(provider.effort,report.effort);
- s=new Studio({provider,settings:{...defaults,mode:'live',category:'just-chatting',lurkRatio:0,slowModeSeconds:0,chatPace:3,maxCalls:4,autoHighlights:false,personas:defaults.personas.filter(p=>['momo','pop','luna'].includes(p.id))},audience:new Audience(undefined,()=>{},()=>.5),random:()=>.5});s.start();
+ s=new Studio({provider,settings:{...defaults,mode:'live',category:'just-chatting',lurkRatio:0,slowModeSeconds:0,chatPace:3,autoHighlights:false,personas:defaults.personas.filter(p=>['momo','pop','luna'].includes(p.id))},audience:new Audience(undefined,()=>{},()=>.5),random:()=>.5});s.start();
  const speeches=[
   '모모, 나는 비 오는 날 집에서 쉬는 게 좋더라. 너는 그런 날 뭐 하고 쉬어?',
   '나는 따뜻한 거 마시면서 추리 소설 읽어 ㅋㅋ 범인 맞히려다가 맨날 틀림. 모모는 결말 먼저 보는 편이야?',
