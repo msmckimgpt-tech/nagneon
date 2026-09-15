@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { downloadRuntimePack } from '../server/runtime-download.js';
@@ -37,4 +37,16 @@ test('runtime download rejects an HTTPS redirect downgraded to plaintext',async(
     const response=new Response(f.bytes);Object.defineProperty(response,'url',{value:'http://example.invalid/redirect'});return response;
   }}),/HTTPS/);
   assert.deepEqual(await readdir(f.cache),[]);
+});
+
+test('repair replaces a damaged cached archive after verification and preserves it on failed download',async()=>{
+  const f=await fixture(),first=await downloadRuntimePack({...f,fetcher:async()=>new Response(f.bytes)});
+  await writeFile(first.path,'damaged');
+  await assert.rejects(downloadRuntimePack({...f,fetcher:()=>{throw Error('must not fetch');}}),/damaged/);
+  await assert.rejects(downloadRuntimePack({...f,repair:true,fetcher:async()=>new Response('bad')}),/integrity/);
+  assert.equal(await readFile(first.path,'utf8'),'damaged');
+  const repaired=await downloadRuntimePack({...f,repair:true,fetcher:async()=>new Response(f.bytes)});
+  assert.equal(repaired.path,first.path);assert.equal(repaired.reused,false);
+  assert.deepEqual(await readFile(first.path),f.bytes);
+  assert.equal((await readdir(f.cache)).length,1);
 });

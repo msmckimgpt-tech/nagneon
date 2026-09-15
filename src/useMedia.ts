@@ -24,7 +24,17 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const errorRef=useRef(onError);errorRef.current=onError;
   const [outputStream,setOutputStream]=useState<MediaStream|null>(null),[picture,setPicture]=useState(true);const pictureRef=useRef(true);
   const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
-  const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled,state?.sessionId || null,outputStream);
+  const clipRuntimeReady=!state?.runtimeComponents||state.runtimeComponents.components.find(c=>c.id==='audio')?.status==='ready';
+  const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled&&clipRuntimeReady,state?.sessionId || null,outputStream);
+  // Settings can enable clipping after an existing screen connection. Prepare
+  // its decoder before buffering/uploading, including that entry point.
+  const clipHasSource=!!screenStream.current||!!micStream.current||!!outputStream;
+  useEffect(()=>{
+    if(!state?.running||!state.settings.clipBufferEnabled||!clipHasSource||clipRuntimeReady)return;
+    const controller=new AbortController();
+    void fetch('/api/runtime/prepare',{method:'POST',headers:{'X-Backseat-Client':'studio','Content-Type':'application/json'},body:JSON.stringify({feature:'clips'}),signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'클립 구성 준비 실패');}).catch(error=>{if(!controller.signal.aborted)errorRef.current(error.message);});
+    return()=>controller.abort();
+  },[state?.running,state?.sessionId,state?.settings.clipBufferEnabled,clipHasSource,clipRuntimeReady]);
   useEffect(()=>{const v=video.current;if(v&&pictureRef.current&&screenStream.current&&v.srcObject!==screenStream.current){v.srcObject=screenStream.current;void v.play().catch(()=>{});}});
   function endFrames(){const {sessionId,sourceId}=temporal.current;temporal.current.reset();if(sessionId&&sourceId)void api('viewing-end',{sessionId,sourceId}).catch(()=>{if(stateRef.current?.running)errorRef.current('이전 화면의 반응 중단을 확인하지 못했습니다. 연결 상태를 확인해주세요.');});}
   function stopSound(){if(!pictureRef.current){stopScreen();return;}cancelCapture();clipUploads.current?.dispose();screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}

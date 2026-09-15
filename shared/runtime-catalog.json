@@ -11761,7 +11761,7 @@
         "bytes": 95790076,
         "sha256": "bdd25d4c00f906f0d529cb4125060f51a66ab761e7d8eb37186449cb8266a820",
         "name": "audio-c78c41b74d52471c634da450f829bd89e7616e1698e54184f9d2dbab0a9dbea9.ngpack",
-        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/v0.1.4/audio-c78c41b74d52471c634da450f829bd89e7616e1698e54184f9d2dbab0a9dbea9.ngpack"
+        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/runtime-2026-09-16/audio-c78c41b74d52471c634da450f829bd89e7616e1698e54184f9d2dbab0a9dbea9.ngpack"
       }
     },
     {
@@ -11829,7 +11829,7 @@
         "bytes": 460120558,
         "sha256": "556d767443450c07f8cecd5ffab5c948aadae12bd76ff2a1ae475521ead54718",
         "name": "sound-426f5fb0f1c24e17abf4ca45998e90c9a9c5c637b98a0126070f32d7fb669285.ngpack",
-        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/v0.1.4/sound-426f5fb0f1c24e17abf4ca45998e90c9a9c5c637b98a0126070f32d7fb669285.ngpack"
+        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/runtime-2026-09-16/sound-426f5fb0f1c24e17abf4ca45998e90c9a9c5c637b98a0126070f32d7fb669285.ngpack"
       }
     },
     {
@@ -11872,7 +11872,7 @@
         "bytes": 1412120686,
         "sha256": "626fc897ee8308526556485f54f95395d14b678e61fff1803c6bcd6f03b956a4",
         "name": "microphone-327816bf3b50d95b453f45a983331783760b7f993e2d91e77ee7d562681185aa.ngpack",
-        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/v0.1.4/microphone-327816bf3b50d95b453f45a983331783760b7f993e2d91e77ee7d562681185aa.ngpack"
+        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/runtime-2026-09-16/microphone-327816bf3b50d95b453f45a983331783760b7f993e2d91e77ee7d562681185aa.ngpack"
       }
     },
     {
@@ -12010,7 +12010,7 @@
         "bytes": 1085458132,
         "sha256": "ffa6664ce990f1117a018c6992ca8e8bbd807e2ff3eeed01e973301faa7f5fac",
         "name": "gpu-329d61548e90949456dce7650b069ecd2d707e35d0024a188db8aae469abbcb7.ngpack",
-        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/v0.1.4/gpu-329d61548e90949456dce7650b069ecd2d707e35d0024a188db8aae469abbcb7.ngpack"
+        "url": "https://github.com/msmckimgpt-tech/nagneon/releases/download/runtime-2026-09-16/gpu-329d61548e90949456dce7650b069ecd2d707e35d0024a188db8aae469abbcb7.ngpack"
       }
     }
   ]

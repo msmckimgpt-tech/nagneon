@@ -262,3 +262,7 @@
 - 작업 worktree artifacts/critical-review/lightweight-native-release.log에서 실제 EXE 온보딩·리허설 시작/정상 중지·앱 종료 통과. lightweight-runtime-release-result.json에서 전달 ASAR·분리 캐시로 합성 한국어 전사/시스템 소리 인식·GPU int8_float16(fallback=false) 통과. 물리 장치 입력이나 실제 모델 대화 검증으로 표시하지 않는다.
 - lightweight-integrity-release.log의 현재 소스/ASAR/전체 파일/실행 fuse 검사 통과. lightweight-zip-result.json은 ZIP 실제 크기와 경로를 기록한다. 분리 구성 카탈로그 URL은 아직 미게시이며 사용자 0.1.3 설치는 유지한다.
 - 다음: 고정 구성 자산 게시와 실제 HTTPS 다운로드, 손상 캐시/기존 설치 재사용, 클립·캡처 경로와 업데이트/데이터 보존 검증. 기존 HTTP 테스트의 간헐 fetch failed 원인은 미확정이며 실패 원본과 좁힌 검사/전체 재검사 성공 모두 DISTRIBUTION-SIZE.md에 기록했다. 전체 리뷰 목표는 계속 진행 중이다.
+
+## 구성 복구·클립 진입 경로 보완
+
+원본 a27608e를 a614d0f 위 squash 통합했다. 충돌 파일은 각각 main 내용이 직전 원본 422fcb1과 동일함을 대조한 뒤 이번 수정으로 해소했고 기존 통합 원장은 보존했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-repair-check.log). 작업본 Electron 합성 화면 UI 4개 검사 통과. 고정 구성 태그 runtime-2026-09-16은 정식 앱과 분리된 구성 자산용이며 이 기록 시점에는 게시 전이다. 다음은 자산 게시·실제 다운로드·기존 설치 업데이트 검증이다. 경량 후보는 제품 소스가 바뀌어 최종 배포 전 다시 빌드해야 한다.

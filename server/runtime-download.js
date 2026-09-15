@@ -5,7 +5,7 @@ import { validateRuntimeComponent, regularAncestors, hashRuntimeFile } from './r
 
 // The URL and integrity record must come from the catalog shipped in the app.
 // No account credentials, user profile, or renderer-supplied manifest is used.
-export async function downloadRuntimePack({ url, component, cache, signal, onProgress = () => {}, fetcher = fetch }) {
+export async function downloadRuntimePack({ url, component, cache, signal, repair = false, onProgress = () => {}, fetcher = fetch }) {
   validateRuntimeComponent(component);
   const expected = component.archive;
   if (expected?.format !== 'nagneon-runtime-gzip/1' || !Number.isSafeInteger(expected.bytes) || expected.bytes <= 0 || !/^[a-f0-9]{64}$/.test(expected.sha256)) throw Error('Invalid runtime archive');
@@ -16,8 +16,8 @@ export async function downloadRuntimePack({ url, component, cache, signal, onPro
   const existing = await lstat(target).catch(e => { if (e.code === 'ENOENT') return null; throw e; });
   if (existing) {
     const actual = await hashRuntimeFile(target, signal);
-    if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256) throw Error('Cached runtime archive is damaged');
-    return { path: target, reused: true };
+    if (actual.bytes === expected.bytes && actual.sha256 === expected.sha256) return { path: target, reused: true };
+    if(!repair)throw Error('Cached runtime archive is damaged');
   }
   const lock = target + '.lock'; await mkdir(lock);
   let stage, handle, response;

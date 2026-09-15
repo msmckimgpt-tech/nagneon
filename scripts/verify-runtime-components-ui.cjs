@@ -21,7 +21,19 @@ app.whenReady().then(async()=>{
   win.setSize(420,900);await new Promise(r=>setTimeout(r,300));assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);report.checks.push('download progress is visible and 420px layout has no horizontal overflow');
   await click('진행 중인 설치 취소');await js('window.runtimeRequest');
   for(let i=0;i<100&&service.studio.state().runtimeComponents.components.some(c=>['checking','downloading','installing'].includes(c.status));i++)await new Promise(r=>setTimeout(r,20));
-  assert.ok(service.studio.state().runtimeComponents.components.every(c=>c.status==='idle'));assert.equal(downloads,1);report.checks.push('cancel control drains the request and does not restart a download');report.passed=true;
+  assert.ok(service.studio.state().runtimeComponents.components.every(c=>c.status==='idle'));assert.equal(downloads,1);report.checks.push('cancel control drains the request and does not restart a download');
+  win.setSize(1000,980);
+  await js(`(async()=>{const s=await(await fetch('/api/state')).json();await fetch('/api/settings',{method:'PUT',headers:{'X-Backseat-Client':'studio','Content-Type':'application/json'},body:JSON.stringify({...s.settings,mode:'rehearsal',clipBufferEnabled:false})});const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const ctx=canvas.getContext('2d');window.fixtureTimer=setInterval(()=>{ctx.fillStyle='navy';ctx.fillRect(0,0,320,180);},40);navigator.mediaDevices.getDisplayMedia=async()=>canvas.captureStream(15);})()`);
+  await until(`document.body.innerText.includes('리허설 시작')`);
+  assert.equal(await js(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>/^(게임 화면 연결|화면 연결 \(선택\))$/.test(b.textContent.trim()));if(!b)return false;b.click();return true})()`),true);
+  await until(`!!document.querySelector('video')?.srcObject`);
+  assert.equal(downloads,1);
+  assert.equal(await js(`(async()=>{const s=await(await fetch('/api/state')).json();const r=await fetch('/api/settings',{method:'PUT',headers:{'X-Backseat-Client':'studio','Content-Type':'application/json'},body:JSON.stringify({...s.settings,clipBufferEnabled:true})});return r.status;})()`),200);
+  await click('리허설 시작');
+  for(let i=0;i<100&&downloads<2;i++)await new Promise(r=>setTimeout(r,50));assert.equal(downloads,2);
+  await click('진행 중인 설치 취소');await new Promise(r=>setTimeout(r,350));assert.equal(downloads,2);
+  report.checks.push('enabling clipping after synthetic screen sharing prepares runtime once and cancellation does not loop');
+  await js(`clearInterval(window.fixtureTimer);fetch('/api/stop',{method:'POST',headers:{'X-Backseat-Client':'studio'}})`);report.passed=true;
  }catch(error){report.error=error.stack;process.exitCode=1;}
  finally{win?.destroy();await service?.close();fs.writeFileSync(join(out,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));app.exit(report.passed?0:1);}
 });

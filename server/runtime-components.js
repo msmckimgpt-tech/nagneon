@@ -42,12 +42,13 @@ export class RuntimeComponents {
     try{
       const exists=await lstat(target).catch(e=>{if(e.code==='ENOENT')return null;throw e;});
       signal.throwIfAborted();
-      if(exists)await this.verify(target,component,signal);
-      else{
+      let ready=false;
+      if(exists){try{await this.verify(target,component,signal);ready=true;}catch(error){if(!['runtime-integrity','ENOENT'].includes(error.code))throw error;signal.throwIfAborted();}}
+      if(!ready){
         this.change(id,{status:'downloading',downloadedBytes:0,installedBytes:0});
-        const downloaded=await this.download({url:component.archive.url,component,cache:join(this.cache,'downloads'),signal,onProgress:p=>this.change(id,{downloadedBytes:p.downloadedBytes},true)});
+        const downloaded=await this.download({url:component.archive.url,component,cache:join(this.cache,'downloads'),signal,repair:true,onProgress:p=>this.change(id,{downloadedBytes:p.downloadedBytes},true)});
         signal.throwIfAborted();this.change(id,{status:'installing',downloadedBytes:component.archive.bytes});
-        await this.install({archive:downloaded.path,component,cache:join(this.cache,'installed'),signal,onProgress:p=>this.change(id,{installedBytes:p.extractedBytes},true)});
+        await this.install({archive:downloaded.path,component,cache:join(this.cache,'installed'),signal,repair:true,onProgress:p=>this.change(id,{installedBytes:p.extractedBytes},true)});
       }
       signal.throwIfAborted();this.change(id,{status:'ready',downloadedBytes:component.archive.bytes,installedBytes:component.bytes});
     }catch(error){this.change(id,{status:signal.aborted?'idle':'error',error:signal.aborted?'':'구성을 준비하지 못했습니다. 연결과 저장 공간을 확인한 뒤 다시 시도해주세요.'});throw new Error(signal.aborted?'구성 준비를 취소했습니다.':this.rows.get(id).error,{cause:error});}

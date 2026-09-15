@@ -44,7 +44,7 @@ export async function verifyRuntimeComponent(root, component, signal) {
     const path = join(root, file.path);
     await regularAncestors(dirname(path));
     const actual = await hashRuntimeFile(path, signal);
-    if (actual.bytes !== file.bytes || actual.sha256 !== file.sha256) throw Error('Runtime file integrity mismatch: ' + file.path);
+    if (actual.bytes !== file.bytes || actual.sha256 !== file.sha256) throw Object.assign(Error('Runtime file integrity mismatch: ' + file.path),{code:'runtime-integrity'});
   }
   return root;
 }
@@ -52,7 +52,7 @@ export async function verifyRuntimeComponent(root, component, signal) {
 // The trusted app manifest supplies the ordered files and their lengths/hashes.
 // A .ngpack is one gzip stream of those file bytes, without archive paths or
 // extraction directives. Verify the whole download before creating any files.
-export async function installRuntimePack({ archive, component, cache, signal, onProgress = () => {} }) {
+export async function installRuntimePack({ archive, component, cache, signal, repair = false, onProgress = () => {} }) {
   validateRuntimeComponent(component);
   if (component.archive?.format !== 'nagneon-runtime-gzip/1' || !Number.isSafeInteger(component.archive.bytes) || component.archive.bytes <= 0 || !/^[a-f0-9]{64}$/.test(component.archive.sha256)) throw Error('Invalid runtime archive');
   cache = resolve(cache);
@@ -62,12 +62,15 @@ export async function installRuntimePack({ archive, component, cache, signal, on
   // are still verified before reuse, so the directory prefix is not trust.
   const target = join(cache, component.id + '-' + component.contentId.slice(0,32));
   const existing = await lstat(target).catch(e => { if (e.code === 'ENOENT') return null; throw e; });
-  if (existing) { await verifyRuntimeComponent(target, component, signal); return { path: target, reused: true }; }
+  if (existing) {
+    try { await verifyRuntimeComponent(target, component, signal); return { path: target, reused: true }; }
+    catch(error){if(!repair||!['runtime-integrity','ENOENT'].includes(error.code))throw error;signal?.throwIfAborted();}
+  }
   const downloaded = await hashRuntimeFile(archive, signal);
   if (downloaded.bytes !== component.archive.bytes || downloaded.sha256 !== component.archive.sha256) throw Error('Runtime download integrity mismatch');
   const lock = target + '.lock';
   await mkdir(lock);
-  let stage, handle;
+  let stage, handle, backup;
   try {
     stage = await mkdtemp(join(cache, '.install-' + component.id + '-'));
     let source;
@@ -115,13 +118,25 @@ export async function installRuntimePack({ archive, component, cache, signal, on
       signal?.throwIfAborted();
       // Re-read staged files before publishing; never expose a partial runtime.
       await verifyRuntimeComponent(stage, component, signal);
-      await rename(stage, target); stage = null;
+      signal?.throwIfAborted();
+      if(existing){
+        await regularAncestors(target);
+        backup=await mkdtemp(join(cache,'.replaced-'+component.id+'-'));
+        await rename(target,join(backup,'previous'));
+      }
+      try { await rename(stage, target); stage = null; }
+      catch(error){if(backup)await rename(join(backup,'previous'),target);throw error;}
+      // The replacement is fully verified before discarding the damaged cache.
+      if(backup){await rm(backup,{recursive:true});backup=null;}
       return { path: target, reused: false };
     } finally { source?.destroy(); unzip.destroy(); }
   } finally {
     await handle?.close();
     // Only this invocation's mkdtemp directory can be removed recursively.
     if (stage && dirname(stage) === cache && stage.startsWith(cache + sep + '.install-' + component.id + '-')) await rm(stage, { recursive: true });
+    // An unsuccessful rename can leave an empty reservation. Never discard a
+    // previous directory if restoring it failed; retain it for recovery.
+    if(backup)await rmdir(backup).catch(error=>{if(!['ENOTEMPTY','EEXIST'].includes(error.code))throw error;});
     await rmdir(lock);
   }
 }
