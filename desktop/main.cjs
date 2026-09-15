@@ -82,7 +82,6 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     ipcMain.handle('overlay:open',event=>{trusted(event);return openOverlay();});ipcMain.handle('overlay:through',event=>{trusted(event);return through();});ipcMain.handle('overlay:close',event=>{trusted(event);closeOverlay();});
     ipcMain.on('overlay:interactive',(event,value)=>{if(overlay&&!overlay.isDestroyed()&&event.sender===overlay.webContents&&event.senderFrame===overlay.webContents.mainFrame)overlayInput.interactive(value);});
     globalShortcut.register('CommandOrControl+Shift+F10',through);
-    globalShortcut.register('CommandOrControl+Shift+F9',()=>{service.studio.stop();main.webContents.send('studio:panic');});
     main.on('closed',()=>{closeOverlay();app.quit();});
     if(await networkRecovery.load(main,service.url+'/')&&!shutdown.quitting&&!main.isDestroyed())main.show();
   }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});

@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 // actor 규칙과 동일하게 목격자/시청자 ID 를 검증한다. 프로토타입 오염 키를 차단한다.
 const safeId=(id)=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(id)&&!['__proto__','constructor','prototype'].includes(id);
-// 개인 시청 맵의 키 개수 상한. 관객이 오래 교체되어도 영속 성장하지 않도록 시청 시간이 큰 순으로 유지한다.
-const capWatched=(w,max=80)=>{const keys=Object.keys(w);if(keys.length<=max)return w;const kept=keys.sort((a,b)=>(w[b]||0)-(w[a]||0)).slice(0,max);const out={};for(const k of kept)out[k]=w[k];return out;};
 // 게임 키를 프로토타입 오염 없이 own·enumerable 로 설정한다. '__proto__'/'constructor' 같은 키도 프로토타입을 건드리지 않는다.
 const setEntry=(map,key,value)=>Object.defineProperty(map,key,{value,writable:true,enumerable:true,configurable:true});
 // 기존 맵의 게임 키를 새 최상위 맵으로 얕게 복사한다(skip 키는 제외). 엔트리 객체는 공유하되 맵만 새로 만들어, 변경 엔트리를 기존 맵에 in-place 로 쓰지 않는다.
@@ -20,11 +18,11 @@ export class Knowledge {
   // witnesses 는 studio 가 요청 캡처 시점에 함께 화면을 본(active/lurking, 이번 세션 입장) 관객 ID 다.
   observe(name,scene,at,popularity=0.5,witnesses=[]){
     const key=this.key(name);const e=this.get(name,popularity);
-    const ids=[...new Set(Array.isArray(witnesses)?witnesses:[])].filter(safeId).slice(0,40);
+    const ids=[...new Set(Array.isArray(witnesses)?witnesses:[])].filter(safeId);
     const gap=this.lastSeen?.key===key?Math.min(60,Math.max(0,(at-this.lastSeen.at)/1000)):0;
     const previousWitnesses=this.lastSeen?.key===key?this.lastSeen.witnesses||[]:[];
     e.seconds+=gap;
-    const watched={...(e.watched||{})};if(gap>0)for(const id of ids)if(previousWitnesses.includes(id))watched[id]=(watched[id]||0)+gap;e.watched=capWatched(watched);
+    const watched={...(e.watched||{})};if(gap>0)for(const id of ids)if(previousWitnesses.includes(id))watched[id]=(watched[id]||0)+gap;e.watched=watched;
     const last=e.observations.at(-1);const sameWitnesses=last?.witnesses?.length===ids.length&&ids.every(id=>last.witnesses.includes(id));
     // Re-observing the same scene with new witnesses is a new, dated memory.
     // Do not add newcomers to an earlier record retroactively.

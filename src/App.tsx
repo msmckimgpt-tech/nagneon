@@ -142,7 +142,6 @@ export function App() {
   useEffect(() => {
     if (state && initialGuide === null) setInitialGuide(state.onboarding?.status === 'new');
   }, [state, initialGuide]);
-  useEffect(() => window.backseat?.onPanic(() => media.stopAll()), []);
   useEffect(() => window.backseat?.onOverlayState(setThrough), []);
   const action = useCallback(async (path: string, body?: unknown, method?: string) => {
     try {
