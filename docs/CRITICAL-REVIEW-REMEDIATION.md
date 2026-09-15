@@ -270,3 +270,7 @@
 ## 설치 후 압축본 정리
 
 원본 a12ac1c를 9817121 위 squash 통합했다. 설치 검증 후 압축 원본을 제거하며, 재실행 시 설치 파일을 해시 검증해 오프라인 재사용한다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-cache-space-check.log). 구성 초안 389380090은 아직 비공개다. gh 업로드 연결 오류 이후 curl/HTTP 1.1로 sound 업로드와 GitHub digest/크기 일치를 확인했으며 나머지 자산 전송은 진행 중이다. 작업/통합 worktree는 진행 중 검증·배포 산출물 때문에 보존한다.
+
+## 경량 0.1.4 배포 수용 기록
+
+원본 b9fdeb9를 a5a2b52 위 squash 통합했다. 제품 소스는 기존 경량 후보와 동일하고 검증 스크립트/증거 문서만 추가했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/lightweight-release-check.log). 고정 구성은 runtime-2026-09-16으로 게시했으며 실제 공개 HTTPS 다운로드/복원/압축본 정리/오프라인 재사용과 전달 ASAR의 GPU 한국어 전사·시스템 소리 인식을 통과했다. 사용자의 격리 데이터 복사본으로 설치·업데이트·재시작·이전 버전 복귀를 통과했고 원본은 유지했다. 소유 테스트 창의 실제 캡처는 합성7초 구성 준비 뒤 시작·교체·트랙 종료를 확인했다. 상세 원본은 DISTRIBUTION-SIZE.md 최신 절에 있다. 기본 앱 ZIP315,237,974바이트/설치844,297,517바이트이며 최종 앱 자산 게시는 다음 단계다. 전체 CRITICAL-REVIEW 원장은 아직 완료하지 않았다.

@@ -38,7 +38,7 @@ if(option('components-catalog')){
   assert.equal(catalog.verified,true,'Component packing must finish before runtime validation');
   const roots={};componentIds={};
   for(const component of catalog.components){
-    const installed=await installRuntimePack({archive:join(catalog.output,component.archive.name),component,cache:catalog.cache||join(catalog.output,'verified')});
+    const installed=await installRuntimePack({archive:join(catalog.output,component.archive.name),component,cache:option('components-cache')||catalog.cache||join(catalog.output,'verified')});
     roots[component.id]=join(installed.path,'resources');componentIds[component.id]=component.contentId;
   }
   assert.ok(roots.audio&&roots.sound&&roots.microphone&&roots.gpu);
