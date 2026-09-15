@@ -133,3 +133,5 @@
 - 이번 변경의 원본 검증 로그: artifacts/critical-review/no-session-limit-check.log. 전체 리뷰 개선은 계속 진행 중이다.
 
 - 검증: 첫 전체 실행 685/686 (clip-arrival-memory 서버 재연결 fetch failed). 해당 파일 재실행 12/12, 최종 전체 npm run check 686/686와 TypeScript/Vite 빌드 통과. 최종 로그 artifacts/critical-review/no-session-limit-check-final.log. 패키지 무결성 목록의 제거된 설정 파일 참조를 정리했고 node --check 통과.
+
+- 통합: 원본 121248aacbf273bec601080bac5006a896e501c7 + main a502993. 통합본 686/686 및 빌드, 격리 실제 Electron synthetic UI 9개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/no-session-limit.log 및 artifacts/nagneon/renderer-result.json. 실행 중 사용자 앱 적용과 릴리즈는 아직 하지 않았다.
