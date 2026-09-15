@@ -71,3 +71,12 @@
 설치 검증 성공 뒤에는 중복 압축 원본을 제거하고 설치 파일만 오프라인 재사용한다. 다른 프로세스가 압축본을 잠근 경우 정상 런타임을 실패시키지 않고 다음 실행의 설치 확인 뒤 정리를 다시 시도한다. 실제 HTTP/복원 회귀에서 압축본 없음과 새 관리자 인스턴스의 네트워크 없는 재사용을 확인했다. `runtime-cache-space-test.log`, `runtime-cache-space-check.log`(676/676·빌드). 공개 HTTPS 전체 구성/오프라인 재사용 검증기는 `scripts/verify-runtime-download.mjs`이며 아직 실행 성공 전이다.
 
 구성 릴리즈 초안 ID 389380090을 생성했다. 최초 병렬 업로드는 호스트 연결 중단, 단일 재시도는 TLS bad record MAC으로 실패했다. 원격에는 audio와 해시 목록만 uploaded 상태임을 확인했으며 완료 자산을 덮어쓰지 않았다. 인증서 검증을 유지한 Windows curl/HTTP 1.1 전송으로 sound 업로드를 재시도 중이다. 원본 `runtime-release-upload.log`, `runtime-upload-sound.log`, `runtime-release-retry-state.json`. 초안이므로 아직 공개 다운로드 불가다.
+
+## 공개 구성과 경량 후보 수용 검증
+
+- 위 업로드 재시도 후 네 구성과 해시 목록을 모두 게시했다. [고정 구성 배포](https://github.com/msmckimgpt-tech/nagneon/releases/tag/runtime-2026-09-16)는 앱 설치 파일을 포함하지 않는 별도 prerelease이며 latest 앱을 바꾸지 않는다. GitHub의 각 자산 크기·digest가 로컬 카탈로그와 일치했다 (`runtime-release-published.json`).
+- 앱의 실제 다운로드/설치 코드를 사용해 공개 HTTPS에서 네 구성을 모두 받았다. 파일 해시 검증, 압축본 제거, 새 관리자 인스턴스의 오프라인 재사용 통과 (`published-runtime-download.json`, 2026-09-15T18:41:05Z~18:50:34Z). 업로드 도구의 네트워크 실패와 앱 다운로드 성공은 구분한다.
+- 최신 후보 `release/2026-09-15T18-34-12-845Z`는 ZIP 315,237,974바이트, 설치 844,297,517바이트/89파일이다. 전체 ZIP 항목/파일/fuse와 포함 소스101개 일치. 실제 EXE의 시작·종료 통과 (`lightweight-repair-integrity.log`, `lightweight-repair-native.log`, `lightweight-zip-result.json`).
+- 실제 공개 다운로드 캐시로 전달 ASAR의 한국어 전사·시스템 소리 인식·GPU int8_float16 실행 통과, CPU fallback 없음 (`published-runtime-execution.json`). 물리 마이크나 실제 AI 모델 요청은 이 검사의 범위가 아니다.
+- 사용자 앱이 꺼진 상태에서 데이터만 격리 복사했다. 0.1.3 설치→0.1.4 업데이트 전후 데이터 및 백업 해시 일치, 실제 업데이트 EXE 실행·재시작, 별도 복귀 프로필에서 0.1.3 실행·종료 통과. 관객6명 설정·방송 제목·잔액 보존. 원본 사용자 프로필은 변경하지 않았다. 이 복사본의 lore는0개이므로 비어 있지 않은 추억 보존 근거는 기존 별도 fixture 검사를 사용한다. 원본 `lightweight-update-result.json`, `lightweight-updated-profile-native.log`, `lightweight-updated-profile-restart.log`, `lightweight-profile-restart-preservation.json`, `lightweight-profile-recovery-native.log`.
+- 전달 소스와 실제 Windows 테스트 창으로 화면 캡처를 확인했다. 구성 설치는 합성7초 지연이며 첫 화면 연결7.727초, 다음 화면1.370초; 픽셀 일치·이전 트랙 종료·창 닫기 후 미리보기/트랙 종료 통과. 물리 마이크·시스템 오디오·사용자 화면·AI 호출 없음. `artifacts/capture-preparation-native-1789498248347/result.json`. 이전 검증 스크립트의 옛 온보딩/DOM 문구 및 SSE 대기 누락 실패는 각 고유 증거 폴더에 보존했다. 현재 검사는 실제 방송 시작 상태와 트랙 종료를 확인한다.
