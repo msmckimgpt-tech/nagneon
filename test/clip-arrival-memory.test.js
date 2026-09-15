@@ -59,7 +59,7 @@ test('deleting or editing a source prevents old framing from being recalled; new
 for(const mutation of ['delete','edit'])test(`source ${mutation} during generation cancels admission and leaves no phantom memory`,async t=>{
   let release;const app=await open(t,{provider:fake(()=>new Promise(r=>release=r))}),s=app.studio,c=clip(s),id=randomUUID();const pending=arrive(s,c,id);
   if(mutation==='delete')s.clips.remove(c.id);else s.clips.change(data=>{data[0].title='소개가 바뀜';});
-  release(answer(birth));await assert.rejects(pending,/핫클립|소개/);assert.equal(s.settings.personas.filter(p=>!p.system).length,0);assert.ok(!Object.values(s.audience.data.members).some(m=>m.arrivalClip));assert.equal(s.world.data.autonomy.receipts[id].status,'failed');assert.equal(s.economy.data.balance,60);
+  release(answer(birth));await assert.rejects(pending,/핫클립|소개/);assert.equal(s.settings.personas.filter(p=>!p.system).length,0);assert.ok(!Object.values(s.audience.data.members).some(m=>m.arrivalClip));assert.equal(s.world.data.autonomy.receipts[id].status,'failed');assert.equal(s.economy.data.balance,200);
 });
 
 test('new comments during generation do not invalidate a description-only encounter or grant comment knowledge',async t=>{
@@ -71,7 +71,7 @@ test('new comments during generation do not invalidate a description-only encoun
 test('world commit failure leaves neither a viewer nor a receipt grant and the held settlement fails once',async t=>{
   const app=await open(t),s=app.studio,c=clip(s),save=s.world.save;let failed=false;
   s.world.save=value=>{if(!failed&&Object.values(value.audience.members).some(m=>m.arrivalClip)){failed=true;throw Error('synthetic world write failed');}save(value);};
-  const id=randomUUID();await assert.rejects(arrive(s,c,id),/write failed/);assert.equal(failed,true);assert.equal(s.world.data.autonomy.receipts[id].status,'failed');assert.equal(s.economy.data.balance,60);assert.ok(!Object.values(s.audience.data.members).some(m=>m.arrivalClip));
+  const id=randomUUID();await assert.rejects(arrive(s,c,id),/write failed/);assert.equal(failed,true);assert.equal(s.world.data.autonomy.receipts[id].status,'failed');assert.equal(s.economy.data.balance,200);assert.ok(!Object.values(s.audience.data.members).some(m=>m.arrivalClip));
   const calls=s.calls;assert.equal((await arrive(s,c,id)).status,'failed');assert.equal(s.calls,calls);
 });
 
@@ -97,6 +97,6 @@ for(const phase of ['held','completed'])test(`abrupt process exit at ${phase} ke
   const dataDir=await folder(),requestId=randomUUID(),marker=phase==='held'?73:74;
   const output=await new Promise((ok,no)=>{const p=spawn(process.execPath,['test/fixtures/clip-arrival-crash.mjs',dataDir,phase,requestId],{cwd:process.cwd(),windowsHide:true,stdio:['ignore','pipe','pipe']});let stdout='',stderr='';p.stdout.on('data',b=>stdout+=b);p.stderr.on('data',b=>stderr+=b);p.once('error',no);p.once('close',code=>code===marker?ok(stdout):no(Error('child '+code+' '+stderr)));});
   assert.match(output,new RegExp('"phase":"'+phase+'"'));const app=await open(t,{dataDir,live:false}),s=app.studio,receipt=s.world.data.autonomy.receipts[requestId];
-  assert.equal(receipt.status,phase==='held'?'failed':'completed');const members=Object.values(s.audience.data.members).filter(m=>m.arrivalClip);assert.equal(members.length,phase==='held'?0:1);assert.equal(s.economy.data.balance,60);
+  assert.equal(receipt.status,phase==='held'?'failed':'completed');const members=Object.values(s.audience.data.members).filter(m=>m.arrivalClip);assert.equal(members.length,phase==='held'?0:1);assert.equal(s.economy.data.balance,200);
   if(members.length)assert.equal(s.clips.recallArrival(members[0].arrivalClip).title,'중단 시험 클립');assert.equal(s.calls,0);
 });

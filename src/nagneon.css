@@ -4,7 +4,7 @@
 .nagneon-mark{width:38px;height:38px;flex-shrink:0;color:var(--neon)}
 .nagneon-wordmark{font-size:25px;font-weight:750;letter-spacing:-1.1px;color:var(--ink)}
 .nagneon-wordmark>span{color:var(--neon)}
-.nagneon-wordmark small{display:block;font-size:10px;font-weight:500;letter-spacing:2.5px;margin-top:7px;color:var(--quiet)}
+.nagneon-wordmark small{display:block;font-size:11px;font-weight:500;letter-spacing:2.5px;margin-top:7px;color:var(--quiet)}
 .sidebar{background:#131a24;border-color:var(--line);padding-top:25px}
 .sidebar-label{color:#9cabbc;letter-spacing:1.5px;margin-top:32px}
 .sidebar nav button{border:1px solid transparent;border-radius:9px}

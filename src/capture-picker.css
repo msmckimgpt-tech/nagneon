@@ -27,7 +27,7 @@
 .source-modal .source-grid .source-preview{display:flex;width:100%;aspect-ratio:16/9;min-width:0;margin:0;border-radius:5px;overflow:hidden;background:#12171d}
 .source-modal .source-grid img{display:block;width:100%;height:100%;object-fit:contain;margin:0;background:#12171d}
 .source-modal .source-grid .source-placeholder{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:9px;margin:0;white-space:normal;color:#83929e}
-.source-placeholder small{font-size:10px}
+.source-placeholder small{font-size:11px}
 .source-modal .source-grid .source-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;width:100%;margin:9px 0 3px;padding:0 3px;white-space:normal;overflow-wrap:anywhere;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.5;min-height:33px;color:#dce2e9}
 .source-status{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px 12px;margin:0;color:#a8b0bc;font-size:12px;line-height:1.7;text-align:center}
 .source-error{color:#ffc2b9;background:#482b2933;border-radius:8px}

@@ -20,7 +20,7 @@ test('all authored branches reach distinct chapters and both endings with a dura
     const {s}=setup(t);s.start();const item=create(s,template.id);s.seasons.resume({id:item.id,targets:['momo']});await acts(s);
     s.seasons.choose({id:item.id,choiceId:firstChoice.id});assert.equal(s.seasons.get(item.id).chapters[1].node,firstChoice.next);assert.equal(s.seasons.active,null);
     s.seasons.resume({id:item.id});await acts(s);s.seasons.choose({id:item.id,choiceId:lastChoice.id});s.seasons.resume({id:item.id});await acts(s);
-    const final=s.seasons.choose({id:item.id});assert.equal(final.status,'completed');assert.equal(final.keepsake,template.nodes.find(n=>n.id===lastChoice.next).keepsake);assert.equal(final.decisions.length,2);assert.equal(s.calls,9);assert.equal(s.economy.data.balance,60);assert.deepEqual(s.knowledge.entries,{});assert.equal(s.observation,null);SeasonsData.parse(s.seasons.data);
+    const final=s.seasons.choose({id:item.id});assert.equal(final.status,'completed');assert.equal(final.keepsake,template.nodes.find(n=>n.id===lastChoice.next).keepsake);assert.equal(final.decisions.length,2);assert.equal(s.calls,9);assert.equal(s.economy.data.balance,200);assert.deepEqual(s.knowledge.entries,{});assert.equal(s.observation,null);SeasonsData.parse(s.seasons.data);
   }
 });
 
@@ -54,7 +54,7 @@ test('changed or absent cast and blocked/spoiler output cannot enter a stage',as
 
 test('regular season conversation has fictional provenance, no observed victory, reward or game memory',async t=>{
   const {s,requests,advance}=setup(t);s.start();advance(120000);const a=create(s,'starlight-v1');s.seasons.resume({id:a.id});await s.react({image:'data:image/jpeg;base64,AAAA',speech:'우주 최강 보스를 잡았다는 설정!'});
-  assert.equal(requests[0].directed.fictional,true);assert.equal(s.observation,null);assert.equal(s.economy.data.balance,60);assert.deepEqual(s.knowledge.entries,{});assert.equal(s.clips.list().length,0);advance(10000);s.pump();const published=s.messages.at(-1);assert.notEqual(published.personaId,'streamer');assert.equal(published.fictional,true);assert.match(s.audience.data.members[published.personaId].memories.at(-1),/가상 기획 방송/);assert.equal(s.journal.data.entries.find(e=>e.id===published.id).fictional,true);assert.equal(s.seasons.get(a.id).chapters[0].messages.length,2);s.seasons.pause();assert.equal(s.queue.length,0);
+  assert.equal(requests[0].directed.fictional,true);assert.equal(s.observation,null);assert.equal(s.economy.data.balance,200);assert.deepEqual(s.knowledge.entries,{});assert.equal(s.clips.list().length,0);advance(10000);s.pump();const published=s.messages.at(-1);assert.notEqual(published.personaId,'streamer');assert.equal(published.fictional,true);assert.match(s.audience.data.members[published.personaId].memories.at(-1),/가상 기획 방송/);assert.equal(s.journal.data.entries.find(e=>e.id===published.id).fictional,true);assert.equal(s.seasons.get(a.id).chapters[0].messages.length,2);s.seasons.pause();assert.equal(s.queue.length,0);
 });
 
 test('pausing regular season generation drops its late reaction',async t=>{
@@ -79,7 +79,7 @@ test('spectator proposals retain a real public source and accept atomically/idem
 });
 
 test('declining or snoozing a proposal does not punish affinity or charge points',async t=>{
-  const {s}=setup(t);s.start();s.addMessage('momo','우리 방 방송이 좋네요');const p=await s.seasons.propose(),before=structuredClone(s.audience.data);const snooze=s.seasons.respond({id:p.id,action:'snooze'});assert.equal(snooze.snoozedUntil,s.now()+86400000);s.seasons.respond({id:p.id,action:'decline'});assert.deepEqual(s.audience.data,before);assert.equal(s.economy.data.balance,60);assert.equal(s.calls,1);
+  const {s}=setup(t);s.start();s.addMessage('momo','우리 방 방송이 좋네요');const p=await s.seasons.propose(),before=structuredClone(s.audience.data);const snooze=s.seasons.respond({id:p.id,action:'snooze'});assert.equal(snooze.snoozedUntil,s.now()+86400000);s.seasons.respond({id:p.id,action:'decline'});assert.deepEqual(s.audience.data,before);assert.equal(s.economy.data.balance,200);assert.equal(s.calls,1);
 });
 
 test('auto proposals are opt-in, live-only, once per session/hour with meaningful conversation and no catch-up',async t=>{

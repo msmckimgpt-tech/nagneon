@@ -1,5 +1,5 @@
 {
-  "welcomePoints":60,
+  "welcomePoints":200,
   "walletCap":200,
   "initialWallet":80,
   "refillSeconds":60,

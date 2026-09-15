@@ -7,7 +7,7 @@ import {Audience} from '../server/audience.js';
 import {Clips} from '../server/clips.js';
 
 test('persisted schemas accept initial state and reject dangerous numeric corruption',()=>{
-  const e=new Economy();assert.equal(EconomyData.parse(e.data).balance,60);assert.deepEqual(AudienceData.parse(new Audience().data),{members:{},posts:[],lore:[]});assert.deepEqual(KnowledgeData.parse({}),{});
+  const e=new Economy();assert.equal(EconomyData.parse(e.data).balance,200);assert.deepEqual(AudienceData.parse(new Audience().data),{members:{},posts:[],lore:[]});assert.deepEqual(KnowledgeData.parse({}),{});
   assert.throws(()=>EconomyData.parse({...e.data,balance:-1}));assert.throws(()=>EconomyData.parse({...e.data,balance:Infinity}));assert.throws(()=>EconomyData.parse({...e.data,wallets:{momo:{balance:201,refillAt:0,lastDonationAt:0,paidUntil:0}}}));
 });
 test('persisted clip schema rejects cycles, missing parents and duplicate identities',()=>{

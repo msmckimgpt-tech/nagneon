@@ -31,7 +31,7 @@ test('directed episode supports live dialogue, three acts, persistent album and 
   let persisted=[];const {s,requests}=setup(t,{saveDirector:data=>persisted=structuredClone(data)});s.start();s.director.start({episodeId:'awards',premise:'우주 최강 방장 시상식',targets:['momo','gg']});
   for(let i=0;i<3;i++)await s.director.advance({text:`진행 멘트 ${i}`});
   assert.equal(s.director.active.stage,2);assert.equal(s.director.active.messages.length,6);assert.equal(s.calls,3);assert.equal(requests[0].special.kind,'directed-episode');assert.equal(requests[0].special.premise,'우주 최강 방장 시상식');
-  assert.equal(s.observation,null);assert.equal(s.economy.data.balance,60);assert.deepEqual(s.knowledge.entries,{});assert.match(s.audience.data.members.momo.memories[0],/가상 기획 방송/);
+  assert.equal(s.observation,null);assert.equal(s.economy.data.balance,200);assert.deepEqual(s.knowledge.entries,{});assert.match(s.audience.data.members.momo.memories[0],/가상 기획 방송/);
   const item=s.director.finish();assert.equal(persisted.length,1);assert.equal(s.director.active,null);const clip=s.director.clip(item.id);assert.equal(clip.source,'directed-episode');assert.match(clip.scene,/가상 기획 방송/);assert.equal(clip.messages.length,6);assert.equal(s.director.clip(item.id).id,clip.id);
 });
 
@@ -47,13 +47,13 @@ test('cancelled directed generation cannot leak dialogue or take over a new broa
 
 test('failed or filtered stage leaves the current act unchanged and charges only call budget',async t=>{
   let attempt=0;const {s}=setup(t,{provider:{status:()=>({configured:true}),react:async()=>{if(!attempt++)throw new Error('provider outage');return result([reply('unknown')]);}}});s.start();s.director.start({episodeId:'radio'});
-  await assert.rejects(s.director.advance(),/outage/);await assert.rejects(s.director.advance(),/표시/);assert.equal(s.director.active.stage,-1);assert.equal(s.messages.length,0);assert.equal(s.calls,2);assert.equal(s.economy.data.balance,60);assert.equal(s.busy,false);
+  await assert.rejects(s.director.advance(),/outage/);await assert.rejects(s.director.advance(),/표시/);assert.equal(s.director.active.stage,-1);assert.equal(s.messages.length,0);assert.equal(s.calls,2);assert.equal(s.economy.data.balance,200);assert.equal(s.busy,false);
 });
 
 test('regular speech during a fantasy event receives context and cannot earn points or teach game facts',async t=>{
   const {s,requests,advance}=setup(t);s.start();advance(120000);s.audience.data.members.momo.seconds=180;s.director.start({episodeId:'legend'});
   await s.react({image:'data:image/jpeg;base64,AAAA',speech:'방금 우주 최강 보스를 잡았다는 설정이에요'});
-  assert.equal(requests[0].directed.fictional,true);assert.equal(s.economy.data.balance,60);assert.equal(s.clips.list().length,0);assert.deepEqual(s.knowledge.entries,{});
+  assert.equal(requests[0].directed.fictional,true);assert.equal(s.economy.data.balance,200);assert.equal(s.clips.list().length,0);assert.deepEqual(s.knowledge.entries,{});
 });
 
 test('ending an episode during regular generation discards the late staged response',async t=>{

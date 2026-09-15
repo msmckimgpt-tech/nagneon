@@ -50,7 +50,7 @@ test('shutdown aborts background provider and settles before close; progress per
   let aborted=false;const service=await open(t,provider(async(_args,signal)=>new Promise((_,reject)=>{signal.addEventListener('abort',()=>{aborted=true;reject(Error('shutdown'));},{once:true});})));
   await req(service,'tutorial',{action:'begin'});await req(service,'tutorial',{action:'advance',step:'audience',skip:true});
   await req(service,'tutorial/arrival',{requestId:randomUUID()});await service.close();assert.equal(aborted,true);
-  const world=JSON.parse(await readFile(join(service.dir,'world.json'),'utf8'));assert.equal(world.economy.balance,60);assert.equal(Object.values(world.autonomy.receipts)[0].status,'failed');
+  const world=JSON.parse(await readFile(join(service.dir,'world.json'),'utf8'));assert.equal(world.economy.balance,200);assert.equal(Object.values(world.autonomy.receipts)[0].status,'failed');
   const restart=await startServer({port:0,dataDir:service.dir,localSpeech:false,provider:provider(async()=>answer)});
   try{assert.equal(restart.studio.state().tutorial.step,'invite');assert.deepEqual(restart.studio.state().tutorial.skipped,['audience']);assert.equal(restart.studio.state().tutorial.arrival.status,'failed');}
   finally{await restart.close();}
@@ -81,7 +81,7 @@ test('crash-left pending receipt recovers as refund and can be retried after res
   world.economy.balance-=50;world.autonomy.receipts[id]={firstTutorial:true,status:'pending',cost:50,at:Date.now(),source:{path:'points',key:'browse',label:'first'}};
   world.economy.purchases.push({id,kind:'arrival',key:id,cost:50,status:'pending',at:Date.now(),fingerprint:'fixture'});await writeFile(file,JSON.stringify(world));
   const restart=await startServer({port:0,dataDir:service.dir,localSpeech:false,provider:provider(async()=>answer)});
-  try{assert.equal(restart.studio.economy.data.balance,60);assert.equal(restart.studio.state().tutorial.arrival.status,'failed');await req(restart,'tutorial/arrival',{requestId:randomUUID()});await until(()=>restart.studio.state().tutorial.arrival.status==='completed');assert.equal(restart.studio.economy.data.balance,10);}
+  try{assert.equal(restart.studio.economy.data.balance,200);assert.equal(restart.studio.state().tutorial.arrival.status,'failed');await req(restart,'tutorial/arrival',{requestId:randomUUID()});await until(()=>restart.studio.state().tutorial.arrival.status==='completed');assert.equal(restart.studio.economy.data.balance,150);}
   finally{await restart.close();}
 });
 
@@ -90,7 +90,7 @@ test('concurrent first invites reserve one job; state exposes only the receipt s
   await req(service,'tutorial',{action:'begin'});
   const responses=await Promise.all(Array.from({length:8},()=>req(service,'tutorial/arrival',{requestId:randomUUID()})));
   assert.equal(responses.filter(r=>r.status===202).length,1);assert.equal(responses.filter(r=>r.status===409).length,7);
-  assert.equal(calls,1);assert.equal(service.studio.economy.data.balance,10);
+  assert.equal(calls,1);assert.equal(service.studio.economy.data.balance,150);
   release(answer);await until(()=>service.studio.state().tutorial.arrival.status==='completed');
   assert.equal(service.studio.settings.personas.filter(p=>!p.system).length,1);
   const summary=service.studio.state().tutorial.arrival;assert.equal(summary.source,undefined);
@@ -101,7 +101,7 @@ test('unconnected profiles can skip without generating or spending',async t=>{
   let calls=0;const service=await open(t,{status:()=>({configured:false}),react:async()=>{calls++;return answer;}});
   await req(service,'tutorial',{action:'begin'});
   assert.equal((await req(service,'tutorial/arrival',{requestId:randomUUID()})).status,409);
-  assert.equal(service.studio.economy.data.balance,60);assert.equal(calls,0);
+  assert.equal(service.studio.economy.data.balance,200);assert.equal(calls,0);
   assert.equal((await req(service,'tutorial/rehearsal',{})).status,200);
   assert.equal((await req(service,'tutorial',{action:'skip'})).status,200);
   assert.equal(service.studio.running,false);assert.equal(service.studio.state().tutorial.status,'skipped');

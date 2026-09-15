@@ -54,14 +54,14 @@ test('a real admission generates once, persists only the person and preserves hi
   assert.equal(s.world.publicSettings().personas.find(p=>p.id===receipt.personaId).personality,undefined);
   const disk=await readFile(join(dataDir,'world.json'),'utf8');assert.ok(!disk.includes('"individuality"'));assert.equal(JSON.parse(disk).settings.personas.find(p=>p.id===receipt.personaId).personality,input.special.individuality.interest+'에 관심을 가지며 '+input.special.individuality.conversation);
   await service.close();service=await startServer({port:0,dataDir,localSpeech:false,provider});clearInterval(service.studio.timer);
-  assert.equal((await service.studio.autonomy.arrive(id)).personaId,receipt.personaId);assert.equal(calls,1);assert.equal(service.studio.economy.data.balance,10);
+  assert.equal((await service.studio.autonomy.arrive(id)).personaId,receipt.personaId);assert.equal(calls,1);assert.equal(service.studio.economy.data.balance,150);
 });
 
 test('failed composition refunds the hold without keeping an unseen character or retrying the model',async t=>{
   const dataDir=await directory();let calls=0;
   const service=await startServer({port:0,dataDir,localSpeech:false,provider:{status:()=>({configured:true}),react:async args=>{calls++;assert.ok(args.special.individuality);throw Error('synthetic model failure');}}});t.after(()=>service.close());
   const s=service.studio;clearInterval(s.timer);s.configure({...s.settings,mode:'live'});s.start();const id=randomUUID();
-  await assert.rejects(s.autonomy.arrive(id),/synthetic model failure/);assert.equal(s.economy.data.balance,60);assert.equal(s.settings.personas.filter(p=>!p.system).length,0);
+  await assert.rejects(s.autonomy.arrive(id),/synthetic model failure/);assert.equal(s.economy.data.balance,200);assert.equal(s.settings.personas.filter(p=>!p.system).length,0);
   assert.equal((await s.autonomy.arrive(id)).status,'failed');assert.equal(calls,1);
   assert.ok(!(await readFile(join(dataDir,'world.json'),'utf8')).includes('"individuality"'));
 });
