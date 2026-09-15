@@ -22,7 +22,14 @@ app.whenReady().then(async()=>{
   assert.match(await js('document.title'),/Nagneon/);await shot('welcome');checks.push('branded first-run onboarding');
   await click('다음');await until(`document.querySelector('.welcome-intro').textContent.includes('어떤 채팅창')`);await shot('atmosphere');
   await click('다음');await until(`document.querySelector('.welcome-intro').textContent.includes('인사할 준비')`);await shot('connection');
-  await click('리허설로 입장');await until(`!!document.querySelector('.app-shell')`);checks.push('three-step onboarding to rehearsal without account');
+  await click('직접 조작하며 배우기');await until(`!!document.querySelector('.app-shell')`);
+  await until(`!![...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='나중에 계속하기')`);
+  assert.equal(service.studio.running,false);assert.equal(service.studio.state().tutorial.status,'active');
+  await click('나중에 계속하기');await until(`![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='나중에 계속하기')`);
+  checks.push('three-step onboarding enters guided tutorial without starting broadcast; pause works');
+  // Remaining assertions exercise rehearsal layout, independently of account setup.
+  service.studio.configure({...service.studio.settings,mode:'rehearsal'});
+  await until(`document.body.innerText.includes('리허설 시작')`);
   for(const width of [1440,1000,850]){win.setSize(width,980);await shot('studio-'+width);assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true,'no horizontal overflow '+width);}
   checks.push('studio fits 1440, 1000 and 850 pixel windows');
   for(const [width,height] of [[1080,1920],[850,1500],[540,960],[420,900]]){
