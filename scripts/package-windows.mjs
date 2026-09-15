@@ -9,10 +9,11 @@ import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
 import {packageSources,verifyPackageSources,packageSourceRoots} from './lib/package-sources.mjs';
-import {distributionComponents} from './lib/distribution-components.mjs';
+import {distributionComponents,componentForPath} from './lib/distribution-components.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
+const modular=process.argv.includes('--components');
 if(process.platform!=='win32'||process.arch!=='x64')throw new Error('Windows x64 빌드 환경이 필요합니다.');
 if(!speech)throw new Error('--speech=<검증된 음성 런타임 폴더>를 지정하세요.');
 const speechPath=resolve(speech);
@@ -115,9 +116,25 @@ for(const file of soundSpec.files){
 await cp(join(root,'shared/sound-model.json'),join(soundTarget,'provenance.json'));
 await cp(join(root,'scripts/sound_worker.py'),join(soundTarget,'sound_worker.py'));
 await cp(join(root,'third-party/sound/NOTICE.txt'),join(soundTarget,'NOTICE.txt'));
+let extraResources=[codexTarget,speechTarget,soundTarget];
+if(modular){
+  const catalog=await json(join(root,'shared/runtime-catalog.json'));
+  const runtimeInventory=[];
+  for(const [name,source] of [['speech',speechTarget],['sound',soundTarget]])for(const file of await files(source))runtimeInventory.push({path:`resources/${name}/${file}`,bytes:(await lstat(join(source,file))).size,sha256:await hash(join(source,file))});
+  for(const component of distributionComponents(runtimeInventory).filter(c=>c.id!=='app')){
+    if(catalog.components?.find(c=>c.id===component.id)?.contentId!==component.contentId)throw Error('분리 구성 목록과 런타임 파일이 다릅니다: '+component.id);
+  }
+  const core=join(build,'core-runtime');await mkdir(core);
+  for(const [name,source] of [['speech',speechTarget],['sound',soundTarget]])for(const file of await files(source)){
+    if(componentForPath(`resources/${name}/${file}`)!=='app')continue;
+    const target=join(core,name,file);await mkdir(dirname(target),{recursive:true});await cp(join(source,file),target);
+  }
+  const marker=join(core,'runtime-components.json');await writeFile(marker,JSON.stringify({schema:'nagneon-runtime-layout/1',mode:'components'}));
+  extraResources=[codexTarget,join(core,'speech'),join(core,'sound'),marker];
+}
 const output=await packager({dir:stage,out:join(build,'app'),name:'Nagneon',executableName:'Nagneon',icon:join(root,'branding/nagneon.ico'),platform:'win32',arch:'x64',electronVersion,
   appVersion:pkg.version,buildVersion:pkg.version,asar:true,prune:false,overwrite:false,
-  extraResource:[codexTarget,join(resources,'speech'),soundTarget],
+  extraResource:extraResources,
   win32metadata:{CompanyName:'Unspecified publisher (development build)',FileDescription:'Nagneon',ProductName:'Nagneon',InternalName:'Nagneon'}
 });
 const folder=output[0],exe=join(folder,'Nagneon.exe');
@@ -134,7 +151,7 @@ const inventory=[];
 const sourceCheck=await verifyPackageSources(root,folder,sourceManifest);
 if(!sourceCheck.passed)throw Error(sourceCheck.failures.join('\n'));
 for(const name of await files(folder))inventory.push({path:name,bytes:(await lstat(join(folder,name))).size,sha256:await hash(join(folder,name))});
-const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,acceptance:'not yet verified',electron:electronVersion,codex:codexPkg.version,
+const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,layout:modular?'components':'bundled',acceptance:'not yet verified',electron:electronVersion,codex:codexPkg.version,
   speech:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory,components:distributionComponents(inventory)};
 await writeFile(join(build,'manifest.json'),JSON.stringify(report,null,2));
 await writeFile(join(build,'asar-files.json'),JSON.stringify(archiveFiles,null,2));

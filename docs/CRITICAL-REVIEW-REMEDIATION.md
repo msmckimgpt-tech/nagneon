@@ -254,3 +254,11 @@
 - 첫 분리 캐시 실행은 Windows DLL 경로 길이로 실패했다. 짧은 캐시 루트와 32자리 폴더 식별자로 수정하고 전체 SHA-256 검증은 유지했다. 실제 전달 모듈·분리된 Python/medium/small/GPU/YAMNet, 개발 PATH 제외 한국어 합성 음성과 소리 분석·정상 종료 통과. 실제 모델 호출과 물리 장치·경량 GUI는 미검증이다.
 - 작업본 668/668 테스트·빌드 통과. artifacts/critical-review/runtime-packs-final-check.log 및 components-runtime-short-path-result.json. 새 구성 다운로드 시점은 권장안인 기능 최초 사용을 기준으로 진행하며 사용자 답변이 오면 반영한다. 사용자 설치본과 기존 원격 릴리즈는 변경하지 않았다.
 - 통합본 668/668 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/runtime-packs-check.log. 활성 구현과 모델/압축 파일/검증 증거를 보존하기 위해 두 worktree를 유지한다.
+
+## 경량 앱 구성 연결 통합 (2026-09-16)
+
+- 원본 422fcb1337a31ccb2c24f9b09d464572cc784cb3을 main 0197ff1 위 격리 squash 통합했다. 제품 소스는 원본과 일치하며 기존 통합 원장 내용도 보존했다. 통합 필수 검사 674/674·빌드 통과: artifacts/critical-review-integration/runtime-components-check.log.
+- 최신 실제 후보 release/2026-09-15T18-17-00-406Z: 기본 설치 844,295,048바이트/89파일, ZIP 315,237,318바이트(모든 항목 길이·해시 검증). 기존 공개 앱 ZIP 1,936,656,696바이트보다 약 83.7% 감소. 추가 기능의 구성 다운로드/저장 공간은 별도이며 전체 기능 설치 크기가 84% 감소한 것은 아니다.
+- 작업 worktree artifacts/critical-review/lightweight-native-release.log에서 실제 EXE 온보딩·리허설 시작/정상 중지·앱 종료 통과. lightweight-runtime-release-result.json에서 전달 ASAR·분리 캐시로 합성 한국어 전사/시스템 소리 인식·GPU int8_float16(fallback=false) 통과. 물리 장치 입력이나 실제 모델 대화 검증으로 표시하지 않는다.
+- lightweight-integrity-release.log의 현재 소스/ASAR/전체 파일/실행 fuse 검사 통과. lightweight-zip-result.json은 ZIP 실제 크기와 경로를 기록한다. 분리 구성 카탈로그 URL은 아직 미게시이며 사용자 0.1.3 설치는 유지한다.
+- 다음: 고정 구성 자산 게시와 실제 HTTPS 다운로드, 손상 캐시/기존 설치 재사용, 클립·캡처 경로와 업데이트/데이터 보존 검증. 기존 HTTP 테스트의 간헐 fetch failed 원인은 미확정이며 실패 원본과 좁힌 검사/전체 재검사 성공 모두 DISTRIBUTION-SIZE.md에 기록했다. 전체 리뷰 목표는 계속 진행 중이다.

@@ -31,7 +31,7 @@ const [{LocalSpeech},{LocalSound},{CodexProvider},{defaults},{Settings}]=await P
 ]);
 const require=createRequire(pathToFileURL(join(appRoot,'package.json')));
 const {packagedRuntime}=require(join(appRoot,'desktop/runtime.cjs'));
-const runtime=packagedRuntime(join(folder,'resources'));
+const runtime=packagedRuntime(join(folder,'resources'),{cache:resolve('artifacts/runtime-cache')});
 let componentIds;
 if(option('components-catalog')){
   const catalog=JSON.parse(await readFile(option('components-catalog'),'utf8'));

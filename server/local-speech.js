@@ -71,6 +71,7 @@ export class LocalSpeech {
   }
   async prepare(signal=new AbortController().signal,device=this.requestedDevice){
     if(!['gpu','cpu'].includes(device))throw Error('음성 인식 장치를 확인해주세요.');
+    if(this.runtime.prepare)await this.runtime.prepare(signal,device);
     if(this.switching)await this.switching;
     if(device!==this.requestedDevice){
       if(this.closed)throw Error('음성 인식을 종료했습니다.');
