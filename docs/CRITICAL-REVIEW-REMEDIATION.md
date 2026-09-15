@@ -157,3 +157,5 @@
 - 추가 사용자 결정: 밈/공통 추억은 자동 만료 없이 보존하고 현재 대화에 관련된 기억만 사용한다. 이 항목은 기획 기능 제거 통합 후 구현한다.
 
 - 최종 범위 작업본: 647/647 테스트·빌드 통과, offscreen 실제 Electron synthetic UI 10개 검사 통과. 7개 메뉴에 방송 놀이터가 없고 기본 리허설·오버레이 동작 확인. 원본 artifacts/critical-review/playground-check.log 및 artifacts/nagneon/renderer-result.json, studio-1440.png.
+
+- 최종 통합 검증: 원본 fdc68ba → 6e95371c9ac47b447d976c6057ccdd36b0c7e391을 main 67abdc8 기준으로 squash 통합. 실제 통합본 npm run check 647/647·빌드, offscreen Electron UI 10개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/playground-check.log 및 artifacts/nagneon/renderer-result.json. 실행 중 사용자 앱과 릴리즈는 아직 변경하지 않았다.
