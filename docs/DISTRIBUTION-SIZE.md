@@ -67,3 +67,7 @@
 - 화면 공유를 먼저 연결하고 클립 설정을 켠 뒤 방송을 시작하는 경로에서도 구성을 준비한다. 준비 전 클립 버퍼링/업로드를 시작하지 않는다. 실제 Electron에 합성 canvas 화면을 연결한 UI 검사는 추가 요청 1회·취소 후 재시도 없음으로 통과했다. 방송 중 설정 변경은 기존 정책상 거절되며 UI 시험도 방송 전 설정 변경을 사용한다.
 - 필수 검사 676/676·빌드 (`artifacts/critical-review/runtime-repair-check.log`), 실제 Electron 합성 UI 4개 검사 (`artifacts/runtime-components-ui/result.json`) 통과. 복구 검사는 실제 gzip/파일과 합성 HTTP 응답을 사용했으며 공개 다운로드 성공을 대신하지 않는다.
 - 구성 주소를 앱 버전 v0.1.4와 분리한 `runtime-2026-09-16` 태그로 고정한다. 파일명/압축 해시/내용 식별자는 그대로다. 네 로컬 압축 파일의 실제 크기·SHA-256을 카탈로그와 재대조했다. 이 기록 시점에는 공개 자산 게시·실제 호스트 다운로드 검증 전이며 최종 앱 릴리즈가 아니다.
+
+설치 검증 성공 뒤에는 중복 압축 원본을 제거하고 설치 파일만 오프라인 재사용한다. 다른 프로세스가 압축본을 잠근 경우 정상 런타임을 실패시키지 않고 다음 실행의 설치 확인 뒤 정리를 다시 시도한다. 실제 HTTP/복원 회귀에서 압축본 없음과 새 관리자 인스턴스의 네트워크 없는 재사용을 확인했다. `runtime-cache-space-test.log`, `runtime-cache-space-check.log`(676/676·빌드). 공개 HTTPS 전체 구성/오프라인 재사용 검증기는 `scripts/verify-runtime-download.mjs`이며 아직 실행 성공 전이다.
+
+구성 릴리즈 초안 ID 389380090을 생성했다. 최초 병렬 업로드는 호스트 연결 중단, 단일 재시도는 TLS bad record MAC으로 실패했다. 원격에는 audio와 해시 목록만 uploaded 상태임을 확인했으며 완료 자산을 덮어쓰지 않았다. 인증서 검증을 유지한 Windows curl/HTTP 1.1 전송으로 sound 업로드를 재시도 중이다. 원본 `runtime-release-upload.log`, `runtime-upload-sound.log`, `runtime-release-retry-state.json`. 초안이므로 아직 공개 다운로드 불가다.

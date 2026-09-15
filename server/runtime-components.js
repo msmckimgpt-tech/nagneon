@@ -1,6 +1,6 @@
 import { join, isAbsolute } from 'node:path';
-import { lstat } from 'node:fs/promises';
-import { installRuntimePack, validateRuntimeComponent, verifyRuntimeComponent } from './runtime-pack.js';
+import { lstat, unlink } from 'node:fs/promises';
+import { installRuntimePack, validateRuntimeComponent, verifyRuntimeComponent, regularAncestors } from './runtime-pack.js';
 import { downloadRuntimePack } from './runtime-download.js';
 const features={microphone:['audio','microphone'],sound:['audio','sound'],clips:['audio'],perception:['audio','sound','microphone']};
 const labels={audio:'공통 음성 처리',sound:'시스템 소리 인식',microphone:'한국어 마이크 인식',gpu:'GPU 가속'};
@@ -50,7 +50,12 @@ export class RuntimeComponents {
         signal.throwIfAborted();this.change(id,{status:'installing',downloadedBytes:component.archive.bytes});
         await this.install({archive:downloaded.path,component,cache:join(this.cache,'installed'),signal,repair:true,onProgress:p=>this.change(id,{installedBytes:p.extractedBytes},true)});
       }
-      signal.throwIfAborted();this.change(id,{status:'ready',downloadedBytes:component.archive.bytes,installedBytes:component.bytes});
+      signal.throwIfAborted();
+      // Keep the installed files for offline use, not a second compressed copy.
+      // A locked archive may still be used by another app; retry cleanup after
+      // validation on the next launch without failing the working runtime.
+      try{const archive=join(this.cache,'downloads',component.archive.sha256+'.ngpack');await regularAncestors(join(this.cache,'downloads'));const stat=await lstat(archive);if(stat.isFile()&&!stat.isSymbolicLink())await unlink(archive);}catch{}
+      this.change(id,{status:'ready',downloadedBytes:component.archive.bytes,installedBytes:component.bytes});
     }catch(error){this.change(id,{status:signal.aborted?'idle':'error',error:signal.aborted?'':'구성을 준비하지 못했습니다. 연결과 저장 공간을 확인한 뒤 다시 시도해주세요.'});throw new Error(signal.aborted?'구성 준비를 취소했습니다.':this.rows.get(id).error,{cause:error});}
   }
   cancel(){for(const job of this.jobs.values())job.controller.abort();}

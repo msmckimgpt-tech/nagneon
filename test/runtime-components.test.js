@@ -66,6 +66,8 @@ test('actual authenticated HTTP prepares only requested components and exposes n
   assert.equal((await fetch(app.url+'/api/runtime/prepare',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({feature:'clips'})})).status,401);assert.equal(fetched,0);
   const res=await fetch(app.url+'/api/runtime/prepare',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio',Authorization:'Bearer '+app.accessToken},body:JSON.stringify({feature:'clips'})});assert.equal(res.status,200);assert.equal(fetched,1);
   const state=app.studio.state().runtimeComponents;assert.equal(state.components.find(c=>c.id==='audio').status,'ready');assert.ok(state.components.filter(c=>c.id!=='audio').every(c=>c.status==='idle'));assert.ok(!JSON.stringify(state).includes(manager.cache));
+  const {readdir}=await import('node:fs/promises');const {join}=await import('node:path');assert.deepEqual(await readdir(join(manager.cache,'downloads')),[]);
+  const reuse=new RuntimeComponents({cache:manager.cache,catalog:{format:'nagneon-runtime-catalog/1',components},download:()=>{throw Error('offline');}});await reuse.prepare('clips');assert.equal(reuse.snapshot().components.find(c=>c.id==='audio').status,'ready');await reuse.close();
 });
 
 test('app shutdown aborts a live download without waiting for its caller to cancel',async()=>{
