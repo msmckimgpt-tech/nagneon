@@ -246,3 +246,11 @@
 
 배포 크기 개선을 최우선으로 전환했다. 현재 후보 4.76GB 중 기본 앱 파일은 약 844MB이며 나머지를 공통 런타임·시스템 소리·마이크 모델·GPU로 분리하는 목록/식별자를 빌더에 추가했다. 실제 기본 앱 단독 실행과 구성 다운로드/설치는 아직 구현 전이다. 진행·의존성·원본 크기는 DISTRIBUTION-SIZE.md에 기록한다. 원본 b15cd72, 작업본 662/662 테스트·빌드 통과 (artifacts/critical-review/distribution-components-check.log).
 - 통합본 662/662 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/distribution-components-check.log. 진행 중 모델·증거와 후속 구현을 위해 worktree를 보존한다.
+
+## 구성 압축·다운로드·설치
+
+- 원본 b434483. 런타임 gzip 묶음 생성, 고정 카탈로그 기반 스트리밍 다운로드·취소·크기/해시 검증, 임시 디렉터리 복원 후 원자적 공개·재사용을 구현했다. 기능별 UI·경량 앱 시작에는 아직 연결하지 않았다.
+- 실제 기본 앱 파일 ZIP 304,382,635바이트, 88개 항목 해시 일치. 공통 음성/소리/마이크/GPU 묶음은 전 파일 복원 일치. 상세 크기와 재현은 DISTRIBUTION-SIZE.md에 있다. 기존 후보 소스의 구조 검증물이며 사용자 릴리즈로 게시하지 않았다.
+- 첫 분리 캐시 실행은 Windows DLL 경로 길이로 실패했다. 짧은 캐시 루트와 32자리 폴더 식별자로 수정하고 전체 SHA-256 검증은 유지했다. 실제 전달 모듈·분리된 Python/medium/small/GPU/YAMNet, 개발 PATH 제외 한국어 합성 음성과 소리 분석·정상 종료 통과. 실제 모델 호출과 물리 장치·경량 GUI는 미검증이다.
+- 작업본 668/668 테스트·빌드 통과. artifacts/critical-review/runtime-packs-final-check.log 및 components-runtime-short-path-result.json. 새 구성 다운로드 시점은 권장안인 기능 최초 사용을 기준으로 진행하며 사용자 답변이 오면 반영한다. 사용자 설치본과 기존 원격 릴리즈는 변경하지 않았다.
+- 통합본 668/668 테스트·빌드 통과: critical-review-integration/artifacts/critical-review-integration/runtime-packs-check.log. 활성 구현과 모델/압축 파일/검증 증거를 보존하기 위해 두 worktree를 유지한다.

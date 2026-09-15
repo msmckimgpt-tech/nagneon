@@ -23,3 +23,25 @@
 - 다운로드 시점은 사용자에게 선택 질문을 보냈다. 권장 방향은 기능을 처음 켤 때 필요한 구성 다운로드다. 어느 시점이든 다운로드 크기·진행·취소·재시도, 해시 확인 후 원자적 설치, 오프라인 재사용, 업데이트 시 공통 구성 보존을 구현해야 한다.
 - 다음: 구성별 압축·고정 해시 배포, 사용자 캐시 경로와 기존 설치 구성 재사용, 기능별 준비 UI/서버 연결, 경량 실제 설치·시작·기능 설치·업데이트 검증, 새 압축/설치 크기 실측. 기존 0.1.4 후보는 provider 변경을 포함하지 않으므로 최신 소스에서 다시 빌드해야 한다.
 - 증거: 작업 worktree artifacts/critical-review/package-size-audit.json, component-size-plan.json. 원격 크기는 gh release view v0.1.3의 실제 assets 조회 결과다. test/distribution-components.test.js는 전체 배정, 동일 구성 재사용, 앱/모델 변경 분리 및 잘못된 목록 거부를 검사한다.
+
+## 실제 압축·검증 설치 구현
+
+- server/runtime-download.js는 앱에 동봉할 고정 카탈로그의 HTTPS URL·길이·SHA-256을 사용해 스트리밍 다운로드한다. 진행률·취소·검증된 캐시 재사용을 지원한다. 실패·초과/부족 크기·해시 불일치·HTTPS 하향 리다이렉트는 공개 캐시 파일을 만들지 않는다. 아직 사용자 화면이나 네트워크 다운로드 요청에 연결하지 않았다.
+- server/runtime-pack.js는 전체 압축 파일과 각 복원 파일을 확인하고 임시 디렉터리를 최종 경로로 원자적으로 바꾼다. 파일명·크기는 앱 카탈로그가 결정하며 압축 데이터에는 경로·명령을 넣지 않는다. .ngpack 형식은 카탈로그 파일 순서대로 연결한 내용을 담은 단일 gzip 스트림이다. 새 외부 압축 라이브러리나 외부 압축 프로그램은 필요 없다. 설치된 구성의 재사용도 파일 해시를 검증한다.
+- scripts/build-runtime-packs.mjs는 네 개 런타임 묶음을 생성하고 실제 복원 검증을 수행한다. 출력 catalog.json은 현재 로컬 검증 경로를 포함한 개발 산출물이다. 사용자 배포 카탈로그는 경로를 제외한 고정 descriptor와 URL만 따로 생성해야 한다.
+
+| 실제 생성한 파일 | 압축 크기(바이트) | 검증 |
+|---|---:|---|
+| 기본 앱 ZIP | 304,382,635 | 88개 ZIP 항목의 길이·내용 해시 일치. 단독 실행 미완성 |
+| 공통 음성 런타임 | 95,790,076 | 전체 복원 파일 일치 |
+| 시스템 소리 모델 | 460,120,558 | 전체 복원 파일 일치 |
+| 마이크 medium 모델 | 1,412,120,686 | 전체 복원 파일 일치 |
+| GPU 가속 | 1,085,458,132 | 전체 복원 파일 일치 |
+
+전체 구성을 받는 총량은 크게 줄지 않는다. 기본 앱을 작게 받고 사용한 구성만 설치·재사용하는 것이 이번 개선의 핵심이다. 위 파일은 이전 후보 소스를 사용한 배포 구조 검증물이며 최종 사용자 릴리즈가 아니다. 최신 앱 소스 반영·독립 실행·설치 UI 연결 후 다시 생성해야 한다.
+
+분리 캐시의 첫 실제 음성 실행은 Windows DLL 경로 길이 초과로 실패했다. Python import 진단에서 `av.audio.frame`의 DLL 로딩 오류로 확인했다. 캐시를 빌드별 긴 하위 경로 밖에 두고 폴더 식별자는 SHA-256 앞 32자리로 줄였다. 전체 contentId와 파일 해시 검증은 유지해 폴더명만으로 내용을 신뢰하지 않는다. 사용자 캐시는 짧은 고정 로컬 경로를 사용해야 한다.
+
+원본: artifacts/latest-runtime-packs.json, artifacts/critical-review/runtime-packs-real.log, base-zip-result.json, base-zip.log(초기 .NET 압축 어셈블리 로딩 실패), base-zip-retry.log, components-runtime-result.json(긴 경로 실패), components-runtime-short-path-result.json. 빌더/다운로드/복원 회귀는 작업본 668/668·빌드 통과 (runtime-packs-final-check.log). 다운로드 네트워크는 합성 Response 검증이며 실제 배포 호스트 다운로드는 아직 미검증이다.
+
+짧은 캐시 경로에서 실제 전달 모듈과 분리한 Python·medium·small·GPU·YAMNet을 연결해 재검증했다. 개발 PATH를 제외한 합성 한국어 전사·시스템 소리/대사 인식, GPU 사용(fallback=false), 정상 종료 통과. 실제 계정 모델 호출·물리 장치 입력·경량 앱 GUI 시작 검사는 하지 않았다. 원본 components-runtime-short-path-result.json은 passed=true다.
