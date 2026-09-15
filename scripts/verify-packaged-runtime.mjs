@@ -55,11 +55,14 @@ const speech=new LocalSpeech(runtime.speech);
 const sound=new LocalSound(runtime.sound);
 const report={folder,appRoot,archiveSha256,componentIds,extractedDeliveredArchive:!!archiveSha256,checkedAt:new Date().toISOString(),restrictedPath:true,deliveredModules:true,syntheticAudio:true,liveModel:false,checks:[]};
 try{
-  speech.start();const start=Date.now();
+  const requestedDevice=option('speech-device')||'gpu';assert.ok(['gpu','cpu'].includes(requestedDevice));
+  if(requestedDevice==='cpu'){runtime.speech.gpuLibraries=resolve('artifacts/absent-gpu-runtime');assert.equal(existsSync(runtime.speech.gpuLibraries),false);report.gpuRuntimeUnavailable=true;}
+  speech.start(requestedDevice);const start=Date.now();
   while(!speech.ready&&Date.now()-start<30000){if(speech.error)throw new Error(speech.error);await new Promise(r=>setTimeout(r,100));}
   assert.equal(speech.ready,true);report.speechReadyMs=Date.now()-start;
   report.speechDevice=speech.device;report.speechFallback=speech.fallback;
   if(option('expect-speech-device')==='gpu'){assert.match(speech.device,/^GPU/);assert.equal(speech.fallback,false);report.checks.push('bundled CUDA and cuDNN perform real GPU inference');}
+  if(option('expect-speech-device')==='cpu'){assert.match(speech.device,/^CPU/);assert.equal(speech.fallback,false);report.checks.push('explicit CPU inference works without a GPU runtime directory');}
   const audio=await readFile(resolve('artifacts/korean-fixture.wav')),transcribedAt=Date.now();
   const transcript=await speech.transcribe(audio,new AbortController().signal);
   assert.match(transcript.text,/오늘|게임|이야기/);assert.equal(transcript.cues.confidence,'low');

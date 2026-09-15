@@ -278,6 +278,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             </select>
           </label>
           <p className="field-note">저장한 설정은 다음 마이크 준비 때 적용돼요. NVIDIA GPU를 사용할 수 없으면 CPU로 자동 전환해요.</p>
+          <p className="field-note">게임과 음성 인식이 GPU를 함께 쓰면 게임 성능에 영향을 줄 수 있어요. CPU를 선택하면 GPU 사용을 피할 수 있지만, CPU 사용량과 인식 지연이 늘어날 수 있어요.</p>
           <p className="field-note" role="status">현재 작동 장치: {state.provider.localAudio?state.provider.localAudioDevice||'확인 중':'준비 전'}{state.provider.audioFallback?' · GPU를 사용할 수 없어 CPU로 전환했어요.':''}</p>
           <label className="set-check">
             <input type="checkbox" checked={draft.contextualTranscription!==false} onChange={e=>update('contextualTranscription',e.target.checked)}/>
