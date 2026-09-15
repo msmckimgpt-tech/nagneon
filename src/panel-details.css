@@ -6,3 +6,7 @@
 .private-preference small { display:block;color:#93a28b;margin-bottom:6px }
 .private-preference b { font-size:13px }
 .storage-notice { padding:18px 22px;margin-bottom:20px;border-color:#806b31;color:#e8d599 }
+
+.lore-entry { display:flex;align-items:center;gap:12px;border-top:1px solid var(--border,#29313b);padding:12px 0;overflow-wrap:anywhere }
+.lore-entry p { flex:1;min-width:0;margin:0 }
+.lore-entry .feature-buttons { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
