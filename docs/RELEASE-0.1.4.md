@@ -40,4 +40,5 @@
 - 0.1.3 패키지를 별도 설치 루트에 설치하고 실제 API로 시험 제목·공통 기억을 저장했다. 같은 프로필에 0.1.4를 업데이트하고 두 기록의 보존·정상 UI·종료를 확인했다. 설치기는 파일 복사·해시 대조와 업데이트 전 백업을 수행했다.
 - 0.1.3 스키마는 업데이트된 world의 settings.maxCalls 누락을 거절했다 (artifacts/critical-review/rollback-compatibility.json). 새 프로필을 그대로 옛 버전에 연결하는 복귀는 지원하지 않는다. 업데이트 전 백업을 별도 프로필로 복사한 뒤 실제 0.1.3 실행·기록 확인·종료에 성공했고, 현재 0.1.4 world 파일 해시는 동일했다.
 - 원본: artifacts/critical-review/install-old.log, install-update.log, packaged-ui-pass.log, packaged-ui-old.log, packaged-ui-updated.log, packaged-ui-rollback.log. 실제 화면은 artifacts/packaged-ui/run-MkZ0fS/studio.png 및 각 run 폴더에 있다. 완료 후 해당 패키지·시험 설치 경로의 프로세스 잔류 없음.
-- 남음: 설치/실행 경로에서 호환되지 않는 직접 다운그레이드 방지, 실제 사용자 기록 복사본 확인, 영향 있는 장치 검증과 배포물 게시·실제 사용자 적용.
+- 설치·실행 도구에 읽기 전용 호환성 검사를 추가했다. 실제 0.1.3 패키지의 다운그레이드 요청은 현재 포인터·기록·백업 수를 바꾸지 않고 거절했다. 실행기 Inspect에서도 표시 버전을 0.1.4로 바꾼 구버전 EXE는 거절하고 실제 0.1.4는 허용했다. Windows PowerShell의 한글 JSON 읽기는 UTF-8로 명시했다. 원본 artifacts/critical-review/downgrade-guard-result.json 및 launcher-compatibility/result.json. 배포 설치 도구에는 Profile-Compatibility.ps1이 필수다.
+- 남음: 실제 사용자 기록 복사본 확인, 영향 있는 장치 검증과 배포물 게시·실제 사용자 적용. 구버전 EXE 직접 실행에는 새 도구의 검사가 적용되지 않으며 복귀는 별도 백업 복사본으로만 수행한다.
