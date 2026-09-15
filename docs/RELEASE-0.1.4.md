@@ -26,3 +26,10 @@
 - 압축 배포물 크기, 원격 게시와 사용자 앱 적용
 
 리뷰 전체 원장과 원본 증거는 [CRITICAL-REVIEW-REMEDIATION.md](CRITICAL-REVIEW-REMEDIATION.md)에 기록한다. 합성 검사 결과는 실제 계정·장치 검증과 구분한다.
+
+## 배포 후보 실행 증거
+
+- 작업 소스 b64e733, 통합 main 9689bf3. 실제 패키지 release/2026-09-15T16-46-46-632Z/app/Nagneon-win32-x64.
+- 포함 소스 97개/파일 2,476개 해시·ASAR 보호·실행 퓨즈 검사 통과. 원본 artifacts/critical-review/package-integrity.log.
+- 개발 런타임을 PATH에서 제외한 실제 패키지 모듈 검사 통과. GPU int8_float16, 합성 한국어 음성·YAMNet/시스템 대화·공식 CLI 기존 계정 상태 확인. 실시간 모델 호출은 하지 않았다. 원본 artifacts/packaged-runtime-test.json 및 artifacts/critical-review/packaged-runtime.log.
+- 이는 실제 GUI 시작·업데이트·원본 기록 복귀 및 실제 장치 검증을 대체하지 않는다. 정식 릴리즈/사용자 적용은 계속 보류 상태다.
