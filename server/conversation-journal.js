@@ -6,7 +6,7 @@ export const JOURNAL_LIMIT=4000, PIN_LIMIT=100;
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
 const Transcription=z.object({source:z.literal('microphone'),correction:z.object({text:z.string().min(1).max(3000),confidence:z.number().min(.9).max(1),reason:z.string().max(240),at:z.number().finite().nonnegative()}).optional()});
 const Donation=z.object({amount:z.number().int().min(1).max(200),anonymous:z.boolean()});
-const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(3000),witnesses:z.array(actor).max(40),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean(),transcription:Transcription.optional(),kind:z.enum(['chat','streamer','notice','donation']).optional(),donation:Donation.optional()}).superRefine((e,ctx)=>{
+const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(3000),witnesses:z.array(actor),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean(),transcription:Transcription.optional(),kind:z.enum(['chat','streamer','notice','donation']).optional(),donation:Donation.optional()}).superRefine((e,ctx)=>{
   if((e.kind==='donation')!==!!e.donation)ctx.addIssue({code:'custom',message:'후원 기억의 종류와 포인트 기록이 맞지 않습니다.'});
   if(e.donation?.anonymous&&(e.personaId!=='anonymous'||e.name!=='익명의 관객'))ctx.addIssue({code:'custom',message:'익명 후원 기억에 후원자를 기록할 수 없습니다.'});
 });

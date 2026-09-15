@@ -22,7 +22,7 @@ export const Settings = z.object({
   intervalSeconds: z.number().int().min(5).max(120), chatPace: z.number().int().min(1).max(8),
   managerId: short(40), managerRules: z.string().max(3000), blockedWords: z.array(short(60)).max(100),
   slowModeSeconds: z.number().int().min(0).max(60), spoilerGuard: z.boolean(),
-  personas: z.array(Persona).min(1).max(40), games: z.array(Game).min(1).max(100)
+  personas: z.array(Persona).min(1), games: z.array(Game).min(1).max(100)
 }).superRefine((s,ctx) => {
   if (new Set(s.personas.map(p=>p.id)).size !== s.personas.length) ctx.addIssue({code:'custom',message:'관객 ID가 중복됩니다.'});
   if (s.personas.some(p=>['__proto__','constructor','prototype'].includes(p.id))) ctx.addIssue({code:'custom',message:'사용할 수 없는 관객 ID입니다.'});

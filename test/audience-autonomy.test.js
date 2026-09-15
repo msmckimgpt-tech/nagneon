@@ -29,6 +29,37 @@ function start(service){service.studio.configure({...service.studio.settings,mod
 async function meet(service){return service.studio.autonomy.arrive(randomUUID());}
 const raw=s=>JSON.parse(readFileSync(join(s.dataDir,'world.json'),'utf8'));
 
+test('more than 40 viewers can meet, retain all witnesses and reload without a roster ceiling',async t=>{
+  const service=await open(null),s=service.studio;
+  try {
+    s.world.change(d=>{
+      const template=d.settings.personas[0];
+      for(let i=0;i<100;i++){
+        const id='large-roster-'+i;
+        d.settings.personas.push({...template,id,name:'관객'+i,system:false,role:'viewer'});
+        d.audience.members[id]={sessions:1,seconds:0,recognized:0,affinity:.9,peers:{},memories:[]};
+      }
+    });
+    start(service);
+    const arrival=await meet(service);assert.equal(arrival.status,'completed');
+    const ids=s.settings.personas.filter(p=>!p.system).map(p=>p.id);
+    assert.equal(ids.length,101);
+    for(const id of ids){s.audience.data.members[id].joinedAt=s.startedAt;s.audience.presence[id]='active';}
+    s.addMessage('streamer','모두 같은 화면을 함께 보고 있어요','streamer');
+    s.knowledge.observe('확장 관객 검사','함께 본 합성 장면',s.now(),.5,ids);
+    s.knowledge.observe('확장 관객 검사','다음 합성 장면',s.now()+1000,.5,ids);
+    assert.equal(Object.keys(s.knowledge.get('확장 관객 검사').watched).length,101);
+    assert.equal(s.lastError,'');
+    assert.equal(s.journal.data.entries.at(-1).witnesses.filter(id=>ids.includes(id)).length,101);
+    assert.equal(s.knowledge.entries['확장 관객 검사'].observations.at(-1).witnesses.length,101);
+  } finally {await service.close();}
+  const reloaded=await open(t,{dataDir:service.dataDir});
+  assert.equal(reloaded.studio.settings.personas.filter(p=>!p.system).length,101);
+  assert.equal(reloaded.studio.journal.data.entries.at(-1).witnesses.filter(id=>id!=='mod').length>=101,true);
+  assert.equal(reloaded.studio.knowledge.entries['확장 관객 검사'].observations.at(-1).witnesses.length,101);
+  assert.equal('maxViewers' in reloaded.studio.autonomy.snapshot(),false);
+});
+
 test('first meeting waits behind an active observation without a charge or duplicate generation',async t=>{
   let release,calls=0;const service=await open(t,{provider:fake(async args=>{calls++;return args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r);})});start(service);
   const s=service.studio,observation=s.react({speech:'게임을 시작할게요.'});await waitFor(()=>!!release);

@@ -128,7 +128,7 @@ export type State = {
     sourceId: string;
     error: string;
   };
-  autonomy?: { pending: boolean; price: number; broadcastSeconds: number; maxViewers: number };
+  autonomy?: { pending: boolean; price: number; broadcastSeconds: number };
   ambient?: { active: null | { id: string; title: string }; quiet: boolean };
   sound?: SoundState;
   journal?: { revision: number; count: number; pinned: number; limit: number; pinLimit: number };
@@ -241,7 +241,6 @@ declare global {
       toggleClickThrough: () => Promise<boolean>;
       closeOverlay: () => Promise<void>;
       onOverlayState: (fn: (value: boolean) => void) => () => void;
-      onPanic: (fn: () => void) => () => void;
       accountStatus: () => Promise<AccountState>;
       startAccountLogin: (method: 'browser' | 'device') => Promise<AccountState>;
       cancelAccountLogin: () => Promise<AccountState>;

@@ -10,7 +10,7 @@ const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','c
 const note=obj({id,text,at:time});
 // 관찰 장면에는 캡처 시점 목격자(active/lurking) 스냅샷을 남긴다. provenance 없는 레거시 기록은
 // witnesses 가 없으며(=undefined) 개인 목격으로 승격하지 않는다. 목격자 키는 actor 규칙으로 프로토타입 오염을 막는다.
-const observationNote=obj({id,text,at:time,witnesses:z.array(actor).max(40).optional()});
+const observationNote=obj({id,text,at:time,witnesses:z.array(actor).optional()});
 const message=obj({id,personaId:id,name:text,text,kind:text,time:time});
 // watched: 관객별 개인 시청 초. 게임별 엔트리에 저장되어 재시작 후에도 유지된다. 키는 actor 로 제한해 성장/오염을 막는다.
 export const KnowledgeData=z.record(text,obj({name:text,seconds:number,observations:z.array(observationNote),notes:z.array(note),watched:z.record(actor,number).optional()}));

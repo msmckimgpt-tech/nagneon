@@ -129,16 +129,15 @@ test('a failed observe counts no time and does not advance the capture clock; th
   assert.equal(k.get('Celeste').observations.length,3);
 });
 
-test('per-viewer watch map still caps at 80 keys after the save-before-commit change',()=>{
+test('per-viewer watch time remains intact as more viewers join',()=>{
   const k=new Knowledge();let at=0;
-  // observe 는 한 번에 목격자 40명까지만, 그리고 직전/현재 두 관찰에 모두 있는 목격자에게만 시간을 준다.
-  // 40명씩 겹치는 라운드를 세 번 돌려 120명에게 시청 시간을 누적시키면, capWatched 가 상위 80명만 유지해야 한다.
+  // 직전/현재 두 관찰에 모두 있는 목격자에게만 시간을 주며, 나중에 온 관객 때문에 이전 기록을 삭제하지 않는다.
   for(let round=0;round<3;round++){
     const set=Array.from({length:40},(_,i)=>'v'+(round*40+i));
     k.observe('Cap','s'+round+'a',at,0.5,set);at+=5000; // 직전 집합과 겹치지 않으므로 시간 미부여, lastSeen 갱신
     k.observe('Cap','s'+round+'b',at,0.5,set);at+=5000; // 같은 집합 → 40명에게 시청 시간 누적
   }
-  assert.equal(Object.keys(k.get('Cap').watched).length,80,'watch map is capped at 80 keys');
+  assert.equal(Object.keys(k.get('Cap').watched).length,120,'all viewers retain their watch time');
 });
 
 // ── 스키마 역호환: 새 커밋 경로가 저장하는 값은 기존 영속 스키마를 만족한다 ────────────────────
