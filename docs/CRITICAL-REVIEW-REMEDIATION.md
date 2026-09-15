@@ -36,11 +36,11 @@
 | 1-6 | 아이콘 버튼의 접근성이 반쪽이다. | 수정: title-only icon 버튼과 알림 닫기에 aria-label |
 | 1-7 | 오버레이가 방송 송출용인지 개인 모니터용인지 불명확하다. | 수정: 개인/공개 선택과 AI·가상 포인트 표시. 실제 OBS 캡처 검증 남음 |
 | 2-1 | 지금 이 저장소의 main에서 `npm run check`가 실패한다. | 해결: main npm ci 후 679개 테스트·빌드 재현. 기존 CI 절차 확인 |
-| 2-2 | 한 줄에 2,547자. | 대조·개선 예정 |
-| 2-3 | 원숭이 패치 체인. | 대조·개선 예정 |
+| 2-2 | 한 줄에 2,547자. | 수정: 주요 진입점 5개 파일 포매팅, 고정 Prettier 및 check 편입 |
+| 2-3 | 원숭이 패치 체인. | 수정: state/stop 덮어쓰기 체인을 단일 attachRuntime 연결로 교체 |
 | 2-4 | 죽은 코드가 배포본에 들어간다. | 수정: 기획 엔진·자동 제안·전용 UI 제거, 옛 기록은 조회/내보내기 전용 |
 | 2-5 | `reactInput()` 단일 함수 117줄. | 대조·개선 예정 |
-| 2-6 | 주석은 영어, 코드는 한국어, 문서는 한국어. | 대조·개선 예정 |
+| 2-6 | 주석은 영어, 코드는 한국어, 문서는 한국어. | 정리: 개발 안내에 코드 식별자·제품 문구·주석 언어 규칙 명시 |
 | 2-7 | worktree 40개가 방치되어 있다. | 대조·개선 예정 |
 | 3-1 | 컨텐츠 총량을 세어보면 초라하다. | 대조·개선 예정 |
 | 3-2 | 컨텐츠를 추가하는 방법이 "코드 수정"뿐이다. | 대조·개선 예정 |
@@ -173,3 +173,12 @@
 - 새 안정성 정책에 따라 구버전 읽기 호환도 확인했다. 신규 기억의 expiresAt은 옛 스키마가 요구하는 유효한 최댓값(8.64e15)으로 저장한다. 현재 버전의 만료 동작이나 UI 날짜 표시는 없으며 구버전에서 날짜 누락으로 파일을 거절하는 것을 방지한다. 실제 패키지 업데이트/복귀 검증은 릴리즈 단계에서 별도로 수행한다.
 
 - 통합 검증: 원본 a65f3ef → 700cab171d670483b20de76e872df8306902a0f8을 main 628640d의 새 안정성 정책과 격리 squash 통합. npm run check 651/651·빌드와 offscreen Electron synthetic UI 11개 검사 통과. 원본 critical-review-integration/artifacts/critical-review-integration/lore-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·배포 버전은 아직 변경하지 않았다.
+
+## 주요 코드 서식과 런타임 상태 연결
+
+- Prettier 3.9.6을 개발 의존성으로 고정하고 주요 진입점 5개에 format/format:check를 적용했다. npm run check에 서식 검사도 포함한다. 설치 결과 audit 0건, 런타임 의존성 증가는 없다.
+- state 메서드 3단·stop 메서드 2단 덮어쓰기를 제거했다. 외부 채팅·OBS·디버그·시작 안내 상태는 attachRuntime 한 곳에서 조립한다. 종료 연결 실패를 개별 처리해 다음 연결·방송 취소가 계속된다.
+- 개발 안내에 계층/데이터 흐름·검사·언어/저장 호환성 규칙을 기록했다. reactInput 내부 책임 분리는 별도 후속 작업이며 포매팅만으로 완료했다고 주장하지 않는다.
+- 종료 연결 실패와 HTTP 시작/종료의 상태 조합 검증 통과 (artifacts/critical-review/runtime-tests.log). 전체 검사 원본 artifacts/critical-review/maintainability-check.log.
+
+- 작업본 검증: format:check, 653/653 테스트, 빌드, 격리 offscreen Electron synthetic UI 11개 검사 통과. App.tsx는 JSX 인접 텍스트 조각을 합쳐 비교한 출력 AST가 동일하고 types.ts AST도 동일했다. 원본 artifacts/critical-review/format-emitted-ast.json 및 format-ast.json. 일반 코드 줄 길이는 App/studio/types 100자 이하, style 89자 이하이며 index의 일부 긴 문자열은 내용 보존을 위해 유지했다.
