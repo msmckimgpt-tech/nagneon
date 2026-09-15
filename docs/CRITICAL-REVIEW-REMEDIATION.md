@@ -39,7 +39,7 @@
 | 2-2 | 한 줄에 2,547자. | 수정: 주요 진입점 5개 파일 포매팅, 고정 Prettier 및 check 편입 |
 | 2-3 | 원숭이 패치 체인. | 수정: state/stop 덮어쓰기 체인을 단일 attachRuntime 연결로 교체 |
 | 2-4 | 죽은 코드가 배포본에 들어간다. | 수정: 기획 엔진·자동 제안·전용 UI 제거, 옛 기록은 조회/내보내기 전용 |
-| 2-5 | `reactInput()` 단일 함수 117줄. | 대조·개선 예정 |
+| 2-5 | `reactInput()` 단일 함수 117줄. | 수정: 화면 준비·리허설·요청 구성·응답 수용·경험 저장 분리, 취소/오류 정리는 호출자에 유지 |
 | 2-6 | 주석은 영어, 코드는 한국어, 문서는 한국어. | 정리: 개발 안내에 코드 식별자·제품 문구·주석 언어 규칙 명시 |
 | 2-7 | worktree 40개가 방치되어 있다. | 대조·개선 예정 |
 | 3-1 | 컨텐츠 총량을 세어보면 초라하다. | 대조·개선 예정 |
@@ -187,3 +187,8 @@
 
 - 통합 검증: 원본 73dade9 → 8aca76258123984161370e0164f6430bcd636ede를 main 547852d 기준 squash 통합. 독립 npm ci 후 LF 규칙 적용, format:check·653/653 테스트·빌드 및 offscreen Electron synthetic UI 11개 검사 통과. 첫 전체 검사 갤러리 fetch 실패는 해당 파일 재검사와 최종 전체 검사에서 통과했으며 원인을 확정하지 않는다. 증거 critical-review-integration/artifacts/critical-review-integration/maintainability-check-final.log, maintainability-gallery-recheck.log, artifacts/nagneon/renderer-result.json. 사용자 앱·릴리즈는 변경하지 않았다.
 
+
+## 반응 처리 책임 분리
+
+- 포매팅 이후 514줄이던 reactInput을 170줄의 호출 조정으로 줄이고 화면 준비, 리허설, 관객별 요청 구성, 응답 수용, 경험 저장을 별도 메서드로 분리했다. 동작 순서·중단/교체된 요청·관객 목격·기억 삭제·전사 보류·후원 조건을 유지한다.
+- 작업본 format:check·653/653 테스트·빌드 통과. 기존 회귀 검사에서 중단 후 늦은 응답, 만료된 화면, 관객 퇴장, 기억 삭제 취소, 개인정보 범위, 조용한 동행의 보상 제외를 검증한다. 원본 artifacts/critical-review/reaction-split-check.log. 모델 응답 품질 개선을 주장하는 변경은 아니다.
