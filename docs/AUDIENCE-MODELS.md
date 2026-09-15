@@ -88,3 +88,17 @@ Luna none의 첫 화면 응답은 최대 2개 요청에 3개를 생성했다. �
 ## 이전 버전 복귀
 
 0.1.2는 새 모델 선택 필드를 읽지 못한다. 복귀 전 모델·추론 수준을 모두 ‘앱 기본 설정 사용’으로 저장하거나, 설치 백업의 provider-choice.json을 별도 복사본에서 확인한다. 고정 설치 위치의 백업 current.json으로 실행 버전을 복구하며 개인 기록 전체를 자동으로 과거 버전으로 되돌리지 않는다.
+
+## 0.1.3 통합·배포 검증 기록
+
+- 원본 작업 `19008c6`와 시즌 시험 격리 보완 `c4606eb`를 `57fd39d` 한 커밋으로 squash 통합했다. main 원격 SHA 일치를 확인했다.
+- 격리 통합 worktree `audience-model-integration`의 `artifacts-integration-final.log`: 682개 테스트, TypeScript/Vite 빌드 통과. 최초 검사에서 기존 HTTP fetch 실패 4건이 있었고 해당 19개 검사는 재검사에서 통과했다. 후속 검사에서 시즌 시험의 실제 250ms 채팅 타이머가 가상 시간/수동 제안 호출에 끼어든 것을 확인했다. 해당 시험만 실제 타이머를 정지시켜 기존 모든 단언을 유지했으며 관련 38개 회귀 검사와 최종 전체 검사를 통과했다. 최초 HTTP 오류의 상세 원인은 확정하지 않았고 호스트 포트 설정은 변경하지 않았다.
+- `artifacts/model-settings-ui-1789484412107/result.json`: 소스의 실제 UI에서 mini 거절, Luna low 8.714초, Astra low 10.492초. 모델별 선택과 none/max에서 Astra low로의 추론 수준 보정, 재시작 복원 및 방송 중 잠금을 확인했다.
+- 패키지 `release/2026-09-15T15-01-49-087Z/app/Nagneon-win32-x64`: `artifacts/package-integrity-test.json`에서 2,476개 파일의 해시, 100개 소스, ASAR 보호 fuses 일치. 기존 검증된 음성/소리 런타임을 복사하고 빌더에서 다시 해시 검증했다.
+- `artifacts/packaged-runtime-test.json`: 해당 ASAR에서 추출한 모듈과 번들 Python/Whisper/YAMNet/Codex로 합성 한국어 음성과 실제 Astra low 응답을 확인했다. 앱의 로컬 GPU 음성 인식 경로가 동작했다. 스피커·마이크는 사용하지 않았다.
+- `artifacts/model-settings-ui-1789485005211/result.json`: 실제 배포 ASAR의 서버/화면과 번들 Codex를 숨겨진 Electron 창에서 실행했다. mini 미지원, Luna low 6.437초, Astra low 9.402초 및 설정 동작을 확인했다. 이 단일 연결 시험들은 24회 비교에 합산하지 않는다. 배포 EXE의 사용자 창을 새로 띄운 시험은 아니다.
+- `artifacts/release-0.1.3/archive-files.json`, `archive-decode.json`: 두 ZIP의 파일 합계가 패키지 2,476개와 정확히 일치하며 누락·추가·중복 없이 압축 해제가 가능했다. 공개 파일은 개인 기록을 포함하지 않는다.
+- 사용자 앱이 정상 종료된 것을 확인한 뒤 고정 설치 도구를 적용했다. 현재 고정 진입점은 0.1.3을 가리키고 기존 프로필을 유지한다. 자동으로 앱을 다시 열지 않았다. `artifacts/install-0.1.3.log`, `installed-inspect.json`, `installed-model-preservation.json`에서 설치·실행 파일 해시·모델 선택 무변경을 확인했다. 이전 실행 포인터와 기록은 설치 루트 `backups/update-20260916-001156-dee2ce05`에 보존되어 있다.
+- 원본 작업 브랜치 `codex/audience-model-selection`은 원격 SHA와 squash 결과의 전체 트리 일치를 확인한 뒤 로컬/원격에서 삭제했다. 작업/통합 worktree는 패키지·모델·검증 원본이 있어 보존한다. 다른 작업의 worktree는 사용 종료 여부가 불명확하여 삭제하지 않았다.
+
+릴리즈 대상은 [Nagneon 0.1.3](https://github.com/msmckimgpt-tech/nagneon/releases/tag/v0.1.3)이다. 업로드 원본 해시와 원격 자산 검증은 `artifacts/release-0.1.3`에 보존한다.
