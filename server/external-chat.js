@@ -4,9 +4,9 @@ const bounded=(value,max)=>typeof value==='string'?value.trim().slice(0,max):'';
 // Ephemeral external facts are not AI personas, streamer commands or memories.
 export class ExternalChat {
   constructor({now=Date.now,limit=200,onChange=()=>{}}={}){Object.assign(this,{now,limit,onChange});this.source=null;this.messages=[];this.seen=new Map();}
-  open({platform,channelId,sessionId}){
+  open({platform,channelId,sessionId,shareNames=false}){
     if(!['youtube','chzzk'].includes(platform)||!bounded(channelId,1024)||!sessionId)throw Error('외부 채팅 출처를 확인해주세요.');
-    this.clear();this.source={id:randomUUID(),platform,channelId,sessionId,startedAt:this.now()};this.onChange();return this.source.id;
+    this.clear();this.source={id:randomUUID(),platform,channelId,sessionId,startedAt:this.now(),shareNames:shareNames===true};this.onChange();return this.source.id;
   }
   clear(){this.source=null;this.messages=[];this.seen.clear();this.onChange();}
   prune(){const count=this.messages.length,now=this.now();this.messages=this.messages.filter(m=>now-m.receivedAt<=60000);if(count!==this.messages.length)this.onChange();}
@@ -29,7 +29,16 @@ export class ExternalChat {
     while(this.seen.size>4000)this.seen.delete(this.seen.keys().next().value);
     if(changed)this.onChange();return changed;
   }
-  context(joinedAt){const now=this.now();return Number.isFinite(joinedAt)?this.messages.filter(m=>m.publishedAt>=joinedAt&&m.receivedAt>=joinedAt&&now-m.receivedAt<=60000).slice(-20).map(m=>({...m})):[];}
+  context(joinedAt){
+    const now=this.now();
+    return Number.isFinite(joinedAt)?this.messages.filter(m=>m.publishedAt>=joinedAt&&m.receivedAt>=joinedAt&&now-m.receivedAt<=60000).slice(-20).map(m=>{
+      // Keep the message id for deletion invalidation, but never send channel or author ids.
+      // A source-scoped alias is stable during this connection and changes on reconnect.
+      const {authorId,sourceId,name,...message}=m;
+      const alias=createHash('sha256').update(`${sourceId}:${authorId||name}`).digest('hex').slice(0,12);
+      return {...message,name:this.source?.shareNames?name:`시청자-${alias}`};
+    }):[];
+  }
 }
 
 export function youtubeItems(batch){

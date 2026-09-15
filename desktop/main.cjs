@@ -5,6 +5,7 @@ const {createStudioSession}=require('./session.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
+const {applyOverlayPrivacy}=require('./overlay-privacy.cjs');
 const storage=require('./storage.cjs');
 const profile=profileDirectory(process.argv);
 const storageDefaults=storage.storagePaths(app.getPath('appData'));
@@ -19,6 +20,9 @@ function trusted(event,mainOnly=false){if(!event.senderFrame?.url.startsWith(ser
 function publishThrough(value){for(const win of [main,overlay])if(win&&!win.isDestroyed())win.webContents.send('overlay:state',value);}
 function through(){if(!overlay||overlay.isDestroyed())return false;return overlayInput.toggle();}
 function closeOverlay(){const win=overlay;overlay=null;if(win&&!win.isDestroyed())win.close();}
+function syncOverlayPrivacy(){
+  applyOverlayPrivacy(overlay,service.studio.settings);
+}
 async function openOverlay(){
   if(overlay&&!overlay.isDestroyed()){overlay.showInactive();return;}
   const area=screen.getPrimaryDisplay().workArea;
@@ -27,7 +31,7 @@ async function openOverlay(){
   const created=overlay;const input=overlayInput;created.once('closed',()=>{if(overlay===created)overlay=null;publishThrough(false);});
   created.on('blur',()=>input.reset());
   created.webContents.on('did-finish-load',()=>{input.reset();publishThrough(input.state());});
-  secure(overlay);overlay.setAlwaysOnTop(true,'screen-saver');overlay.setContentProtection(true);publishThrough(false);await overlay.loadURL(service.url+'/overlay');overlay.setTitle('Nagneon Chat Overlay');overlay.showInactive();
+  secure(overlay);overlay.setAlwaysOnTop(true,'screen-saver');syncOverlayPrivacy();publishThrough(false);await overlay.loadURL(service.url+'/overlay');overlay.setTitle('Nagneon Chat Overlay');overlay.showInactive();
 }
 if(!app.requestSingleInstanceLock())app.quit();else{
   const shutdown=require('./graceful-quit.cjs').installGracefulQuit(app,async()=>{
@@ -48,6 +52,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(shutdown.quitting)return;
     startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath):{}});
     service=await startingService;
+    service.studio.on('state',syncOverlayPrivacy);
     if(shutdown.quitting)return;
     studioSession=createStudioSession(session,service);
     main=new BrowserWindow({width:1440,height:980,minWidth:420,minHeight:650,title:'Nagneon · 나그네온',icon:join(__dirname,'../dist/nagneon-icon.png'),backgroundColor:'#10151e',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);

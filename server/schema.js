@@ -9,6 +9,7 @@ export const Discovery=z.object({enabled:z.boolean().default(false),arrivalSecon
 export const Settings = z.object({
   title: short(100), streamer: short(40), gameId: short(40), mode: z.enum(['rehearsal','live']),
   showStreamerMessages:z.boolean().default(true),
+  overlayMode:z.enum(['private','public']).default('private'),
   communityActivityEnabled:z.boolean().default(true),
   speechDevice:z.enum(['gpu','cpu']).default('gpu'),
   contextualTranscription:z.boolean().default(true),

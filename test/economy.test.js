@@ -25,13 +25,13 @@ test('only strong positive moments reward eligible viewers and duplicate events 
   const restarted=new Economy(structuredClone(e.data),()=>{},e.now);assert.deepEqual(restarted.reward({...args,observation:moment()}),[]);
 });
 test('purchases are idempotent, atomic, and crash-held points are refunded once',()=>{
-  const {e}=setup(),id=randomUUID();e.purchase(id,'thought','message',15);assert.equal(e.data.balance,45);assert.equal(e.purchase(id,'thought','message',15).existing,true);assert.equal(e.data.balance,45);
+  const {e}=setup(),id=randomUUID();e.purchase(id,'thought','message',15);assert.equal(e.data.balance,185);assert.equal(e.purchase(id,'thought','message',15).existing,true);assert.equal(e.data.balance,185);
   assert.throws(()=>e.purchase(id,'profile','momo',30));
-  const reload=new Economy(structuredClone(e.data));assert.equal(reload.data.balance,60);assert.equal(reload.data.purchases[0].status,'failed');reload.refund(id,'again');assert.equal(reload.data.balance,60);
+  const reload=new Economy(structuredClone(e.data));assert.equal(reload.data.balance,200);assert.equal(reload.data.purchases[0].status,'failed');reload.refund(id,'again');assert.equal(reload.data.balance,200);
 });
 test('failed persistence cannot partially deduct a purchase',()=>{
   const {e}=setup();let fail=false;const atomic=new Economy(structuredClone(e.data),()=>{if(fail)throw new Error('disk full');});fail=true;
-  assert.throws(()=>atomic.purchase(randomUUID(),'thought','x',15),/disk full/);assert.equal(atomic.data.balance,60);assert.equal(atomic.data.purchases.length,0);
+  assert.throws(()=>atomic.purchase(randomUUID(),'thought','x',15),/disk full/);assert.equal(atomic.data.balance,200);assert.equal(atomic.data.purchases.length,0);
 });
 test('negotiation counteroffers, refusal, agreed execution and wallet capacity are enforced',()=>{
   const {e,a,advance}=setup();e.data.balance=500;
@@ -44,13 +44,13 @@ test('negotiation counteroffers, refusal, agreed execution and wallet capacity a
   advance(86400000);const full=e.quote({targets:['gg'],kind:'cheer',text:'응원',settings,audience:a,sessionId:'session'});e.bid(full,100);assert.throws(()=>e.reserveContract(full,randomUUID(),'session'),/지갑/);
 });
 test('profile and relationship unlocks update without charging again',t=>{
-  const s=new Studio({settings,provider:{status:()=>({configured:true})}});t.after(()=>s.close());s.start();const r=s.special.unlock({kind:'profile',personaId:'momo',requestId:randomUUID()});assert.equal(r.result.kind,'profile');assert.equal(s.economy.data.balance,30);
-  s.audience.data.members.momo.recognized++;const again=s.special.unlock({kind:'profile',personaId:'momo',requestId:randomUUID()});assert.equal(again.cached,true);assert.equal(again.result.recognized,1);assert.equal(s.economy.data.balance,30);
+  const s=new Studio({settings,provider:{status:()=>({configured:true})}});t.after(()=>s.close());s.start();const r=s.special.unlock({kind:'profile',personaId:'momo',requestId:randomUUID()});assert.equal(r.result.kind,'profile');assert.equal(s.economy.data.balance,170);
+  s.audience.data.members.momo.recognized++;const again=s.special.unlock({kind:'profile',personaId:'momo',requestId:randomUUID()});assert.equal(again.cached,true);assert.equal(again.result.recognized,1);assert.equal(s.economy.data.balance,170);
 });
 test('model failure or session cancellation refunds special-feature holds',async t=>{
   let finish;const provider={status:()=>({configured:true}),react:()=>new Promise(r=>finish=r)};
-  const s=new Studio({settings,provider});t.after(()=>s.close());s.start();const id=randomUUID();const job=s.special.generate({kind:'interview',personaId:'momo',question:'어떤 방송이 좋아요?',requestId:id});assert.equal(s.economy.data.balance,20);
-  s.stop();finish({observation:{messages:[{personaId:'momo',text:'편한 방송',kind:'chat',spoiler:false}]}});await assert.rejects(job);assert.equal(s.economy.data.balance,60);assert.equal(s.economy.data.purchases[0].status,'failed');
+  const s=new Studio({settings,provider});t.after(()=>s.close());s.start();const id=randomUUID();const job=s.special.generate({kind:'interview',personaId:'momo',question:'어떤 방송이 좋아요?',requestId:id});assert.equal(s.economy.data.balance,160);
+  s.stop();finish({observation:{messages:[{personaId:'momo',text:'편한 방송',kind:'chat',spoiler:false}]}});await assert.rejects(job);assert.equal(s.economy.data.balance,200);assert.equal(s.economy.data.purchases[0].status,'failed');
 });
 
 test('private preference interviews persist for their owner without entering public chat context',async t=>{

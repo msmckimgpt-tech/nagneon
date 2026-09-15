@@ -33,10 +33,10 @@ test('first meeting waits behind an active observation without a charge or dupli
   let release,calls=0;const service=await open(t,{provider:fake(async args=>{calls++;return args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r);})});start(service);
   const s=service.studio,observation=s.react({speech:'게임을 시작할게요.'});await waitFor(()=>!!release);
   const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});await waitFor(()=>!!s.autonomy.waiting);
-  assert.equal(raw(service).economy.balance,60);assert.equal(raw(service).autonomy.receipts[requestId],undefined);assert.equal(s.autonomy.snapshot().waiting,true);
+  assert.equal(raw(service).economy.balance,200);assert.equal(raw(service).autonomy.receipts[requestId],undefined);assert.equal(s.autonomy.snapshot().waiting,true);
   const duplicate=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(duplicate.status,'pending');assert.equal(duplicate.queued,true);
   assert.equal((await req(service,'audience/arrive',{requestId:randomUUID()})).status,409);
-  release(result());await observation;const receipt=await(await meeting).json();assert.equal(receipt.status,'completed');assert.equal(calls,2);assert.equal(raw(service).economy.balance,10);assert.equal(s.settings.personas.filter(p=>!p.system).length,1);assert.equal(s.autonomy.snapshot().pending,false);
+  release(result());await observation;const receipt=await(await meeting).json();assert.equal(receipt.status,'completed');assert.equal(calls,2);assert.equal(raw(service).economy.balance,150);assert.equal(s.settings.personas.filter(p=>!p.system).length,1);assert.equal(s.autonomy.snapshot().pending,false);
   const retry=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(retry.personaId,receipt.personaId);assert.equal(calls,2);
 });
 
@@ -44,8 +44,8 @@ test('stopping while a first meeting waits cancels the wait with no charge and l
   let release;const service=await open(t,{provider:fake(async args=>args.special?.kind==='audience-arrival'?result({arrival:birth}):new Promise(r=>release=r))});start(service);
   const s=service.studio,observation=s.react({speech:'조금 기다려주세요.'});await waitFor(()=>!!release);
   const requestId=randomUUID(),meeting=req(service,'audience/arrive',{requestId});await waitFor(()=>!!s.autonomy.waiting);
-  s.stop();const response=await meeting;assert.equal(response.status,409);assert.equal(raw(service).economy.balance,60);assert.equal(s.autonomy.snapshot().pending,false);assert.equal(s.listenerCount('state'),0);assert.equal(raw(service).autonomy.receipts[requestId],undefined);
-  release(result());await observation;s.start();const receipt=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(receipt.status,'completed');assert.equal(raw(service).economy.balance,10);
+  s.stop();const response=await meeting;assert.equal(response.status,409);assert.equal(raw(service).economy.balance,200);assert.equal(s.autonomy.snapshot().pending,false);assert.equal(s.listenerCount('state'),0);assert.equal(raw(service).autonomy.receipts[requestId],undefined);
+  release(result());await observation;s.start();const receipt=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(receipt.status,'completed');assert.equal(raw(service).economy.balance,150);
 });
 
 test('fresh profile has no hidden waiting audience; settings/API cannot create or edit one',async t=>{
@@ -60,13 +60,13 @@ test('fresh profile has no hidden waiting audience; settings/API cannot create o
 test('arrival holds, settles once, redacts traits on state/SSE/export and reveals only after purchase',async t=>{
   let release;const service=await open(t,{provider:fake(async()=>new Promise(r=>release=r))});start(service);
   const requestId=randomUUID(),pending=req(service,'audience/arrive',{requestId});await waitFor(()=>!!release);
-  assert.equal(raw(service).economy.balance,10);assert.equal(raw(service).settings.personas.length,1);
+  assert.equal(raw(service).economy.balance,150);assert.equal(raw(service).settings.personas.length,1);
   const duplicate=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(duplicate.status,'pending');assert.equal(duplicate.source,undefined);
   release(result({arrival:birth}));const receipt=await(await pending).json();assert.equal(receipt.status,'completed');assert.equal(receipt.source,undefined);
   const id=receipt.personaId;assert.equal(raw(service).settings.personas.length,2);assert.equal(service.studio.calls,1);
   for(const route of ['state','export']){const value=JSON.stringify(await(await req(service,route)).json());assert.ok(!value.includes('PRIVATE_'));assert.ok(!value.includes('firstSeenAt'));}
   const stream=await req(service,'events');const reader=stream.body.getReader();const event=new TextDecoder().decode((await reader.read()).value);await reader.cancel();assert.ok(!event.includes('PRIVATE_'));
-  const again=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(again.personaId,id);assert.equal(raw(service).economy.balance,10);assert.equal(service.studio.calls,1);
+  const again=await(await req(service,'audience/arrive',{requestId})).json();assert.equal(again.personaId,id);assert.equal(raw(service).economy.balance,150);assert.equal(service.studio.calls,1);
   // Test wallet credit is explicit fixture setup, not a production points path.
   service.studio.economy.change(d=>{d.balance=100;});
   const unlockId=randomUUID();assert.equal((await req(service,'special/unlock',{kind:'profile',personaId:id,requestId:unlockId})).status,200);
@@ -82,7 +82,7 @@ test('failed final commit refunds the hold without a ghost viewer; profile unloc
   const service=await open(t);start(service);const save=JsonStore.prototype.save;let failed=false;
   JsonStore.prototype.save=function(value){if(this.file===join(service.dataDir,'world.json')&&value.settings.personas.length===2&&!failed){failed=true;throw Error('injected final commit failure');}return save.call(this,value);};
   try{await assert.rejects(meet(service),/commit failure/);}finally{JsonStore.prototype.save=save;}
-  assert.equal(failed,true);assert.equal(raw(service).settings.personas.length,1);assert.equal(raw(service).economy.balance,60);assert.equal(Object.values(raw(service).autonomy.receipts)[0].status,'failed');
+  assert.equal(failed,true);assert.equal(raw(service).settings.personas.length,1);assert.equal(raw(service).economy.balance,200);assert.equal(Object.values(raw(service).autonomy.receipts)[0].status,'failed');
   const {personaId}=await meet(service);service.studio.economy.change(d=>{d.balance=100;});
   JsonStore.prototype.save=function(value){if(this.file===join(service.dataDir,'world.json')&&value.economy.purchases.some(p=>p.kind==='profile'))throw Error('unlock disk full');return save.call(this,value);};
   try{assert.throws(()=>service.studio.special.unlock({kind:'profile',personaId,requestId:randomUUID()}),/disk full/);}finally{JsonStore.prototype.save=save;}
@@ -95,14 +95,14 @@ for(const mode of ['held','completed'])test(`real process termination ${mode}: r
   const ready=new Promise((resolve,reject)=>{let text='';const timer=setTimeout(()=>reject(Error('child timeout '+errors)),15000);child.stdout.on('data',b=>{text+=b;if(text.includes(marker)){clearTimeout(timer);resolve();}});child.once('exit',code=>{clearTimeout(timer);reject(Error('child exited '+code+' '+errors));});});
   try{await ready;const exit=once(child,'exit');child.kill();await exit;}finally{if(child.exitCode===null)child.kill();}
   const service=await open(t,{dataDir});const record=raw(service),receipt=record.autonomy.receipts[requestId];
-  assert.equal(record.economy.balance,mode==='held'?60:10);assert.equal(record.settings.personas.filter(p=>!p.system).length,mode==='held'?0:1);assert.equal(receipt.status,mode==='held'?'failed':'completed');
+  assert.equal(record.economy.balance,mode==='held'?200:150);assert.equal(record.settings.personas.filter(p=>!p.system).length,mode==='held'?0:1);assert.equal(receipt.status,mode==='held'?'failed':'completed');
   const retried=await service.studio.autonomy.arrive(requestId);assert.equal(retried.status,receipt.status);assert.equal(service.studio.calls,0);assert.equal(raw(service).economy.balance,record.economy.balance);
 });
 
 test('stop cancels a background arrival and returns points; blocked origins consume no call',async t=>{
   let entered=false;const service=await open(t,{provider:fake(async(_args,signal)=>{entered=true;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}));})});start(service);
   const pending=meet(service);await waitFor(()=>!!entered);service.studio.stop();await assert.rejects(pending,/cancelled/);
-  assert.equal(raw(service).economy.balance,60);assert.equal(raw(service).settings.personas.length,1);assert.equal(service.studio.busy,false);
+  assert.equal(raw(service).economy.balance,200);assert.equal(raw(service).settings.personas.length,1);assert.equal(service.studio.busy,false);
   await assert.rejects(meet(service),/방송/);assert.equal(service.studio.calls,1);
 });
 
@@ -117,7 +117,7 @@ test('legacy migration keeps met IDs/history, archives unmet candidates, and doe
 test('natural arrivals create at the actual chance, avoid suspend catch-up and use real spectator clip sources',async t=>{
   let args;const service=await open(t,{provider:fake(async value=>{args=value;return result({arrival:birth});})});start(service);const s=service.studio;let now=Date.now();s.now=()=>now;s.random=()=>0;s.autonomy.start();
   for(let i=0;i<599;i++){now+=1000;s.pump();}assert.equal(s.settings.personas.length,1);assert.equal(s.calls,0);
-  now+=1000;s.pump();await waitFor(()=>!s.busy);assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,60);
+  now+=1000;s.pump();await waitFor(()=>!s.busy);assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,200);
   now+=3600000;s.pump();await waitFor(()=>!s.busy);assert.ok(s.calls<=2,'one chance at wake, no backlog');
   const creator=s.settings.personas.find(p=>!p.system);const c=s.clips.create({title:'조용한 식물 이야기',game:'Just Chatting',scene:'공개 취향 대화',participants:[],messages:[],sessionId:s.sessionId,creator:{id:creator.id,name:creator.name,reason:'내 관심사'},source:'spectator'});
   now+=360000;s.pump();await waitFor(()=>!s.busy);assert.equal(args.special.source.path,'clip');assert.equal(args.special.source.clipId,c.id);assert.equal(args.special.clip.interest,'일상 대화와 취향 교류');assert.equal(args.special.clip.scene,undefined);
@@ -139,7 +139,7 @@ test('quiet personal favorites produce spectator clips without donation, forbid 
   const service=await open(t);start(service);const {personaId:id}=await meet(service),s=service.studio;
   s.stop();s.configure({...s.settings,autoHighlights:true});s.audience.random=()=>0;s.start();const at=s.now();const msg=s.addMessage('streamer','조용히 식물 이야기를 하자','streamer');
   const observation=result({clipPicks:[{personaId:id,title:'작은 화분 이야기',reason:'같은 취미라 좋아서',signature:'작은 화분'}]}).observation;
-  const clips=s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at});assert.equal(clips.length,1);assert.equal(clips[0].creator.id,id);assert.equal(clips[0].source,'spectator');assert.equal(s.economy.data.balance,10);
+  const clips=s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at});assert.equal(clips.length,1);assert.equal(clips[0].creator.id,id);assert.equal(clips[0].source,'spectator');assert.equal(s.economy.data.balance,150);
   assert.equal(s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at}).length,0);
   for(const path of ['clips','director/clip','seasons/clip','director/start','seasons/resume'])assert.equal((await req(service,path,{})).status,409);
   s.settings.autoHighlights=false;assert.equal(s.clipFeatures.spectatorPicks(observation,{speech:msg.text,witnesses:[id],capturedAt:at}).length,0);

@@ -237,7 +237,11 @@ export class Studio extends EventEmitter {
       if(speech&&!speechBatch.ids.length&&!(this.messages.at(-1)?.kind==='streamer'&&this.messages.at(-1)?.text===speech)){this.queue=this.queue.filter(m=>m.origin!=='live');this.addMessage('streamer',speech,'streamer');}
       if(this.settings.mode==='rehearsal'){
         const lines=speech?['말 들었어요! 오늘은 어떤 플레이 보여줄 건가요?','ㅋㅋㅋ 채팅이랑 얘기하면서 하니까 방송 같네','저도 같이 볼게요 🍿']:['오늘 방송 출석! 다들 어서 와요 👋','팝콘 준비 완료 🍿','오늘은 무슨 게임 하나요?','방장 오늘 텐션 좋은데 ㅋㅋ','이런 편한 분위기 좋다','다들 채팅 규칙 한 번씩 확인해주세요'];
-        const active=this.settings.personas.filter(p=>p.enabled);const offset=Math.floor(this.random()*lines.length);
+        const active=this.settings.personas.filter(p=>p.enabled&&!p.system);const offset=Math.floor(this.random()*lines.length);
+        if(!active.length){
+          this.addMessage(this.settings.managerId,'지금은 리허설입니다. 관객이 아직 없어요. 화면 배치와 채팅 입력을 먼저 살펴보세요.','notice');
+          return {ok:true,rehearsal:true};
+        }
         this.accept({game:'리허설',scene:'첫 인사를 나누며 방송을 준비하고 있어요.',confidence:0,excitement:0.35,messages:active.slice(0,this.settings.chatPace).map((p,i)=>({personaId:p.id,text:lines[(offset+i)%lines.length],kind:'chat',spoiler:false}))},this.now(),false,'live');
       }else{
         const game=this.settings.games.find(g=>g.id===this.settings.gameId);

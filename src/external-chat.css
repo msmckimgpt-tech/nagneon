@@ -3,7 +3,9 @@
 .external-chat-panel p{line-height:1.6;overflow-wrap:anywhere}
 .external-chat-panel label{display:block;margin:10px 0}
 .external-chat-panel input{display:block;width:100%;margin-top:5px}
+.external-chat-panel input[type=checkbox]{display:inline-block;width:auto;margin:0 7px 0 0;accent-color:var(--neon)}
+.external-transfer-notice{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:14px}
 .external-chat-messages{max-height:240px;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border);margin-top:10px}
-.external-source{font-size:10px;color:var(--muted)}
+.external-source{font-size:11px;color:var(--muted)}
 .chzzk-callback{display:block;overflow-wrap:anywhere;user-select:all}
 .external-chat-panel select{display:block;width:100%;margin-top:5px}
