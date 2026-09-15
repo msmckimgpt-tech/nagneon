@@ -19,7 +19,7 @@ export function withDebugPrompt(provider,read){
 
 export function debugRoutes(app,studio,store,{idle=()=>true}={}){
   let config=store.data;
-  const requireIdle=()=>{if(studio.running||studio.training.active||studio.busy||!idle())throw Error('방송·연습·진행 중인 요청을 마친 뒤 디버그 설정을 변경해주세요.');};
+  const requireIdle=()=>{if(studio.running||studio.busy||!idle())throw Error('방송·진행 중인 요청을 마친 뒤 디버그 설정을 변경해주세요.');};
   const read=()=>({...config});
   const revision=()=>createHash('sha256').update(JSON.stringify(studio.settings)).digest('hex');
   app.get('/api/debug',(_req,res)=>{

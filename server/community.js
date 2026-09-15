@@ -31,7 +31,7 @@ export class Community {
   });}
   removeComment(id,commentId){this.change(posts=>{const p=posts.find(p=>p.id===id),c=p?.comments?.find(c=>c.id===commentId);if(!c)throw Error('댓글을 찾을 수 없습니다.');c.deleted=true;c.text='삭제된 댓글입니다.';});}
   async react(id,parentId=null){
-    const s=this.studio;if(s.running||s.busy||s.training.active)throw Error('방송과 관객 응답이 끝난 뒤 게시판을 읽을 수 있습니다.');if(s.settings.mode!=='live')throw Error('실제 AI 모드에서 관객이 게시판을 읽을 수 있습니다.');
+    const s=this.studio;if(s.running||s.busy)throw Error('방송과 관객 응답이 끝난 뒤 게시판을 읽을 수 있습니다.');if(s.settings.mode!=='live')throw Error('실제 AI 모드에서 관객이 게시판을 읽을 수 있습니다.');
     const post=this.get(id),expected=JSON.stringify(post);if(parentId&&!post.comments.some(c=>c.id===parentId&&!c.deleted&&!c.parentId))throw Error('답글 대상 댓글을 확인해주세요.');
     const people=s.settings.personas.filter(p=>p.enabled&&!p.system&&s.audience.data.members[p.id]?.sessions>0).map(p=>({p,order:s.random()})).sort((a,b)=>a.order-b.order).slice(0,3).map(x=>x.p);if(!people.length)throw Error('방송에서 만난 관객이 먼저 필요합니다.');
     s.reserveCall();s.busy=true;s.controller=new AbortController();s.publish();const epoch=s.epoch;

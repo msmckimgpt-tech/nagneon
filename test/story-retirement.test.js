@@ -24,11 +24,10 @@ test('retired stories remain intact through restart, export and rejected mutatio
     const app=await startServer({port:0,dataDir:dir,localSpeech:false,provider:{status:()=>({configured:true}),react:async()=>{calls++;throw Error('unexpected story generation');}}});
     try{
       const request=(path,method='GET')=>fetch(app.url+'/api/'+path,{method,headers:{Authorization:'Bearer '+app.accessToken,'X-Backseat-Client':'studio'}});
-      for(const path of ['director/start','director/advance','director/finish','director/clip','seasons','seasons/settings','seasons/resume','seasons/advance','seasons/choose','seasons/propose','seasons/respond','seasons/pause','seasons/clip'])assert.equal((await request(path,'POST')).status,410,path);
+      for(const path of ['training/start','training/action','training/stop','director/start','director/advance','director/finish','director/clip','seasons','seasons/settings','seasons/resume','seasons/advance','seasons/choose','seasons/propose','seasons/respond','seasons/pause','seasons/clip'])assert.equal((await request(path,'POST')).status,410,path);
       assert.equal((await request('seasons/'+season.id,'DELETE')).status,410);
       assert.deepEqual(await(await request('seasons/'+season.id)).json(),season);
-      const archive=await(await request('story-archive')).json();assert.equal(archive.episodes[0].messageCount,1);assert.equal(archive.seasons[0].messageCount,1);
-      const state=await(await request('state')).json();assert.equal('director' in state,false);assert.equal('seasons' in state,false);
+      const state=await(await request('state')).json();assert.equal('director' in state,false);assert.equal('seasons' in state,false);assert.equal('training' in state,false);
       app.studio.start();app.studio.pump();app.studio.stop();
       const exported=await(await request('export')).json();assert.deepEqual(exported.episodesArchive,[episode]);assert.deepEqual(exported.seasonsArchive,seasons);
     }finally{await app.close();}

@@ -152,8 +152,8 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/connection/provider',async(req,res)=>{
     if(!providerChoice)throw Error('이 실행 환경에서는 제공처를 변경할 수 없습니다.');
     const config=ProviderSelection.parse(req.body);
-    const idle=()=>!studio.running&&!studio.training.active&&!requests.pending.size&&providerSwitchAllowed();
-    if(studio.busy||!idle())throw Error('방송·연습·계정 연결과 모델 요청을 마친 뒤 변경해주세요.');
+    const idle=()=>!studio.running&&!requests.pending.size&&providerSwitchAllowed();
+    if(studio.busy||!idle())throw Error('방송·계정 연결과 모델 요청을 마친 뒤 변경해주세요.');
     const epoch=studio.epoch,controller=new AbortController();
     const cancel=()=>{if(!res.writableEnded)controller.abort();};res.on('close',cancel);studio.busy=true;
     try{
@@ -168,7 +168,7 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   });
   app.post('/api/connection/check',async(_req,res)=>{if(provider.check)await provider.check();studio.publish();res.json(provider.status());});
   app.post('/api/connection/probe',async(_req,res)=>{
-    if(studio.running||studio.training.active||studio.busy)throw new Error('방송과 연습을 종료한 뒤 응답을 확인하세요.');
+    if(studio.running||studio.busy)throw new Error('방송을 종료한 뒤 응답을 확인하세요.');
     studio.busy=true;
     try{res.json(await probe.run());}finally{studio.busy=false;studio.publish();}
   });
@@ -187,21 +187,14 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/community/posts/:id/react',autonomousCommunityOnly);
   app.post('/api/community/reflect',autonomousCommunityOnly);
   app.post('/api/start',(_req,res)=>{if(probe.controller)throw new Error('연결 응답 확인을 마친 뒤 방송을 시작하세요.');studio.start();res.json(studio.state());});
-  app.post('/api/training/start',(req,res)=>res.json(studio.startTraining(z.object({id:z.string().max(60)}).parse(req.body).id)));
-  app.post('/api/training/action',(req,res)=>{const {action,text}=z.object({action:z.enum(['response','checklist','moderation']),text:z.string().max(600).default('')}).parse(req.body);res.json(studio.trainingAction(action,text));});
-  app.post('/api/training/stop',(_req,res)=>res.json(studio.stopTraining()));
   // Retired story engines: old clients cannot mutate or restart archived stories.
   const retiredStory=(_req,res)=>res.status(410).json({error:'기획 방송 기능은 종료되었습니다. 관객과의 이야기는 방송실 대화로 이어가세요. 예전 기록은 내보내기에 보관되어 있습니다.'});
-  app.use(['/api/director','/api/seasons'],(req,res,next)=>req.method==='GET'?next():retiredStory(req,res));
+  app.use(['/api/director','/api/seasons','/api/training'],(req,res,next)=>req.method==='GET'?next():retiredStory(req,res));
   app.get('/api/seasons/:id',(req,res)=>{
     const item=seasonsStore.data.seasons.find(s=>s.id===z.string().uuid().parse(req.params.id));
     if(!item)return res.status(404).json({error:'기록을 찾을 수 없습니다.'});
     res.json(item);
   });
-  app.get('/api/story-archive',(_req,res)=>res.json({
-    episodes:episodesStore.data.map(({id,title,startedAt,messages})=>({id,title,startedAt,messageCount:messages.length})),
-    seasons:seasonsStore.data.seasons.map(({id,title,createdAt,chapters})=>({id,title,startedAt:createdAt,messageCount:chapters.reduce((n,c)=>n+c.messages.length,0)}))
-  }));
   const viewerClipOnly=(_req,res)=>res.status(409).json({error:'핫클립은 관객이 마음에 든 순간을 직접 골라 만듭니다.'});
   app.post('/api/clips',viewerClipOnly);
   app.get('/api/clips/:id',(req,res)=>res.json(clips.get(z.string().uuid().parse(req.params.id))));

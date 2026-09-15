@@ -61,7 +61,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     ipcMain.handle('storage:change',async(event,useDefault)=>{
       trusted(event,true);
       if(profile)throw Error('검증용 별도 프로필에서는 전역 저장 위치를 변경할 수 없습니다.');
-      const assertIdle=()=>{if(service.studio.running||service.studio.busy||service.studio.training.active||account?.active||shutdown.quitting||pendingStorage)throw Error('방송·연습·계정 연결을 마친 뒤 다시 시도하세요.');};
+      const assertIdle=()=>{if(service.studio.running||service.studio.busy||account?.active||shutdown.quitting||pendingStorage)throw Error('방송·계정 연결을 마친 뒤 다시 시도하세요.');};
       assertIdle();
       let target=storageDefaults.defaultProfile;
       if(useDefault!==true){const chosen=await dialog.showOpenDialog(main,{title:'기록을 복사할 빈 저장 폴더 선택',properties:['openDirectory','createDirectory']});if(chosen.canceled)return false;target=chosen.filePaths[0];}
@@ -73,7 +73,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     const checkAccount=async()=>{if(provider.check)await provider.check();service.studio.publish();return provider.status();};
     account=new AccountLogin({bin:provider.bin,env:provider.env,check:checkAccount,openExternal:url=>shell.openExternal(url),onChange:value=>{if(main&&!main.isDestroyed())main.webContents.send('account:state',value);}});
     ipcMain.handle('account:status',event=>{trusted(event,true);return account.snapshot();});
-    ipcMain.handle('account:start',(event,method)=>{trusted(event,true);if(service.studio.running||service.studio.busy||service.studio.training.active)throw new Error('방송과 연습을 마친 뒤 계정을 연결하세요.');if(provider.status().kind!=='codex')throw new Error('현재 제공처는 ChatGPT 구독 연결을 지원하지 않습니다.');return account.start(method);});
+    ipcMain.handle('account:start',(event,method)=>{trusted(event,true);if(service.studio.running||service.studio.busy)throw new Error('방송을 마친 뒤 계정을 연결하세요.');if(provider.status().kind!=='codex')throw new Error('현재 제공처는 ChatGPT 구독 연결을 지원하지 않습니다.');return account.start(method);});
     ipcMain.handle('account:cancel',event=>{trusted(event,true);return account.stop();});
     ipcMain.handle('account:open',event=>{trusted(event,true);return account.open();});
     studioSession.setPermissionRequestHandler((contents,permission,callback)=>callback(contents===main.webContents&&['media','display-capture'].includes(permission)));

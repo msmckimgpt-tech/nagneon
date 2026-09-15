@@ -66,8 +66,8 @@ test('hourly call budget, startup delay and clock rollback survive an app restar
  next.setNow(f.now+COMMUNITY_HOUR);await next.visit();assert.equal(next.calls,1);
 });
 test('live work, training, rehearsal, disabled activity and session cap prevent background calls',async t=>{
- for(const block of [s=>s.settings.communityActivityEnabled=false,s=>s.settings.mode='rehearsal',s=>s.busy=true,s=>s.audioBusy=true,s=>s.queue.push({due:T+10000000}),s=>s.training.active={}]){
-  const f=fixture(t);f.clip();block(f.s);if(f.s.training.active){f.s.communityActivity.tick();assert.equal(f.calls,0);f.s.training.active=null;}else{await f.visit();assert.equal(f.calls,0);}
+ for(const block of [s=>s.settings.communityActivityEnabled=false,s=>s.settings.mode='rehearsal',s=>s.busy=true,s=>s.audioBusy=true,s=>s.queue.push({due:T+10000000})]){
+  const f=fixture(t);f.clip();block(f.s);await f.visit();assert.equal(f.calls,0);
  }
 });
 test('starting a stream cancels a background visit and ignores providers which return late',async t=>{

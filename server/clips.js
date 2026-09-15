@@ -92,9 +92,6 @@ export class ClipFeatures {
   save({title,image}={}){const s=this.studio;if(!s.sessionId||(!s.messages.length&&!s.observation))throw new Error('방송에서 함께한 장면이나 대화가 먼저 필요합니다.');const participants=s.settings.personas.filter(p=>s.audience.data.members[p.id]?.joinedAt>=s.startedAt).map(p=>({id:p.id,name:p.name}));const clip=this.clips.create({title,image,game:s.observation?.game||'Just Chatting',participants,messages:s.messages,scene:s.observation?.scene,sessionId:s.sessionId,source:'manual',startedAt:s.startedAt});s.publish();return clip;}
   async comments({id,parentId,targets}){
     const s=this.studio;
-    // 연습(트레이닝) 진행 중에는 실제 모델을 호출하지 않는다. studio.training이 아직 연동되지 않은
-    // 경우 optional chaining으로 안전하게 통과한다.
-    if(s.training?.active)throw new Error('연습을 종료한 뒤 관객 댓글을 생성하세요.');
     const clip=this.clips.get(id);if(s.busy)throw new Error('관객 응답을 기다린 뒤 다시 시도하세요.');if(s.settings.mode!=='live')throw new Error('실제 AI 관객 모드에서 댓글을 생성하세요.');
     const parent=parentId?clip.comments.find(c=>c.id===parentId&&!c.deleted):null;if(parentId&&!parent)throw new Error('대댓글 대상을 확인하세요.');
     // 대상 검증: 중복 없이, 알려진 활성 관객 1~4명. 비활성/미등록 대상을 조용히 버리지 않고 거부한다.

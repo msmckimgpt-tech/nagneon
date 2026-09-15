@@ -64,7 +64,7 @@ app.whenReady().then(async()=>{
     await textButton('관객 제거');await until(`document.querySelectorAll('.persona-card').length===0`);assert.equal(service.studio.audience.data.members[person.id].note,'이름이 바뀌어도 기억할 메모');
     report.checks.push('paid profile unlock changes the public card and removal retains the viewer ID and private note in history');
     await textButton('핫클립');await until(`document.querySelector('main').textContent.includes('첫 핫클립을 기다려요')`);assert.ok(!(await js(`document.querySelector('main').textContent`)).includes('지금 순간 저장'));
-    await textButton('방송 놀이터');await until(`document.querySelector('main').textContent.includes('방송하다 보면, 이야기가 시작돼요.')`);assert.equal(await js(`document.querySelectorAll('.episode-card').length`),0);
+    assert.equal(await js(`document.querySelector('nav').textContent.includes('방송 놀이터')`),false);
     report.checks.push('hotclips have no manual-create action and ordinary experiences have no stage or mode selector');
     assert.deepEqual(report.errors,[]);report.passed=true;
   }catch(error){report.error=error.stack;console.error(error.stack);}

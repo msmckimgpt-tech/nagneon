@@ -1,0 +1,8 @@
+.saved-note { color:#bcf591 }
+.sidebar { overflow-y:auto }
+.sidebar nav { flex-shrink:0 }
+.storage-notice p { font-size:12px;overflow-wrap:anywhere;line-height:1.7 }
+.private-preference { border-left:2px solid #567348;margin:14px 0;padding-left:14px }
+.private-preference small { display:block;color:#93a28b;margin-bottom:6px }
+.private-preference b { font-size:13px }
+.storage-notice { padding:18px 22px;margin-bottom:20px;border-color:#806b31;color:#e8d599 }

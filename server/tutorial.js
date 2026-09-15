@@ -18,7 +18,7 @@ export class Tutorial {
   }
   save(patch){const next=TutorialData.parse({...this.store.data,...patch});this.store.save(next);this.store.data=next;this.studio.publish();return this.snapshot();}
   begin(){
-    const s=this.studio;if(s.running||s.busy||s.training.active)throw Error('방송과 연습을 종료한 뒤 튜토리얼을 시작하세요.');
+    const s=this.studio;if(s.running||s.busy)throw Error('방송을 종료한 뒤 튜토리얼을 시작하세요.');
     this.overlayAdjusted=false;this.overlayClosed=false;
     const resume=['active','paused'].includes(this.store.data.status);
     return this.save({status:'active',...(resume?{}:{step:'audience',skipped:[],originalMode:s.settings.mode,originalDisplay:s.settings.showStreamerMessages!==false})});
@@ -33,7 +33,7 @@ export class Tutorial {
   leave(status){
     const s=this.studio;
     if(s.running&&this.sessionId===s.sessionId&&s.settings.mode==='rehearsal')s.stop();
-    if(s.running||s.busy||s.training.active)throw Error('현재 방송을 종료한 뒤 안내를 마쳐주세요.');
+    if(s.running||s.busy)throw Error('현재 방송을 종료한 뒤 안내를 마쳐주세요.');
     const d=this.store.data;
     if(d.originalMode!==null)s.configure({...s.settings,mode:d.originalMode,showStreamerMessages:d.originalDisplay??true});
     this.sessionId=null;return this.save({status});
