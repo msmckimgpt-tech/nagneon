@@ -56,7 +56,7 @@ app.whenReady().then(async()=>{
   await until(`!!document.querySelector('[aria-label="커뮤니티 밈"]')`);
   await js(`(()=>{const input=document.querySelector('[aria-label="커뮤니티 밈"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'낙하산 장인: 함께 웃었던 낙사');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await click('등록');await until(`document.querySelector('.lore-entry')?.textContent.includes('낙하산 장인')`);
-  assert.equal(service.studio.audience.data.lore[0].expiresAt,undefined);
+  assert.equal(service.studio.audience.data.lore[0].expiresAt,8.64e15);
   await js(`document.querySelector('.lore-entry').scrollIntoView({block:'center'})`);await shot('community-lore');
   await js(`document.querySelector('.lore-entry button').click()`);await click('삭제');
   await until(`!document.querySelector('.lore-entry')`);assert.equal(service.studio.audience.data.lore.length,0);

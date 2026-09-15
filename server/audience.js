@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {normalizeLore,relevantLore} from './community-lore.js';
+import {normalizeLore,relevantLore,LEGACY_NO_EXPIRY} from './community-lore.js';
 import profiles from '../shared/discovery.json' with {type:'json'};
 
 /** Research-inspired simulation. Probabilities are product choices, not measured conversion rates. */
@@ -101,6 +101,6 @@ export class Audience {
     for(const p of settings.personas)if(p.id!==personaId&&text.includes(p.name))m.peers[p.id]=Math.min(20,(m.peers[p.id]||0)+1);
   }
   post(post){if(this.data.posts.length>=200)throw Error('게시판 글은 200개까지 보관합니다. 이전 글을 정리해주세요.');const next=structuredClone(this.data);next.posts.push(post);this.save(next);this.data=next;}
-  lore(text){const next=structuredClone(this.data),entry={id:randomUUID(),text,createdAt:Date.now()};next.lore.push(entry);this.save(next);this.data=next;return entry;}
+  lore(text){const next=structuredClone(this.data),entry={id:randomUUID(),text,createdAt:Date.now(),expiresAt:LEGACY_NO_EXPIRY};next.lore.push(entry);this.save(next);this.data=next;return entry;}
   forgetLore(id){const next=structuredClone(this.data);next.lore=next.lore.filter(item=>item.id!==id);if(next.lore.length===this.data.lore.length)return false;this.save(next);this.data=next;return true;}
 }

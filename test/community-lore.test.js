@@ -39,7 +39,7 @@ test('HTTP lore keeps legacy records after restart and deletes only the requeste
     try{
       const request=(path,method='GET',body)=>fetch(app.url+'/api/'+path,{method,headers:{Authorization:'Bearer '+app.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
       const state=await(await request('state')).json();assert.equal(state.audience.lore[0].text,'지난 낙하산 장인');
-      if(!cycle){oldId=state.audience.lore[0].id;const added=await(await request('community/lore','POST',{text:'우주선 승무원',days:1})).json();newId=added.id;assert.equal(added.expiresAt,undefined);}
+      if(!cycle){oldId=state.audience.lore[0].id;const added=await(await request('community/lore','POST',{text:'우주선 승무원',days:1})).json();newId=added.id;assert.equal(added.expiresAt,8.64e15);}
       else{
         assert.equal(state.audience.lore[0].id,oldId);assert.equal(state.audience.lore[1].id,newId);
         assert.equal((await request('community/lore/'+oldId,'DELETE')).status,200);

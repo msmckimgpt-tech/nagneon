@@ -1,5 +1,8 @@
 import {createHash} from 'node:crypto';
 
+// Keep the legacy required date valid when opening a new save in an older release.
+export const LEGACY_NO_EXPIRY=8.64e15;
+
 // Legacy expiry dates remain in the save as metadata, never as a deletion rule.
 export function normalizeLore(entries){
   return entries.map((entry,index)=>({...entry,id:entry.id||createHash('sha256').update(JSON.stringify([entry.text,entry.expiresAt,index])).digest('hex').slice(0,24)}));
