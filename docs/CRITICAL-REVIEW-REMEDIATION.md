@@ -266,3 +266,7 @@
 ## 구성 복구·클립 진입 경로 보완
 
 원본 a27608e를 a614d0f 위 squash 통합했다. 충돌 파일은 각각 main 내용이 직전 원본 422fcb1과 동일함을 대조한 뒤 이번 수정으로 해소했고 기존 통합 원장은 보존했다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-repair-check.log). 작업본 Electron 합성 화면 UI 4개 검사 통과. 고정 구성 태그 runtime-2026-09-16은 정식 앱과 분리된 구성 자산용이며 이 기록 시점에는 게시 전이다. 다음은 자산 게시·실제 다운로드·기존 설치 업데이트 검증이다. 경량 후보는 제품 소스가 바뀌어 최종 배포 전 다시 빌드해야 한다.
+
+## 설치 후 압축본 정리
+
+원본 a12ac1c를 9817121 위 squash 통합했다. 설치 검증 후 압축 원본을 제거하며, 재실행 시 설치 파일을 해시 검증해 오프라인 재사용한다. 통합 필수 검사 676/676·빌드 통과(artifacts/critical-review-integration/runtime-cache-space-check.log). 구성 초안 389380090은 아직 비공개다. gh 업로드 연결 오류 이후 curl/HTTP 1.1로 sound 업로드와 GitHub digest/크기 일치를 확인했으며 나머지 자산 전송은 진행 중이다. 작업/통합 worktree는 진행 중 검증·배포 산출물 때문에 보존한다.
