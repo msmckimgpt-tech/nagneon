@@ -52,6 +52,16 @@ app.whenReady().then(async()=>{
   checks.push('all seven navigation pages render with Nagneon branding');
   assert.equal(await js(`document.body.textContent.includes('방송 놀이터')`),false);
   checks.push('broadcast playground and scripted practice navigation are absent');
+  await js(`[...document.querySelectorAll('nav button')].find(b=>b.textContent==='방송 밖 이야기').click()`);
+  await until(`!!document.querySelector('[aria-label="커뮤니티 밈"]')`);
+  await js(`(()=>{const input=document.querySelector('[aria-label="커뮤니티 밈"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'낙하산 장인: 함께 웃었던 낙사');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await click('등록');await until(`document.querySelector('.lore-entry')?.textContent.includes('낙하산 장인')`);
+  assert.equal(service.studio.audience.data.lore[0].expiresAt,8.64e15);
+  await js(`document.querySelector('.lore-entry').scrollIntoView({block:'center'})`);await shot('community-lore');
+  await js(`document.querySelector('.lore-entry button').click()`);await click('삭제');
+  await until(`!document.querySelector('.lore-entry')`);assert.equal(service.studio.audience.data.lore.length,0);
+  checks.push('persistent lore can be registered and explicitly deleted without expiration UI');
+
   for(const width of [850,420]){
    win.setSize(width,width===850?1500:900);
    for(const label of ['나의 관객','게임 라이브러리','매니저','방송 밖 이야기','마음과 포인트','핫클립','방송실']){

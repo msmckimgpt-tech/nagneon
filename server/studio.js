@@ -135,7 +135,7 @@ export class Studio extends EventEmitter {
       ...this.queue.filter(m=>(!Number.isFinite(m.expiresAt)||this.now()<m.expiresAt)&&sameViewingVisit(this.audience,m.personaId,m.viewingVisit))
     ].filter(m=>m.advice&&m.adviceRequestId===requestId).length:0;
   }
-  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,screenSourceId,visits,advicePolicy,adviceRequestId,diagnosticId,responseStartedAt,externalIds}={}){
+  accept(observation,observedAt=this.now(),fictional=false,origin='other',{expiresAt,chatDriven=false,loreIds,screenSourceId,visits,advicePolicy,adviceRequestId,diagnosticId,responseStartedAt,externalIds}={}){
     const obs=Observation.parse(observation);if(!fictional)this.observation={game:obs.game,scene:obs.scene,confidence:obs.confidence,excitement:obs.excitement,positiveMoment:{positive:obs.positiveMoment.positive,impact:obs.positiveMoment.impact},at:observedAt};
     // Inference already consumes the first viewer's reaction time. Credit it
     // once, after filtering; keep spacing between the remaining messages.
@@ -157,7 +157,7 @@ export class Studio extends EventEmitter {
       delay+=600+this.random()*1600;
       if(first){delay=Math.max(0,delay-responseWait);first=false;}
       this.reactions.admit(diagnosticId);
-      this.queue.push({...m,origin,chatDriven,...(externalIds?.length?{externalIds}:{}),...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
+      this.queue.push({...m,origin,chatDriven,...(loreIds?.length?{loreIds}:{}),...(externalIds?.length?{externalIds}:{}),...(diagnosticId?{diagnosticId}:{}),...(m.advice&&adviceRequestId?{adviceRequestId}:{}),...(origin==='live'&&this.settings.mode==='live'?{viewingVisit:visits?.get(m.personaId)??this.audience.data.members[m.personaId]?.joinedAt}:{}),...(screenSourceId?{screenSourceId}:{}),...(Number.isFinite(expiresAt)?{expiresAt}:{}),createdAt:this.now(),kind:m.kind==='notice'&&p.id===this.settings.managerId?'notice':'chat',due:this.now()+delay});
     }
     this.publish();
   }
@@ -241,6 +241,7 @@ export class Studio extends EventEmitter {
         // excitement has been inferred. Eligibility is not a forced chat.
         const reactive=!ambient?.quiet&&(!!speech.trim()||!this.viewing.unchanged(viewing));
         const audience=this.audience.context(this.settings,speech,this.observation?.excitement || 0,{hearers:speechHearers,company:ambient?.id==='quiet-company',reactive});
+        operation.loreIds=new Set(audience.lore.map(item=>item.id));
         const eligiblePersonas=this.settings.personas.filter(p=>audience.eligible.includes(p.id));
         const eligibleSettings={...this.settings,personas:eligiblePersonas};
         const witnesses=this.presentWitnesses().filter(id=>!speechHearers||speechHearers.includes(id)),capturedAt=this.lastRequest;
@@ -269,13 +270,13 @@ export class Studio extends EventEmitter {
           // A chat opportunity is not a fresh visual observation, achievement,
           // donation trigger, clip pick or evidence of changed preferences.
           this.reactions.reject(diagnosticId,'pace',Math.max(0,eligibleMessages.length-1));
-          this.accept({...observation,messages:eligibleMessages.slice(0,1)},capturedAt,true,'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
+          this.accept({...observation,messages:eligibleMessages.slice(0,1)},capturedAt,true,'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,loreIds:[...operation.loreIds],chatDriven:true,visits,advicePolicy,expiresAt:capturedAt+SCREEN_REACTION_TTL_MS});
           this.viewing.acknowledge(viewing);this.failures=0;this.retryAt=0;return {ok:true};
         }
         const correction=this.correctTranscripts(result.observation.transcriptCorrections,transcriptCandidates);
         if(correction.rejected){diagnosticOutcome='transcription-review';this.log('음성 교정의 의미가 불확실해 이 반응을 보류했습니다.');this.speechInbox.acknowledge(speechBatch.ids);return {ok:true,transcriptionNeedsReview:true};}
         const chatDriven=!speech.trim()&&this.viewing.sameExternalInput(viewing);
-        this.accept({...observation,messages:eligibleMessages},capturedAt,false,'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
+        this.accept({...observation,messages:eligibleMessages},capturedAt,false,'live',{diagnosticId,responseStartedAt,externalIds:operation.externalIds,loreIds:[...operation.loreIds],chatDriven,visits,advicePolicy,adviceRequestId,screenSourceId:screenTimeline?.sourceId,...(operation.hasSpeech?{}:{expiresAt:visualExpiresAt})});
         const donations=this.economy.reward({observation,settings:this.settings,audience:this.audience,hasInput:!chatDriven&&(!!image||!!speech),paid:false});
         for(const d of donations)this.publishMessage(donationMessage(d));
         if(this.autonomy){

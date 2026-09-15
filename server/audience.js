@@ -1,8 +1,10 @@
+import {randomUUID} from 'node:crypto';
+import {normalizeLore,relevantLore,LEGACY_NO_EXPIRY} from './community-lore.js';
 import profiles from '../shared/discovery.json' with {type:'json'};
 
 /** Research-inspired simulation. Probabilities are product choices, not measured conversion rates. */
 export class Audience {
-  constructor(data={members:{},lore:[],posts:[]},save=()=>{},random=Math.random){this.data=data;this.save=save;this.random=random;this.presence={};this.presenceRevision=0;this.lastTick=0;this.lastPresence=0;this.nextArrival=0;this.lastStart=0;}
+  constructor(data={members:{},lore:[],posts:[]},save=()=>{},random=Math.random){this.data={...data,lore:normalizeLore(data.lore)};this.save=save;this.random=random;this.presence={};this.presenceRevision=0;this.lastTick=0;this.lastPresence=0;this.nextArrival=0;this.lastStart=0;}
   setPresence(id,next,now){
     const before=this.presence[id];if(before===next)return;
     const member=this.data.members[id];
@@ -92,12 +94,13 @@ export class Audience {
     const eligible=candidates.sort((a,b)=>b.score-a.score).slice(0,Math.min(settings.chatPace+1,settings.personas.length)).map(p=>p.id);
     return {eligible,members:settings.personas.filter(p=>p.enabled).map(p=>{
       const m=this.data.members[p.id];return {id:p.id,presence:this.presence[p.id] || 'away',...m,relationship:(m?.sessions>=3&&m?.seconds>=600)?'단골':m?.sessions>1?'재방문':'첫 방문',arrivalInterest:profiles[m?.origin?.key]?.intent || '직접 초대한 관객. 개인 설정과 실제 기억을 따른다.'};
-    }),lore:this.data.lore.filter(l=>l.expiresAt>Date.now()).slice(-12),offStreamPosts:this.data.posts.slice(-8),rhythm:excitement>0.75?'짧은 공동 반응 뒤 안정':'평소 대화. 침묵과 관망도 자연스럽다'};
+    }),lore:relevantLore(this.data.lore,speech),offStreamPosts:this.data.posts.slice(-8),rhythm:excitement>0.75?'짧은 공동 반응 뒤 안정':'평소 대화. 침묵과 관망도 자연스럽다'};
   }
   message(personaId,text,settings){const m=this.data.members[personaId];if(!m)return;
     m.memories.push(text);m.memories=m.memories.slice(-8);
     for(const p of settings.personas)if(p.id!==personaId&&text.includes(p.name))m.peers[p.id]=Math.min(20,(m.peers[p.id]||0)+1);
   }
   post(post){if(this.data.posts.length>=200)throw Error('게시판 글은 200개까지 보관합니다. 이전 글을 정리해주세요.');const next=structuredClone(this.data);next.posts.push(post);this.save(next);this.data=next;}
-  lore(text,expiresAt){this.data.lore.push({text,expiresAt});this.data.lore=this.data.lore.slice(-30);this.save(this.data);}
+  lore(text){const next=structuredClone(this.data),entry={id:randomUUID(),text,createdAt:Date.now(),expiresAt:LEGACY_NO_EXPIRY};next.lore.push(entry);this.save(next);this.data=next;return entry;}
+  forgetLore(id){const next=structuredClone(this.data);next.lore=next.lore.filter(item=>item.id!==id);if(next.lore.length===this.data.lore.length)return false;this.save(next);this.data=next;return true;}
 }

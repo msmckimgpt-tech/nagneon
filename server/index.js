@@ -175,7 +175,8 @@ export async function startServer({port=Number(process.env.PORT)||4318,dataDir=r
   app.post('/api/connection/probe/cancel',(_req,res)=>res.json(probe.cancel()));
   app.post('/api/knowledge',(req,res)=>{const {name,text}=z.object({name:z.string().trim().min(1).max(120),text:z.string().trim().min(1).max(3000)}).parse(req.body);knowledge.teach(name,text);studio.publish();res.json(studio.state());});
   app.delete('/api/knowledge',(req,res)=>{const {name}=z.object({name:z.string().min(1).max(120)}).parse(req.body);knowledge.forget(name);studio.publish();res.json(studio.state());});
-  app.post('/api/community/lore',(req,res)=>{const {text,days}=z.object({text:z.string().trim().min(1).max(300),days:z.number().int().min(1).max(90)}).parse(req.body);audience.lore(text,Date.now()+days*86400000);studio.publish();res.json({ok:true});});
+  app.post('/api/community/lore',(req,res)=>{const {text}=z.object({text:z.string().trim().min(1).max(300)}).parse(req.body);const entry=audience.lore(text);studio.publish();res.json(entry);});
+  app.delete('/api/community/lore/:id',(req,res)=>{const id=z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).parse(req.params.id);if(!audience.forgetLore(id))return res.status(404).json({error:'기억을 찾을 수 없습니다.'});if(studio.liveReaction?.loreIds?.has(id)){studio.liveReaction.superseded=true;studio.liveReaction.controller.abort();}studio.queue=studio.queue.filter(m=>!m.loreIds?.includes(id));studio.publish();res.json({ok:true});});
   app.get('/api/community/posts',(_req,res)=>res.json(studio.community.list()));
   app.post('/api/community/post',(req,res)=>{const body=z.object({text:z.string().trim().min(1).max(1000),title:z.string().trim().min(1).max(100).optional(),category:z.enum(['자유','후기','질문','공지']).default('자유')}).parse(req.body);res.json(studio.community.post({...body,title:body.title||body.text.slice(0,70)}));});
   app.get('/api/community/posts/:id',(req,res)=>res.json(studio.community.get(req.params.id)));

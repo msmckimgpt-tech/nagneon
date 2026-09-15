@@ -46,7 +46,7 @@
 | 3-2 | 컨텐츠를 추가하는 방법이 "코드 수정"뿐이다. | 대조·개선 예정 |
 | 3-3 | 만든 자산을 버렸다. | 사용자 결정: 시나리오 복구 미채택. 실행 자산 제거, 저장 판본 검증만 보존 |
 | 3-4 | 관객 수 상한 40명이 컨텐츠 천장이다. | 대조·개선 예정 |
-| 3-5 | 밈(lore)이 30일 만에 죽는다. | 대조·개선 예정 |
+| 3-5 | 밈(lore)이 30일 만에 죽는다. | 수정: 자동 만료·30개 초과 삭제 제거, 발언 관련 최대 3개 선별, 수동 삭제 |
 | 3-6 | 게임 프로필 4개 중 3개가 한물간 선정이다. | 대조·개선 예정 |
 | 4-1 | 제품 이름이 두 개다. | 1차: 사용자 JSON 파일명을 nagneon으로 변경. 내부 호환 식별자는 보존 |
 | 4-2 | 팔 수 있는 상태가 아닌데 팔 준비 문서만 있다. | 대조·개선 예정 |
@@ -159,3 +159,17 @@
 - 최종 범위 작업본: 647/647 테스트·빌드 통과, offscreen 실제 Electron synthetic UI 10개 검사 통과. 7개 메뉴에 방송 놀이터가 없고 기본 리허설·오버레이 동작 확인. 원본 artifacts/critical-review/playground-check.log 및 artifacts/nagneon/renderer-result.json, studio-1440.png.
 
 - 최종 통합 검증: 원본 fdc68ba → 6e95371c9ac47b447d976c6057ccdd36b0c7e391을 main 67abdc8 기준으로 squash 통합. 실제 통합본 npm run check 647/647·빌드, offscreen Electron UI 10개 검사 통과. 증거 critical-review-integration/artifacts/critical-review-integration/playground-check.log 및 artifacts/nagneon/renderer-result.json. 실행 중 사용자 앱과 릴리즈는 아직 변경하지 않았다.
+
+## 공통 기억 영구 보존과 선별 조회
+
+- 기존 expiresAt은 구판 메타데이터로 읽되 만료 조건으로 사용하지 않는다. 새 기록은 생성 시각과 안정된 ID를 저장한다. 이전 만료 기록도 복원하며 30개 초과 자동 삭제를 제거한다.
+- 모델에는 현재 발언과 핵심어가 일치하는 공통 기억을 최대 3개/각 300자 전달한다. 별도 모델 호출을 추가하지 않는다. 핵심어 기반이라 표현이 전혀 다른 의미상의 연결은 놓칠 수 있으며, 발언 없는 화면만으로 관련 기억을 추측해 주입하지 않는다.
+- 공통 맥락은 streamer-note로 구분한다. 신규 관객의 직접 목격이나 개인 경험을 뜻하지 않는다.
+- UI에서 수동 삭제할 수 있으며 관련 진행 요청과 아직 표시하지 않은 대기 반응을 취소한다. 삭제·등록 저장 실패 시 기존 메모리 상태를 유지한다.
+- 테스트: 구판 날짜/30개 초과 보존, 관련 기억 선별과 비관련/빈 발언 제외, 저장 실패 원본 보존, HTTP 등록·재시작·개별 삭제, 영향받는 응답만 취소. 원본 artifacts/critical-review/lore-tests.log.
+
+- 작업본 npm run check 651/651·빌드 통과. 격리 offscreen Electron synthetic UI 11개 검사에서 기억 등록/삭제·만료 표시 없음 확인. artifacts/critical-review/lore-check.log, artifacts/nagneon/renderer-result.json. 실제 모델 응답의 의미상 회상 품질은 핵심어 선별 테스트와 별개다.
+
+- 새 안정성 정책에 따라 구버전 읽기 호환도 확인했다. 신규 기억의 expiresAt은 옛 스키마가 요구하는 유효한 최댓값(8.64e15)으로 저장한다. 현재 버전의 만료 동작이나 UI 날짜 표시는 없으며 구버전에서 날짜 누락으로 파일을 거절하는 것을 방지한다. 실제 패키지 업데이트/복귀 검증은 릴리즈 단계에서 별도로 수행한다.
+
+- 통합 검증: 원본 a65f3ef → 700cab171d670483b20de76e872df8306902a0f8을 main 628640d의 새 안정성 정책과 격리 squash 통합. npm run check 651/651·빌드와 offscreen Electron synthetic UI 11개 검사 통과. 원본 critical-review-integration/artifacts/critical-review-integration/lore-check.log 및 artifacts/nagneon/renderer-result.json. 사용자 앱·배포 버전은 아직 변경하지 않았다.
