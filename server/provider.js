@@ -23,6 +23,7 @@ export const format = {
 export class OpenAIProvider {
   constructor(env=process.env, fetcher=fetch) {
     this.sharedViewerContext=env.BACKSEAT_SHARED_VIEWER_CONTEXT==='1';
+    this.contextualMediaInstructions=env.BACKSEAT_CONTEXTUAL_MEDIA_INSTRUCTIONS!=='0';
     this.key=env.OPENAI_API_KEY || ''; this.base=(env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/,'');
     this.model=env.OPENAI_MODEL || 'gpt-6-astra'; this.effort=env.OPENAI_REASONING_EFFORT || 'low';
     this.transcriptionModel=env.OPENAI_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe'; this.fetcher=fetcher;
@@ -92,7 +93,11 @@ viewerKnowledge는 관객 개인별 게임 지식이다. 각 personaId 항목에
     const encoded=this.sharedViewerContext&&!(debugPrompt?.enabled&&debugPrompt.mode==='replace')?compactViewerContext(data):{data,instructions:''};
     const content=[{type:'input_text',text:JSON.stringify(encoded.data)}];
     for(const image of [...images,...historical.images])content.push({type:'input_image',image_url:image,detail:'low'});
-    return {model:this.model,reasoning:{effort:this.effort},store:false,instructions:resolveDebugPrompt(instructions+'\n'+temporalInstructions+'\n'+speechScreenInstructions+(encoded.instructions?'\n'+encoded.instructions:''),debugPrompt),input:[{role:'user',content}],text:{format},max_output_tokens:2200,...(settings.webSearch&&adviceRequested?{tools:[{type:'web_search'}]}:{})};
+    const mediaInstructions=[
+      ...(!this.contextualMediaInstructions||screenTimeline?[temporalInstructions]:[]),
+      ...(!this.contextualMediaInstructions||liveSpeech.some(entry=>entry.speechScreen)?[speechScreenInstructions]:[])
+    ];
+    return {model:this.model,reasoning:{effort:this.effort},store:false,instructions:resolveDebugPrompt(instructions+(mediaInstructions.length?'\n'+mediaInstructions.join('\n'):'')+(encoded.instructions?'\n'+encoded.instructions:''),debugPrompt),input:[{role:'user',content}],text:{format},max_output_tokens:2200,...(settings.webSearch&&adviceRequested?{tools:[{type:'web_search'}]}:{})};
   }
   async react(args,signal) {
     const result=await this.request('responses',this.payload(args),signal);

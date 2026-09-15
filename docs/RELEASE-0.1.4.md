@@ -42,3 +42,7 @@
 - 원본: artifacts/critical-review/install-old.log, install-update.log, packaged-ui-pass.log, packaged-ui-old.log, packaged-ui-updated.log, packaged-ui-rollback.log. 실제 화면은 artifacts/packaged-ui/run-MkZ0fS/studio.png 및 각 run 폴더에 있다. 완료 후 해당 패키지·시험 설치 경로의 프로세스 잔류 없음.
 - 설치·실행 도구에 읽기 전용 호환성 검사를 추가했다. 실제 0.1.3 패키지의 다운그레이드 요청은 현재 포인터·기록·백업 수를 바꾸지 않고 거절했다. 실행기 Inspect에서도 표시 버전을 0.1.4로 바꾼 구버전 EXE는 거절하고 실제 0.1.4는 허용했다. Windows PowerShell의 한글 JSON 읽기는 UTF-8로 명시했다. 원본 artifacts/critical-review/downgrade-guard-result.json 및 launcher-compatibility/result.json. 배포 설치 도구에는 Profile-Compatibility.ps1이 필수다.
 - 남음: 실제 사용자 기록 복사본 확인, 영향 있는 장치 검증과 배포물 게시·실제 사용자 적용. 구버전 EXE 직접 실행에는 새 도구의 검사가 적용되지 않으며 복귀는 별도 백업 복사본으로만 수행한다.
+
+## 후속 소스 변경
+
+미디어 입력이 없는 요청에서 사용되지 않는 해석 설명을 생략하는 provider 변경이 추가됐다. 앞서 만든 2026-09-15T16-46-46-632Z 패키지는 이 변경을 포함하지 않는다. 다음 배포는 최신 통합 소스로 다시 패키징하고 소스 해시·변경 관련 실행을 검증해야 한다. 이전 설치/복귀·런타임 증거는 범위를 구분해 참고한다.
