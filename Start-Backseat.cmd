@@ -1,4 +1,3 @@
 @echo off
-cd /d "%~dp0"
-call npm run desktop
+call "%~dp0Start-Nagneon.cmd"
 if errorlevel 1 pause

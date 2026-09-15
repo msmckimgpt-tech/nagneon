@@ -5,7 +5,11 @@ const {createStudioSession}=require('./session.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
-const profile=profileDirectory(process.argv);app.setPath('userData',profile||join(app.getPath('appData'),'backseat-studio'));
+const storage=require('./storage.cjs');
+const profile=profileDirectory(process.argv);
+const storageDefaults=storage.storagePaths(app.getPath('appData'));
+try{app.setPath('userData',profile||storage.readProfile(app.getPath('appData')));}catch(error){dialog.showErrorBox('저장 위치 확인',error.message);app.exit(1);}
+let pendingStorage;
 app.setName('Nagneon');
 const networkRecovery=require('./network-recovery.cjs').createNetworkRecovery(app);
 let main,overlay,service,startingService,studioSession,account,overlayInput;
@@ -30,18 +34,37 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     globalShortcut.unregisterAll();account?.dispose();
     const active=service||await startingService?.catch(()=>undefined);
     await active?.close();
+    if(pendingStorage){
+      try{
+        storage.migrateStorage({source:app.getPath('userData'),target:pendingStorage,configFile:storageDefaults.configFile});
+        app.relaunch();
+      }catch(error){dialog.showErrorBox('저장 위치 변경 실패',error.message+'\n기존 기록은 원래 위치에 보존되어 있습니다. 앱을 다시 실행해주세요.');}
+    }
   });
   app.on('second-instance',()=>{if(!shutdown.quitting&&main&&!main.isDestroyed()){main.show();main.focus();}});
   app.whenReady().then(async()=>{
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
-    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:app.isPackaged||profile?join(app.getPath('userData'),'data'):join(__dirname,'../data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath):{}});
+    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath):{}});
     service=await startingService;
     if(shutdown.quitting)return;
     studioSession=createStudioSession(session,service);
     main=new BrowserWindow({width:1440,height:980,minWidth:420,minHeight:650,title:'Nagneon · 나그네온',icon:join(__dirname,'../dist/nagneon-icon.png'),backgroundColor:'#10151e',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);
     const provider=service.studio.provider;
+    ipcMain.handle('storage:status',event=>{trusted(event,true);return {profile:app.getPath('userData'),defaultProfile:storageDefaults.defaultProfile,isolated:!!profile};});
+    ipcMain.handle('storage:change',async(event,useDefault)=>{
+      trusted(event,true);
+      if(profile)throw Error('검증용 별도 프로필에서는 전역 저장 위치를 변경할 수 없습니다.');
+      const assertIdle=()=>{if(service.studio.running||service.studio.busy||service.studio.training.active||account?.active||shutdown.quitting||pendingStorage)throw Error('방송·연습·계정 연결을 마친 뒤 다시 시도하세요.');};
+      assertIdle();
+      let target=storageDefaults.defaultProfile;
+      if(useDefault!==true){const chosen=await dialog.showOpenDialog(main,{title:'기록을 복사할 빈 저장 폴더 선택',properties:['openDirectory','createDirectory']});if(chosen.canceled)return false;target=chosen.filePaths[0];}
+      target=storage.validateDestination(app.getPath('userData'),target);
+      const answer=await dialog.showMessageBox(main,{type:'question',buttons:['기록 복사 후 재시작','취소'],defaultId:1,cancelId:1,message:'저장 위치를 변경할까요?',detail:target+'\n기록을 복사하고 앱을 재시작합니다. 원래 기록은 복구용으로 남깁니다. 아직 저장하지 않은 설정은 먼저 저장해주세요.'});
+      if(answer.response!==0)return false;
+      assertIdle();pendingStorage=target;app.quit();return true;
+    });
     const checkAccount=async()=>{if(provider.check)await provider.check();service.studio.publish();return provider.status();};
     account=new AccountLogin({bin:provider.bin,env:provider.env,check:checkAccount,openExternal:url=>shell.openExternal(url),onChange:value=>{if(main&&!main.isDestroyed())main.webContents.send('account:state',value);}});
     ipcMain.handle('account:status',event=>{trusted(event,true);return account.snapshot();});

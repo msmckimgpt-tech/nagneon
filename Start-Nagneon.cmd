@@ -1,4 +1,3 @@
 @echo off
-cd /d "%~dp0"
-call npm run desktop
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Start-InstalledNagneon.ps1"
 if errorlevel 1 pause

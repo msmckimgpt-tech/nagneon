@@ -6,6 +6,8 @@ Codex heartbeat `nagneon`이 매일 오전 10시(Asia/Seoul)에 이 작업에서
 
 ## 기능별 승격 조건
 
+로컬 릴리즈 적용은 [고정 설치 절차](STABLE-INSTALLATION.md)를 따른다. 버전별 worktree EXE로 바로가기를 교체하거나 기존 사용자 프로필을 새로 만들지 않는다. `Install-NagneonRelease.ps1 -Register`로 데이터 백업과 패키지 해시 검증을 마친 뒤 고정 진입점을 갱신한다.
+
 1. 버전/코드와 실제 사용한 기능, 기대/실제 결과를 식별할 수 있다.
 2. 해당 기능의 알려진 재현 가능한 이슈를 해결하고 재검증했다.
 3. 최신 main과 격리 통합한 실제 코드의 `npm run check` 및 관련 런타임/패키지 검증이 통과했다. fixture는 실제 계정·장치·플랫폼 연결을 대신하지 않는다.

@@ -1,4 +1,5 @@
 import {DebugPanel} from './DebugPanel';
+import {StorageSettings} from './StorageSettings';
 import {useMemo,useRef,useState,type KeyboardEvent} from 'react';
 import {Check,Clapperboard,Gamepad2,Plus,Radio,Shield,SlidersHorizontal,Sparkles,X,type LucideIcon} from 'lucide-react';
 import {api} from './api';
@@ -298,6 +299,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             </span>
           </label>
           <p className="field-note">직접 공유한 화면과 켜 둔 마이크·연결된 소리만 기록합니다. 버퍼를 끄거나 연결을 끊으면 해당 임시 구간을 비우고, 이미 저장된 클립은 핫클립에서 삭제할 수 있어요.</p>
+          <StorageSettings locked={locked}/>
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
             <input type="checkbox" checked={draft.communityActivityEnabled!==false} onChange={e=>update('communityActivityEnabled',e.target.checked)}/>
