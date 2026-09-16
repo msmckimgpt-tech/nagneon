@@ -48,4 +48,4 @@ function migrateStorage({source,target,configFile}){
   fs.renameSync(temp,configFile);
   return {profile:target,files:before.length};
 }
-module.exports={storagePaths,readProfile,validateDestination,migrateStorage};
+module.exports={storagePaths,readProfile,validateDestination,migrateStorage,inventory};

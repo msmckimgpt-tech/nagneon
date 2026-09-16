@@ -41,62 +41,6 @@ namespace Nagneon {
     } finally { $stream.Dispose() }
 }
 
-function Restore-NagneonRedirectedProfile {
-    param([Parameter(Mandatory=$true)][string]$Profile, [string]$AppData = $env:APPDATA, [string]$Packages = (Join-Path $env:LOCALAPPDATA 'Packages'), [switch]$NonInteractive)
-    $target = Join-Path $Profile 'data'
-    if ([IO.Directory]::Exists($target)) { return $false }
-    Assert-NagneonNativeStorageView -Profile $Profile
-    $prefix = [IO.Path]::GetFullPath($AppData).TrimEnd('\') + '\'
-    $full = [IO.Path]::GetFullPath($Profile)
-    $candidates = @()
-    if ($full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and [IO.Directory]::Exists($Packages)) {
-        $suffix = $full.Substring($prefix.Length)
-        $candidates = @(Get-ChildItem -LiteralPath $Packages -Directory | ForEach-Object {
-            $candidate = Join-Path $_.FullName ('LocalCache\Roaming\' + $suffix + '\data')
-            if ([IO.File]::Exists((Join-Path $candidate 'world.json'))) { $candidate }
-        })
-    }
-    $source = if ($candidates.Count -eq 1) { $candidates[0] } else { $null }
-    if (-not $source -and -not $NonInteractive) {
-        Add-Type -AssemblyName System.Windows.Forms
-        $picker = New-Object System.Windows.Forms.FolderBrowserDialog
-        $picker.Description = 'Select the existing Nagneon profile folder (containing data), or its data folder. Records will be copied and the original kept.'
-        $picker.ShowNewFolderButton = $false
-        try {
-            if ($picker.ShowDialog() -eq 'OK') {
-                $source = $picker.SelectedPath
-                if ([IO.Directory]::Exists((Join-Path $source 'data'))) { $source = Join-Path $source 'data' }
-            }
-        } finally { $picker.Dispose() }
-    }
-    if (-not $source) { throw 'Profile recovery needs an existing record folder. No records were reset.' }
-    if (-not [IO.File]::Exists((Join-Path $source 'world.json'))) { throw 'The selected folder does not contain world.json. Select the existing record folder.' }
-    # Copy only complete, readable records. Never overwrite an existing target
-    # or choose arbitrarily between different package copies/backups.
-    $null = Get-Content -LiteralPath (Join-Path $source 'world.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ((Get-Item -LiteralPath $source).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked recovery sources are unsupported.' }
-    $files = @(Get-ChildItem -LiteralPath $source -Recurse -Force)
-    if ($files | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) { throw 'Linked recovery records are unsupported.' }
-    New-Item -ItemType Directory -Path $Profile -Force | Out-Null
-    $stage = Join-Path $Profile ('data.recovery-' + [guid]::NewGuid().ToString('N'))
-    Copy-Item -LiteralPath $source -Destination $stage -Recurse -ErrorAction Stop
-    foreach ($file in $files | Where-Object { -not $_.PSIsContainer }) {
-        $relative = $file.FullName.Substring($source.TrimEnd('\').Length).TrimStart('\')
-        $sha = [Security.Cryptography.SHA256]::Create()
-        try {
-            $a = [IO.File]::OpenRead($file.FullName)
-            try { $first = [BitConverter]::ToString($sha.ComputeHash($a)) } finally { $a.Dispose() }
-            $b = [IO.File]::OpenRead((Join-Path $stage $relative))
-            try { $second = [BitConverter]::ToString($sha.ComputeHash($b)) } finally { $b.Dispose() }
-        } finally { $sha.Dispose() }
-        if ($first -ne $second) { throw 'Recovery copy verification failed. Original records were preserved.' }
-    }
-    $after = @(Get-ChildItem -LiteralPath $source -Recurse -Force)
-    if (($files.FullName | Sort-Object | Out-String) -ne ($after.FullName | Sort-Object | Out-String)) { throw 'Recovery source changed during copying. Original records were preserved; retry after closing the app.' }
-    [IO.Directory]::Move($stage, $target)
-    return $true
-}
-
 function Assert-NagneonProfileCompatibility {
     param([Parameter(Mandatory=$true)][string]$Profile, [Parameter(Mandatory=$true)][string]$AppVersion)
     Assert-NagneonNativeStorageView -Profile $Profile

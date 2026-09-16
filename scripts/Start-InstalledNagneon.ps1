@@ -14,15 +14,22 @@ try {
     if (-not $config.executable -or $config.exeSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'The installed release configuration is incomplete. Reapply a verified release.' }
     $exe = Join-Path $InstallRoot $config.executable
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installed executable is missing. Reapply the release.' }
+    $productVersion = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+    $inAppRecovery = $productVersion -match '^(\d+)\.(\d+)\.(\d+)' -and [version]($Matches[1]+'.'+$Matches[2]+'.'+$Matches[3]) -ge [version]'0.1.6'
+    $savedProfile = $config.profile
+    # New app versions own profile discovery, recovery and storage UI, including
+    # direct EXE launches. Do not block their startup in the external launcher.
+    if (-not $inAppRecovery) {
     $storageFile = Join-Path $env:APPDATA 'Nagneon/storage.json'
     try { $savedProfile = if (Test-Path -LiteralPath $storageFile) { (Get-Content -LiteralPath $storageFile -Raw -Encoding UTF8 | ConvertFrom-Json).profile } else { $config.profile } }
     catch { throw 'The saved storage setting cannot be read. Keep storage.json and the profile for recovery; no empty profile was created.' }
     if (-not $savedProfile -or -not [IO.Path]::IsPathRooted($savedProfile)) { throw 'The saved profile path is invalid. Restore the storage setting or reconnect the storage device. No empty profile was created.' }
     if (-not (Test-Path -LiteralPath (Join-Path $savedProfile 'data') -PathType Container)) {
         if ($Inspect) { throw "Saved profile data is missing at: $savedProfile\data. Open the launcher normally to recover the existing records." }
-        $null = Restore-NagneonRedirectedProfile -Profile $savedProfile
+        throw 'Install Nagneon 0.1.6 or later to recover this profile inside the app.'
     }
     Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+    }
     # CMD can inherit a PowerShell 7 PSModulePath that hides the Windows
     # PowerShell Get-FileHash module. Use the runtime directly at this boundary.
     $stream = [IO.File]::OpenRead($exe)

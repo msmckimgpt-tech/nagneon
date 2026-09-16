@@ -7,9 +7,11 @@ const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
 const {applyOverlayPrivacy}=require('./overlay-privacy.cjs');
 const storage=require('./storage.cjs');
+const recovery=require('./profile-recovery.cjs');
 const profile=profileDirectory(process.argv);
 const storageDefaults=storage.storagePaths(app.getPath('appData'));
-try{app.setPath('userData',profile||storage.readProfile(app.getPath('appData')));}catch(error){dialog.showErrorBox('저장 위치 확인',error.message);app.exit(1);}
+try{app.setPath('userData',recovery.requestProfile(app.getPath('appData'),profile).profile);}
+catch{app.setPath('userData',storageDefaults.defaultProfile);}
 let pendingStorage;
 app.setName('Nagneon');
 const networkRecovery=require('./network-recovery.cjs').createNetworkRecovery(app);
@@ -47,6 +49,9 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   });
   app.on('second-instance',()=>{if(!shutdown.quitting&&main&&!main.isDestroyed()){main.show();main.focus();}});
   app.whenReady().then(async()=>{
+    const prepared=await recovery.prepareProfile({appData:app.getPath('appData'),explicitProfile:profile,dialog});
+    if(!prepared||shutdown.quitting){app.quit();return;}
+    app.setPath('userData',prepared.profile);
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
