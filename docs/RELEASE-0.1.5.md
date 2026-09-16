@@ -29,3 +29,15 @@
 - ZIP 89개 항목을 원본 파일 길이·해시와 대조했다. 최초 로컬 ZIP 보조 스크립트의 PowerShell 5.1 UTF-8 읽기/압축 어셈블리 누락 오류는 수정 후 다시 생성·검증했다. 게시된 자산을 덮어쓴 것은 아니다.
 
 원본은 `local-llm` worktree의 `artifacts/release-check.log`, `packaged-runtime-test.json`, `integrity-015-final.log`, `install-baseline.log`, `install-update.log`, `ui-baseline.log`, `ui-updated.log`, `ui-restart.log`, `ui-rollback.log`, `native-guidance-015.json`, `release-015-assets.json`과 `local-llm-integration/release-check.log`, `release-focused-check.log`, `release-recheck.log`에 보존한다. 모델 성능 미달은 알려진 제한이며 자동 로컬 전환은 없다.
+
+## 최종 패키지와 사용자 적용
+
+- 사용자 요청을 반영한 원본 `82603be`, 통합 `39ad652`: 실측·AI 작업 문구를 앱에서 제거했다. 최종 JS 번들에도 해당 문구가 없으며 포함 소스 101개/파일 89개 무결성이 일치한다. 새 앱 설치 크기는 844,310,384 B다.
+- 최종 작업·통합 필수 검사 676/676·빌드와 통합 SHA의 Windows/보안 CI 통과. `release-final-check.log`를 각각 보존했다.
+- 새 패키지: `release/2026-09-16T11-53-10-510Z`. 앱 ZIP 304,515,107 B / SHA-256 `2b9433caf35f753aab344ab6dc14f05cfa2bb3b7ec964fe43c05d48da6d46f80`. 도구 ZIP 12,984 B / SHA-256 `5ca272023201fe92aab90531aed46b457b9e4b6765ab37b2d6c329e25a190fca`. 89개 ZIP 항목을 다시 검증했다.
+- 실제 설치 0.1.4 → 최종 0.1.5 업데이트·시험 제목/기억 보존·리허설/정상 종료를 재검증했다. 음성·소리·계정 어댑터 및 런타임 23개 비교에서 변경 0건을 확인해 같은 작업에서 성공한 실제 GPU 런타임 증거를 재사용했다. 안내 UI 제거가 그 증거를 무효화하지 않는다.
+- 사용자 안정 설치를 `versions/0.1.5-20260916-205721-6ac0632c`로 적용했다. 백업은 설치 루트의 `backups/update-20260916-205721-6ac0632c`다. 설치 중 기존 데이터 337개 해시가 모두 유지됐다. 실제 앱 시작·정상 종료·재시작 후 원본 현재 기록은 같고 순환 백업 `world.json.bak.1/2/3`만 갱신됐다. 기본 제공처/계정/저장 위치는 유지한다.
+- 실제 사용자 프로필로 방송실 정상 렌더링·STANDBY를 확인했다. 화면·마이크·방송을 시작하지 않았으며 앱 내 실측 안내는 없다. 최종 앱은 일반 실행 상태로 남긴다.
+- 최종 증거: `artifacts/integrity-015-release.log`, `final-install-old.log`, `final-install-update.log`, `final-ui-update.log`, `zip-015-release.log`, `user-install-015.log`, `user-install-preservation.json`, `user-after-launch-preservation.json`, `user-native-015.json`, `user-restart-015.json`. 이전 후보 자산은 `release-015-candidate-assets.json`으로 구분한다.
+
+정식 배포는 위 최종 파일만 사용한다. 설치·실행 검증과 RTX 2070 모델 품질 미달은 별개이며, 알려진 출시 차단 결함은 없다. 배포 자산은 기존 태그·파일을 덮어쓰지 않고 v0.1.5에 게시한다.
