@@ -4,6 +4,47 @@ import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+test('launcher reports recoverable startup failures without a PowerShell stack or creating records', {skip:process.platform!=='win32'}, async()=>{
+  await mkdir('artifacts',{recursive:true});
+  const folder=await mkdtemp(resolve('artifacts/launcher-errors-'));
+  const appData=join(folder,'roaming'),local=join(folder,'local'),profile=join(folder,'profile');
+  await mkdir(appData);await mkdir(local);await mkdir(profile);
+  const invoke=(registered=false)=>spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/Start-InstalledNagneon.ps1'),'-Inspect',...(registered?[]:['-InstallRoot',folder])],{encoding:'utf8',windowsHide:true,env:{...process.env,APPDATA:appData,LOCALAPPDATA:local}});
+  const rejected=(result,pattern)=>{assert.equal(result.status,1);assert.match(result.stderr,pattern);assert.doesNotMatch(result.stderr,/CategoryInfo|FullyQualifiedErrorId|WriteErrorException/);};
+  rejected(invoke(true),/registration is missing/);
+  await writeFile(join(folder,'current.json'),'broken');
+  rejected(invoke(),/configuration is missing or unreadable/);
+  await writeFile(join(folder,'Nagneon.exe'),'fixture');
+  await writeFile(join(folder,'current.json'),JSON.stringify({executable:'Nagneon.exe',exeSha256:'0'.repeat(64),profile}));
+  rejected(invoke(),/Saved profile data is missing/);
+  await mkdir(join(appData,'Nagneon'));
+  await writeFile(join(appData,'Nagneon/storage.json'),'broken');
+  rejected(invoke(),/saved storage setting cannot be read/);
+  await writeFile(join(appData,'Nagneon/storage.json'),JSON.stringify({profile:null}));
+  rejected(invoke(),/saved profile path is invalid/);
+  const {readdir}=await import('node:fs/promises');
+  assert.deepEqual(await readdir(profile),[]);
+  assert.equal(await readFile(join(appData,'Nagneon/storage.json'),'utf8'),'{"profile":null}');
+});
+
+test('physical storage check rejects redirected paths and removes its own probe', {skip:process.platform!=='win32'}, async()=>{
+  await mkdir('artifacts',{recursive:true});
+  const folder=await mkdtemp(resolve('artifacts/storage-view-'));
+  const runner=join(folder,'verify.ps1');
+  await writeFile(runner,`param([string]$Helper,[string]$Folder)
+$ErrorActionPreference='Stop'
+. $Helper
+Assert-NagneonNativeStorageView -Profile $Folder
+Assert-NagneonResolvedStoragePath -Requested 'C:\\Users\\fixture\\AppData\\Roaming\\app\\data' -Resolved '\\\\?\\C:\\Users\\fixture\\AppData\\Roaming\\app\\data'
+$rejected=$false
+try { Assert-NagneonResolvedStoragePath -Requested 'C:\\Users\\fixture\\AppData\\Roaming\\app\\data' -Resolved '\\\\?\\C:\\Users\\fixture\\AppData\\Local\\Packages\\Agent\\LocalCache\\Roaming\\app\\data' } catch { if ($_.Exception.Message -notmatch 'Storage is redirected') { throw }; $rejected=$true }
+if (-not $rejected) { throw 'Redirected storage was accepted' }
+if (Get-ChildItem -LiteralPath $Folder -Filter '.nagneon-storage-probe-*') { throw 'Probe leaked' }
+`);
+  const result=spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',runner,'-Helper',resolve('scripts/Profile-Compatibility.ps1'),'-Folder',folder],{encoding:'utf8',windowsHide:true});
+  assert.equal(result.status,0,result.stdout+result.stderr);
+});
+
 test(
   'Windows launcher compatibility rejects newer records without modifying them',
   { skip: process.platform !== 'win32' },

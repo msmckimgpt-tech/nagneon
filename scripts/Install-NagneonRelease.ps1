@@ -7,6 +7,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
+if ($Register) {
+    Assert-NagneonNativeStorageView -Profile (Join-Path $env:APPDATA 'Nagneon')
+    Assert-NagneonNativeStorageView -Profile (Join-Path $env:LOCALAPPDATA 'Nagneon')
+}
 function Write-JsonAtomic($Path, $Value) {
     $temp = $Path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
     [IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
@@ -43,6 +47,7 @@ try {
     }
     if (-not $Profile) {
         $Profile = Join-Path $env:APPDATA 'backseat-studio'
+        Assert-NagneonNativeStorageView -Profile $Profile
         New-Item -ItemType Directory -Path (Join-Path $Profile 'data') -Force | Out-Null
     }
     if (-not [IO.Path]::IsPathRooted($Profile)) { throw 'An absolute profile is required.' }

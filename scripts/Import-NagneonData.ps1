@@ -1,5 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$SourceData,[Parameter(Mandatory=$true)][string]$Profile,[Parameter(Mandatory=$true)][string]$BackupRoot)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
+Assert-NagneonNativeStorageView -Profile $Profile
 $SourceData=(Resolve-Path -LiteralPath $SourceData).Path.TrimEnd('\')
 $Profile=[IO.Path]::GetFullPath($Profile).TrimEnd('\')
 $target=Join-Path $Profile 'data'

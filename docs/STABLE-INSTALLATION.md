@@ -30,6 +30,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Install-NagneonRelea
 
 ## 기존 기록 보존 범위
 
+### 2026-09-16 탐색기 더블클릭 실패 복구
+
+Codex 패키지에서 실행한 자식 프로세스의 AppData 접근이 패키지 `LocalCache`로 리디렉션되어, 이전 셸 검증에서는 기록이 보였지만 Windows 탐색기에서 실행한 앱에는 `data`가 없었다. 이전의 셸 기반 native 결과는 탐색기 더블클릭 검증을 대신하지 못했다. 패키지 식별 API는 이 자식 프로세스에서도 NO_PACKAGE를 반환했으므로 식별자만으로 판정하지 않는다.
+
+- 설치·가져오기·실행 도구는 임시 파일의 실제 Windows 핸들 경로를 요청 경로와 비교한다. 리디렉션이면 기존 기록을 변경하지 않고 중단한다. 임시 파일은 닫을 때 제거한다. 사용자 지정 저장소라도 등록용 Roaming/Local 폴더는 별도로 검사한다.
+- 실제 탐색기로 기본 프로필에 `data`가 없음을 확인한 뒤, 패키지 LocalCache의 기존 `backseat-studio/data`를 복사했다. 원본과 프로젝트의 과거 기록은 보존했다. 설치 등록 파일도 실제 Local 폴더에 복구한다. 기존 데이터가 있는 대상에 자동 덮어쓰기하거나 서로 다른 기록을 병합하지 않는다.
+- 고정 폴더에서 실제 마우스 더블클릭으로 설치된 0.1.5가 열렸고 관객 6명, 103포인트, OFFLINE 상태를 확인했다. 설정의 미디어·기록 화면에서 시스템 기본 저장 경로를 확인하고 제목 표시줄로 정상 종료했다. 클릭 후 9,017ms 관측 시 창이 있었으며 이는 정밀 시작 시간 측정이 아닌 관측 상한이다.
+- 실행기 두 파일은 설치 루트에 적용했고 이전 사본은 `backups/launcher-native-storage-20260916`에 보존했다. 앱 바이너리와 공개된 0.1.5 배포 파일은 변경하지 않았다.
+- 작업 증거는 `profile-virtualization-fix` worktree의 `artifacts/actual-click-error.json`, `packaged-view-rejection.log`, `storage-guard-tests.log`, `check-native-final.log` 및 이 작업의 Computer Use 화면에 있다. 개인 프로필과 원본 진단은 공개 저장소에 올리지 않는다.
+
+앞으로 패키지 에이전트에서 실행한 셸의 성공만으로 설치 적용을 판정하지 않는다. 일반 Windows 탐색기에서 실행·정상 종료·재시작을 확인하고, 설정의 저장 위치와 기존 기록을 확인한다. 리디렉션 오류를 우회하여 새 빈 프로필을 만드는 방식은 사용하지 않는다.
+
 최초 CMD의 프로젝트 `data`, 기존 `nagneon-preview/data`, EXE 직접 실행의 `backseat-studio/data`는 서로 다른 기록이다. 모두 별도로 보존하며 자동으로 world와 대화 인덱스를 섞지 않는다.
 
 2026-09-15 사용자의 명시적인 요청으로 최초 CMD의 프로젝트 `data` 337개 파일을 시스템 기본 프로필 `backseat-studio/data`로 가져왔다. 원본과 복사본을 SHA-256으로 대조했다. 프로젝트 원본과 `nagneon-preview`는 그대로 남겼으며, 이전 기본 프로필 데이터도 별도 보존했다. 개인 데이터와 파일별 목록은 공개 저장소에 포함하지 않는다.
