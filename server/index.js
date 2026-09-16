@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
 import { ProviderChoice, ProviderSelection, hostedModelEnv } from './provider-choice.js';
 import { OllamaProvider } from './ollama-provider.js';
+import { ConfiguredApiProvider } from './configured-api-provider.js';
 import { CodexProvider } from './codex-provider.js';
 import { Knowledge } from './knowledge.js';
 import { LocalSound } from './local-sound.js';
@@ -103,11 +104,13 @@ export async function startServer({
             ...(runtime.codexBin ? { CODEX_BIN: runtime.codexBin } : {}),
           }),
         openai: (config) => new OpenAIProvider({ ...process.env, ...hostedModelEnv(config) }),
+        configuredApi: (config) => new ConfiguredApiProvider(config),
         ollama: (config) =>
           new OllamaProvider({
             OLLAMA_MODEL: config.model,
             OLLAMA_BASE_URL: config.base,
             OLLAMA_CONTEXT_SIZE: config.contextSize,
+            ...(config.think !== undefined ? { OLLAMA_THINK: String(config.think) } : {}),
           }),
       },
     });
@@ -219,6 +222,7 @@ export async function startServer({
     storageStatus,
   });
   const app = express();
+  if (providerChoice) providerChoice.onFallback = () => studio.reserveCall();
   const tutorial = new Tutorial(studio, tutorialStore);
   const probe = new ConnectionProbe(provider, () => studio.publish());
   const obsInput = new ObsInput({
@@ -454,12 +458,59 @@ export async function startServer({
     }
   });
   app.post('/api/connection', (req, res) => {
-    if (studio.running) throw new Error('방송을 종료한 뒤 연결 설정을 변경하세요.');
+    if (studio.running || studio.busy || requests.pending.size || !providerSwitchAllowed())
+      throw new Error('방송과 요청을 마친 뒤 연결 설정을 변경하세요.');
     if (provider.status().kind === 'ollama') throw Error('Ollama는 API 키를 사용하지 않습니다.');
     const config = z.object({ apiKey: z.string().trim().min(1).max(500) }).parse(req.body);
-    provider.key = config.apiKey;
+    if (providerChoice?.config.kind === 'routing')
+      providerChoice.setConnectionKey(providerChoice.active.primary.id, config.apiKey);
+    else provider.key = config.apiKey;
     studio.publish();
     res.json(provider.status());
+  });
+  app.post('/api/connection/routing/key', (req, res) => {
+    if (
+      studio.running ||
+      studio.busy ||
+      requests.pending.size ||
+      providerChoice?.changing ||
+      !providerSwitchAllowed()
+    )
+      throw Error('방송과 요청을 마친 뒤 연결 설정을 변경하세요.');
+    const { id, apiKey } = z
+      .object({ id: z.string().max(64), apiKey: z.string().trim().max(500) })
+      .strict()
+      .parse(req.body);
+    if (!providerChoice) throw Error('제공처 설정을 사용할 수 없습니다.');
+    providerChoice.setConnectionKey(id, apiKey);
+    studio.publish();
+    res.json(providerChoice.snapshot());
+  });
+  app.post('/api/connection/routing/probe', async (req, res) => {
+    if (
+      studio.running ||
+      studio.busy ||
+      requests.pending.size ||
+      providerChoice?.changing ||
+      !providerSwitchAllowed()
+    )
+      throw Error('방송과 요청을 마친 뒤 연결을 확인하세요.');
+    const { id } = z
+      .object({ id: z.string().max(64) })
+      .strict()
+      .parse(req.body);
+    if (providerChoice?.config.kind !== 'routing') throw Error('역할별 연결을 먼저 저장하세요.');
+    const entry = providerChoice.active.entries.get(id);
+    if (!entry) throw Error('연결을 찾지 못했습니다.');
+    studio.busy = true;
+    studio.publish();
+    try {
+      const target = ownProviderRequests(entry.backend, requests);
+      res.json(await probe.run(target));
+    } finally {
+      studio.busy = false;
+      studio.publish();
+    }
   });
   app.post('/api/connection/check', async (_req, res) => {
     if (provider.check) await provider.check();

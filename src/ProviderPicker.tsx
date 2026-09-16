@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {api} from './api';
 import type {State} from './types';
 import audienceModels from '../shared/audience-models.json';
+import {ProviderRouting} from './ProviderRouting';
 
 export function ProviderPicker({state,disabled}:{state:State;disabled:boolean}){
   const current=state.providerChoice?.config;
@@ -15,7 +16,7 @@ export function ProviderPicker({state,disabled}:{state:State;disabled:boolean}){
   const efforts=audienceModels.models.find(m=>m.id===hostedModel)?.efforts||['low','medium','high','xhigh'];
   if(!current)return null;
   async function apply(){setPending(true);setError('');setSaved(false);try{await api('connection/provider',kind==='ollama'?{kind,model,base,contextSize:context}:{kind,...hostedModel?{model:hostedModel}:{},...effort?{effort}:{}});setSaved(true);}catch(e){setError(e instanceof Error?e.message:'제공처 변경에 실패했습니다.');}finally{setPending(false);}}
-  return <details className="login-alternative"><summary>AI 제공처·관객 모델 선택</summary>
+  return <><details className="login-alternative"><summary>{state.providerChoice?.routing?'단일 모델로 전환':'AI 제공처·관객 모델 선택'}</summary>
     <fieldset className="provider-picker-fields" disabled={disabled||pending||state.providerChoice?.changing} onChange={()=>setSaved(false)}>
       <label>제공처 <select aria-label="AI 제공처" value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="codex">ChatGPT 구독 · Codex</option><option value="ollama">이 PC의 Ollama</option><option value="openai">OpenAI API</option></select></label>
       {kind==='ollama'&&<>
@@ -40,5 +41,5 @@ export function ProviderPicker({state,disabled}:{state:State;disabled:boolean}){
     </fieldset>
     {saved&&<p role="status">설정을 저장했습니다. 다음 관객 요청부터 적용됩니다.</p>}
     {error&&<p role="alert" className="connection-problem">{error}</p>}
-  </details>;
+  </details><ProviderRouting state={state} disabled={disabled}/></>;
 }

@@ -158,3 +158,10 @@
 .debug-panel textarea{font-family:Consolas,monospace;line-height:1.6}
 .debug-panel details{margin:16px 0}
 .provider-picker-fields{border:0;padding:0;margin:12px 0;min-width:0;display:grid;gap:12px}
+
+.routing-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;border:1px solid #384239;border-radius:10px;background:#20291f;min-width:0}
+.routing-card>label{display:grid;gap:6px;min-width:0;align-content:start}
+.routing-card input:not([type=checkbox]),.routing-card select{width:100%;min-width:0}
+.routing-card>p,.routing-card>small{grid-column:1/-1}
+.routing-card>button{min-width:0;white-space:normal}
+@media(max-width:620px){.routing-card{grid-template-columns:minmax(0,1fr)}}

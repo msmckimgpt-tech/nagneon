@@ -22,7 +22,7 @@ const save=()=>writeFileSync(join(folder,'result.json'),JSON.stringify(report,nu
 function fail(error){if(failed)return;failed=true;report.passed=false;report.error=error.message;save();console.error(JSON.stringify(report));app.exit(1);}
 process.on('uncaughtException',fail);process.on('unhandledRejection',fail);
 dialog.showErrorBox=(title,message)=>fail(new Error(title+': '+message));
-const js=code=>main.webContents.executeJavaScript(code,true);
+const js=code=>main.webContents.executeJavaScript(code,true).catch(error=>{throw new Error(error.message+'; step: '+code);});
 async function until(code){const deadline=Date.now()+30000;while(!await js(code)){if(Date.now()>deadline)throw new Error('Account UI timeout');await new Promise(r=>setTimeout(r,100));}}
 async function click(text){await js(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)throw new Error('Expected enabled button');b.click();})()`);}
 app.on('quit',()=>{if(failed)return;report.passed=closing;save();console.log(JSON.stringify(report));});
@@ -30,8 +30,9 @@ app.on('browser-window-created',(_event,win)=>{
   if(main)return;main=win;
   win.webContents.once('did-finish-load',async()=>{try{
     await until(`!!document.querySelector('.welcome-shell')`);
-    await click('나중에 설정하기');await until(`!!document.querySelector('.app-shell')`);
-    await js(`document.querySelector('.sidebar-bottom button').click()`);
+    await click('튜토리얼 건너뛰기');await until(`!!document.querySelector('.app-shell')`);
+    await js(`document.querySelector('button[title="방송 설정"]').click()`);
+    await click('연결·사용량');
     await until(`!!document.querySelector('.account-panel')`);
     const state=await js(`fetch('/api/state').then(r=>r.json())`);
     assert.equal(state.provider.authState,existing?'connected':'signed-out');assert.equal(state.running,false);assert.equal(state.calls,0);

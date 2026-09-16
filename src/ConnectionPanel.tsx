@@ -19,14 +19,14 @@ export function ConnectionPanel({state}:{state:State}){
   const disabled=state.running||state.busy||pending||logging;
   async function perform(fn:()=>Promise<unknown>){setPending(true);setError('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'연결 요청에 실패했습니다.');}finally{setPending(false);}}
   async function login(method:'browser'|'device'){await perform(async()=>{if(window.backseat)setAccount(await window.backseat.startAccountLogin(method));});}
-  const canLogin=state.provider.kind==='codex'&&window.backseat?.startAccountLogin;
+  const canLogin=(state.provider.kind==='codex'||state.providerChoice?.routing?.config.connections.some(c=>c.provider.kind==='codex'))&&window.backseat?.startAccountLogin;
   return <section className="account-panel" aria-label="계정과 모델 연결">
     <div className="account-summary"><span className={'connection-orb '+(state.provider.configured?'ready':'')}><Radio size={20}/></span><div><b>{state.provider.authMessage||(state.provider.configured?'AI 연결 준비됨':'AI 연결이 필요합니다.')}</b><p>{state.provider.model} · 추론 {state.provider.effort}</p></div>{state.provider.configured&&<Check size={20}/>}</div>
-    <p className="account-note">{state.provider.kind==='ollama'?'이 PC의 Ollama 모델을 사용합니다. 한국어 품질과 속도는 모델과 PC 성능에 따라 달라요. 로컬 모드에서는 웹 검색을 지원하지 않아요.':state.provider.kind==='openai'?'OpenAI API 사용량으로 별도 청구됩니다.':'ChatGPT 구독의 Codex 사용량을 이용합니다. 계정 연결만으로 이 모델의 접근 권한이나 남은 사용량이 보장되지는 않습니다.'}</p>
+    <p className="account-note">{state.providerChoice?.routing?'역할별로 지정한 연결을 같은 대화와 기록에 사용합니다. 각 연결의 구독·API 사용량이 적용됩니다.':state.provider.kind==='ollama'?'이 PC의 Ollama 모델을 사용합니다. 한국어 품질과 속도는 모델과 PC 성능에 따라 달라요. 로컬 모드에서는 웹 검색을 지원하지 않아요.':state.provider.kind==='openai'?'OpenAI API 사용량으로 별도 청구됩니다.':'ChatGPT 구독의 Codex 사용량을 이용합니다. 계정 연결만으로 이 모델의 접근 권한이나 남은 사용량이 보장되지는 않습니다.'}</p>
     <ProviderPicker state={state} disabled={disabled}/>
     <details className="usage-details"><summary>사용량 참고</summary><div className="probe-result" aria-label="세션 사용량"><div><b>세션 모델 요청 {state.calls.toLocaleString('ko-KR')}회</b><p>제공처가 보고한 누적 토큰 {state.tokens.toLocaleString('ko-KR')}개</p><small>실패한 요청도 횟수에 포함될 수 있어요. 연결 시험과 계정 전체 사용량은 별도이며, 토큰 수는 요금이나 남은 구독량을 뜻하지 않습니다.</small><p>현재 반응 간격에서 자동 화면 반응은 10분당 약 {Math.ceil(600/state.settings.intervalSeconds)}회 수준입니다. 계속 화면을 공유할 때의 간격 기준 예상치이며, 응답 대기·화면 변화·대화와 다른 활동에 따라 실제 요청은 달라집니다.</p></div></div></details>
     <div className="connection-actions">
-      {!state.provider.configured&&canLogin&&<button className="primary" disabled={disabled} onClick={()=>void login('browser')}><ExternalLink size={15}/> ChatGPT 계정 연결</button>}
+      {(!state.provider.configured||state.providerChoice?.routing)&&canLogin&&<button className="primary" disabled={disabled} onClick={()=>void login('browser')}><ExternalLink size={15}/> ChatGPT 계정 연결</button>}
       <button className="secondary" disabled={disabled} onClick={()=>void perform(()=>api('connection/check'))}><RefreshCw size={14}/> 연결 상태 새로고침</button>
       {state.provider.configured&&<button className="secondary" disabled={disabled} onClick={()=>void perform(()=>api('connection/probe'))}><Radio size={14}/> {state.provider.kind==='ollama'?'로컬 모델 응답 확인 · 1회':'모델 응답 확인 · 1회 사용'}</button>}
     </div>

@@ -111,6 +111,7 @@ export type State = {
   tutorial?: TutorialState;
   debug?: { enabled: boolean; customPrompt: boolean };
   providerChoice?: {
+    routing?: import('./ProviderRouting').RoutingState | null;
     config: {
       kind: 'codex' | 'openai' | 'ollama';
       model?: string;
