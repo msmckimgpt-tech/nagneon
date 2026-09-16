@@ -164,6 +164,28 @@ try {
     assert.equal(preserved, true);
     report.checks.push('previous title and shared memory survive update or restart');
   }
+  if (process.argv.includes('--routing')) {
+    await evaluate(`document.querySelector('button[title="방송 설정"]').click()`);
+    await click('연결·사용량');
+    await evaluate(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);
+    await click('연결 추가');
+    await until(`document.querySelector('[aria-label="연결 2 모델"]')`);
+    await evaluate(`(()=>{const e=document.querySelector('[aria-label="연결 2 모델"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'gpt-6-astra');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await evaluate(`(()=>{const e=document.querySelector('[aria-label="일반 대화 모델"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,e.options[e.options.length-1].value);e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await click('역할별 경로 저장');
+    await until(`document.body.textContent.includes('역할별 경로를 저장했습니다.')`);
+    assert.equal(await evaluate(`fetch('/api/state').then(r=>r.json()).then(s=>s.providerChoice.routing.config.connections.length===2&&!!s.providerChoice.routing.config.routes.chat)`),true);
+    await click('닫기');
+    report.checks.push('delivered routing editor registers custom model and persists role selection');
+  }
+  if (process.argv.includes('--routing-expect')) {
+    assert.equal(await evaluate(`fetch('/api/state').then(r=>r.json()).then(s=>s.providerChoice.routing.config.connections.length===2&&!!s.providerChoice.routing.config.routes.chat)`),true);
+    report.checks.push('routing configuration survives installed restart');
+  }
+  if (process.argv.includes('--single-provider')) {
+    assert.equal(await evaluate(`fetch('/api/connection/provider',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({kind:'codex'})}).then(r=>r.status)`),200);
+    report.checks.push('single provider restored before compatibility rollback');
+  }
   const changed = await evaluate(
     `(async()=>{const s=await (await fetch('/api/state')).json();const r=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({...s.settings,mode:'rehearsal'})});return r.status;})()`,
   );
