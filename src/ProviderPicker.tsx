@@ -24,6 +24,7 @@ export function ProviderPicker({state,disabled}:{state:State;disabled:boolean}){
         <label>로컬 주소 <input aria-label="Ollama 주소" value={base} onChange={e=>setBase(e.target.value)} maxLength={200}/></label>
         <label>문맥 크기 <input aria-label="Ollama 문맥 크기" type="number" min={4096} max={131072} value={context} onChange={e=>setContext(Number(e.target.value))}/></label>
         <p className="field-note">문맥 크기가 클수록 메모리가 더 필요합니다. 적용 시 설치된 로컬 모델을 확인하며, 모델을 자동 다운로드하지 않습니다.</p>
+        <details className="usage-details"><summary>로컬 모델 실측과 선택 안내</summary><p>2026-09-16 RTX 2070 8GB 실측에서 Qwen3.5 0.8B, Gemma 3 1B, Qwen2.5 1.5B는 현재 앱의 관객 반응을 맡기기에 만족할 만한 성능과 품질을 보이지 않았습니다. 연결 확인과 실제 대화 품질은 다릅니다.</p><p>Qwen 0.8B는 응답 지연·미완료와 문맥 오류가 있었고, Gemma 1B·Qwen2.5 1.5B는 전체 입력의 문맥 예산 검사에서 막혔습니다. 짧은 반응 전용 시험 결과를 전체 앱 성능으로 보지는 마세요. 다른 모델·PC의 결과는 별도 확인이 필요합니다.</p><p>기본 사용은 ChatGPT 구독 · Codex를 권합니다. 로컬 모델 시험 후에도 이 선택으로 돌아갈 수 있습니다.</p></details>
       </>}
       {kind!=='ollama'&&<>
         <label>관객 모델 <select aria-label="관객 모델" value={hostedModel} onChange={e=>{setHostedModel(e.target.value);const next=audienceModels.models.find(m=>m.id===e.target.value)?.efforts||['low','medium','high','xhigh'];if(effort&&!next.includes(effort))setEffort('low');}}>
