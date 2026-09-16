@@ -18,7 +18,10 @@ try {
     try { $savedProfile = if (Test-Path -LiteralPath $storageFile) { (Get-Content -LiteralPath $storageFile -Raw -Encoding UTF8 | ConvertFrom-Json).profile } else { $config.profile } }
     catch { throw 'The saved storage setting cannot be read. Keep storage.json and the profile for recovery; no empty profile was created.' }
     if (-not $savedProfile -or -not [IO.Path]::IsPathRooted($savedProfile)) { throw 'The saved profile path is invalid. Restore the storage setting or reconnect the storage device. No empty profile was created.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $savedProfile 'data') -PathType Container)) { throw "Saved profile data is missing at: $savedProfile\data. Check whether an agent copied it into a packaged AppData/LocalCache folder. Refusing to create an empty profile." }
+    if (-not (Test-Path -LiteralPath (Join-Path $savedProfile 'data') -PathType Container)) {
+        if ($Inspect) { throw "Saved profile data is missing at: $savedProfile\data. Open the launcher normally to recover the existing records." }
+        $null = Restore-NagneonRedirectedProfile -Profile $savedProfile
+    }
     Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
     # CMD can inherit a PowerShell 7 PSModulePath that hides the Windows
     # PowerShell Get-FileHash module. Use the runtime directly at this boundary.
