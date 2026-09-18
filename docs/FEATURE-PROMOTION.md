@@ -20,7 +20,7 @@ Codex heartbeat `nagneon`이 매일 오전 10시(Asia/Seoul)에 이 작업에서
 
 ## 최초 진행 원장
 
-현재 프리뷰 대상은 `codex/preview-0.1.0-2`의 `b984eb9`이며 매번 최신 main과 비교한다. 사용자의 “확인했습니다”만으로 실사용 합격을 만들지 않는다.
+초기 프리뷰 대상은 `codex/preview-0.1.0-2`의 `b984eb9`다. 아래 초기 상태보다 후속 점검 기록과 최신 정식 릴리즈를 우선하며, 오래된 프리뷰를 현재 main에 일괄 병합하지 않는다. 사용자의 “확인했습니다”만으로 실사용 합격을 만들지 않는다.
 
 | 기능 | 상태 | 다음 확인 |
 |---|---|---|
@@ -34,3 +34,13 @@ Codex heartbeat `nagneon`이 매일 오전 10시(Asia/Seoul)에 이 작업에서
 각 점검에서 대상 SHA, 증거 경로, 이슈/수정/검증 결과, 다음 조치를 추가한다. 상태는 미사용, 검증 중, 이슈 수정 중, 승격 가능, 정식 편입으로 구분한다. 변화가 없으면 알림을 반복하지 않는다. 의미 있는 수정·승격·릴리즈, 실패, 꼭 필요한 사용자 조치만 알린다.
 
 릴리즈 후 [Git 병렬 개발 규칙](PARALLEL-DEVELOPMENT.md)에 따라 사용 종료 worktree와 통합된 로컬/원격 작업 브랜치를 정리한다. 실행본/증거가 들어 있는 worktree는 보존한다.
+
+## 2026-09-19 점검
+
+- 점검 기준 main/원격 main: `bd19b7ca983c09585716cb756a11e249c85ee63b`. GitHub 최신 정식 릴리즈는 `v0.1.6`이며 프리뷰 브랜치는 여전히 `b984eb9`다. 이후 변경이 많으므로 초기 프리뷰 전체를 병합하면 최신 제공처 라우팅·설정·프로필 복구와 충돌할 수 있다. 남은 기능은 최신 코드 기준으로 개별 이식/검증한다.
+- **정식 편입 완료(기존 배포 확인):** Codex/Ollama/OpenAI 호환 API의 사용자 정의 모델 라우팅은 `6de54b4`에서 통합되어 0.1.5 routing 추가 빌드로 게시·설치되었다. [배포 및 복귀 기록](RELEASE-0.1.5-ROUTING.md), [구현 및 실제 연결 범위](PROVIDER-ROUTING.md)를 따른다. 이번 점검에서 새로 승격하거나 설치한 것은 아니다.
+- 원본 `../00_game_backseat-worktrees/provider-routing/artifacts/routing-live-Fij8Fk/result.json`에서 합성 입력을 사용한 실제 구독 추론, 지정된 대체 경로, 재시작 후 설정 복원을 확인했다. `../00_game_backseat-worktrees/provider-routing-integration/artifacts/check-release.log`에서 배포 검사/빌드 기록을 확인했다. 로컬 모델 상태 확인이나 capability 제외를 로컬 생성 품질 통과로 해석하지 않는다.
+- **계속 검증 중:** Claude/Gemini의 공식 로그인 후 실제 응답, 치지직/YouTube 실제 연결, 나머지 초기 프리뷰 기능별 실사용 결과에 새로운 합격 근거가 확인되지 않았다. OpenAI 호환 API 라우팅 지원을 Claude/Gemini 독자 API·구독 지원으로 간주하지 않는다. 신규 승격이나 인증/장치 수집은 실행하지 않았다.
+- 최신 0.1.6의 프로필 복구·고정 설치 검증은 [해당 릴리즈 기록](RELEASE-0.1.6.md)을 따른다. 콘텐츠 성능 미달만으로 이러한 안정성 릴리즈를 보류하지 않는다.
+- 이번 변경은 원장 갱신이므로 새 제품 패키지/태그를 만들지 않는다. 다음 점검에서는 최신 main과 배포/기능별 증거의 변경분을 확인하고, 근거가 생긴 기능만 별도 worktree에서 이식·회귀·패키지 검증 후 승격한다. 기존 실행본·증거 보존 worktree와 미통합 프리뷰는 정리 대상에서 제외한다.
+- 원장 갱신 검증: 격리 worktree `promotion-audit-20260919`에서 `npm ci`, `npm run check`의 692개 테스트와 TypeScript/Vite 빌드 통과. 원본은 해당 worktree의 `artifacts/npm-ci.log`, `artifacts/check.log`다. 제품 코드·버전·설치본은 변경하지 않았다.
