@@ -77,7 +77,7 @@ function variantFor(entry, context) {
 
 function matchingTrend(entry, context, now) {
   const matches = entry.trendSnapshots.filter((trend) => {
-    if (trend.validUntil < now) return false;
+    if (trend.observedUntil > now || trend.verifiedAt > now || trend.validUntil < now) return false;
     if (trend.language && !exactOrBaseLanguage(trend.language, context.language)) return false;
     if (trend.region && normalize(trend.region) !== normalize(context.region)) return false;
     if (trend.game && normalize(trend.game) !== normalize(context.game)) return false;

@@ -325,3 +325,81 @@ test('컴파일된 pack은 입력과 분리된 불변 snapshot이다', () => {
     compiled.entries.push(entry({ id: 'x' }));
   });
 });
+
+test('아직 관측 또는 검증되지 않은 trend는 현재 후보가 되지 않는다', () => {
+  for (const latestMode of ['balanced', 'fresh-only']) {
+    for (const times of [
+      { observedUntil: 11 * HOUR, verifiedAt: 11 * HOUR },
+      { observedUntil: 9 * HOUR, verifiedAt: 11 * HOUR },
+    ]) {
+      const compiled = pack([
+        entry({
+          cultureClass: 'trend',
+          trendSnapshots: [{ state: 'active', ...times, validUntil: 12 * HOUR }],
+        }),
+      ]);
+      assert.deepEqual(selectCultureCandidates(compiled, { now: 10 * HOUR, latestMode }), []);
+      assert.equal(
+        selectCultureCandidates(compiled, { now: 11 * HOUR, latestMode }).length,
+        1,
+        '관측과 검증 시점에 도달하면 후보가 된다',
+      );
+    }
+  }
+});
+
+test('trend 검증 시점은 관측 종료 이후이고 유효 기간 안에 있어야 한다', () => {
+  for (const times of [
+    { observedUntil: 9 * HOUR, verifiedAt: 8 * HOUR, validUntil: 12 * HOUR },
+    { observedUntil: 9 * HOUR, verifiedAt: 13 * HOUR, validUntil: 12 * HOUR },
+  ]) {
+    assert.throws(
+      () => pack([entry({ trendSnapshots: [{ state: 'active', ...times }] })]),
+      CulturePackValidationError,
+    );
+  }
+});
+
+test('withdrawn과 생성 권리 회수는 최신 후보보다 우선한다', () => {
+  const original = entry({
+    cultureClass: 'trend',
+    trendSnapshots: [
+      {
+        state: 'active',
+        observedUntil: 9 * HOUR,
+        verifiedAt: 9 * HOUR,
+        validUntil: 12 * HOUR,
+      },
+    ],
+  });
+  assert.equal(selectCultureCandidates(pack([original]), { now: 10 * HOUR }).length, 1);
+  for (const revoked of [
+    { ...original, status: 'withdrawn' },
+    { ...original, policy: { generationAllowed: false } },
+    {
+      ...original,
+      sourceEvidence: original.sourceEvidence.map((source) => ({
+        ...source,
+        rights: { referenceAllowed: true, generationAllowed: false },
+      })),
+    },
+  ]) {
+    assert.deepEqual(selectCultureCandidates(pack([revoked]), { now: 10 * HOUR }), []);
+  }
+});
+
+test('같은 family는 하나만 선택하고 입력 순서와 관계없이 최대 다섯 후보를 반환한다', () => {
+  const entries = Array.from({ length: 8 }, (_, index) =>
+    entry({
+      id: 'entry-' + index,
+      familyId: index < 2 ? 'same-family' : 'family-' + index,
+    }),
+  );
+  const forward = selectCultureCandidates(pack(entries), { limit: 100 });
+  const reverse = selectCultureCandidates(pack([...entries].reverse()), { limit: 100 });
+  assert.deepEqual(forward, reverse);
+  assert.equal(forward.length, 5);
+  assert.equal(new Set(forward.map((candidate) => candidate.familyId)).size, 5);
+  assert.equal(selectCultureCandidates(pack(entries)).length, 2);
+  assert.deepEqual(selectCultureCandidates(pack(entries), { limit: 0 }), []);
+});

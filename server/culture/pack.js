@@ -104,8 +104,11 @@ function normalizeTrend(input, path) {
   if (observedFrom !== undefined && observedFrom > observedUntil) {
     fail(path, 'observedFrom은 observedUntil보다 늦을 수 없습니다');
   }
-  if (validUntil < observedUntil) {
-    fail(path, 'validUntil은 observedUntil보다 빠를 수 없습니다');
+  if (verifiedAt < observedUntil) {
+    fail(path, 'verifiedAt은 observedUntil보다 빠를 수 없습니다');
+  }
+  if (validUntil < verifiedAt) {
+    fail(path, 'validUntil은 verifiedAt보다 빠를 수 없습니다');
   }
 
   return {
