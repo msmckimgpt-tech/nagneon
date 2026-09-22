@@ -81,3 +81,4 @@ web-development 스킬을 읽고 전면 위임/비공식 호출 안내를 더 �
 - https://openai.com/policies/row-terms-of-use/
 - https://openai.com/policies/service-terms/
 - https://help.openai.com/en/articles/11487775-apps-in-chatgpt
+RDC 오프라인·재인증 복구는 [RDC 복구 안내](RDC-RECOVERY.md)를 따른다.

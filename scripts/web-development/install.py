@@ -102,7 +102,7 @@ def install(home, check=False):
                    f"& '{interpreter}' '{str(home / '.agents/skills/web-development/scripts/workflow.py').replace(chr(39), chr(39)*2)}' @args\n"
                    "exit $LASTEXITCODE\n")
         plan(root / "bin/web-development.ps1", wrapper.encode())
-        for name in ["start-rdc.ps1", "stop-rdc.ps1", "check-connections.ps1"]:
+        for name in ["start-rdc.ps1", "stop-rdc.ps1", "check-connections.ps1", "repair-rdc.ps1"]:
             plan(root / "bin" / name, (SOURCE / "launchers" / name).read_bytes())
     else:
         wrapper = '#!/bin/sh\nexec python3 "$HOME/.agents/skills/web-development/scripts/workflow.py" "$@"\n'
