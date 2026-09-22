@@ -40,11 +40,11 @@ def safe(path, home):
             raise ValueError(f"Linked installation target: {part}")
 
 
-def managed(original, block):
-    if original.count(BEGIN) != original.count(END) or original.count(BEGIN) > 1:
+def managed(original, block, begin=BEGIN, finish=END):
+    if original.count(begin) != original.count(finish) or original.count(begin) > 1:
         raise ValueError("Malformed or duplicated web companion block")
-    if BEGIN in original:
-        start, end = original.index(BEGIN), original.index(END) + len(END)
+    if begin in original:
+        start, end = original.index(begin), original.index(finish) + len(finish)
         if end < start:
             raise ValueError("Malformed block order")
         return original[:start] + block + original[end:]
@@ -83,7 +83,14 @@ def install(home, check=False):
         raw_block = (SOURCE / "routing.md").read_bytes().strip()
         newline = b"\r\n" if b"\r\n" in original else b"\n"
         block = raw_block.replace(b"\r\n", b"\n").replace(b"\n", newline)
-        plan(doc, managed(original, block), global_doc=True)
+        updated = managed(original, block)
+        official_begin = b"<!-- BEGIN OFFICIAL-CHAT-DELEGATION -->"
+        official_end = b"<!-- END OFFICIAL-CHAT-DELEGATION -->"
+        if official_begin in updated or official_end in updated:
+            official = (SOURCE / "official-routing.md").read_bytes().strip()
+            official = official.replace(b"\r\n", b"\n").replace(b"\n", newline)
+            updated = managed(updated, official, official_begin, official_end)
+        plan(doc, updated, global_doc=True)
         for source in (SOURCE / "skill").rglob("*"):
             if source.is_file() and "__pycache__" not in source.parts:
                 plan(skill_dir / source.relative_to(SOURCE / "skill"), source.read_bytes())
@@ -95,7 +102,7 @@ def install(home, check=False):
                    f"& '{interpreter}' '{str(home / '.agents/skills/web-development/scripts/workflow.py').replace(chr(39), chr(39)*2)}' @args\n"
                    "exit $LASTEXITCODE\n")
         plan(root / "bin/web-development.ps1", wrapper.encode())
-        for name in ["start-web-gpt.ps1", "start-web-codex.ps1", "start-rdc.ps1", "stop-rdc.ps1", "check-connections.ps1"]:
+        for name in ["start-rdc.ps1", "stop-rdc.ps1", "check-connections.ps1"]:
             plan(root / "bin" / name, (SOURCE / "launchers" / name).read_bytes())
     else:
         wrapper = '#!/bin/sh\nexec python3 "$HOME/.agents/skills/web-development/scripts/workflow.py" "$@"\n'

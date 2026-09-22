@@ -1,97 +1,27 @@
-# Connections
+# 공식 연결만 사용하는 현재 경로
 
-## Windows installation
+기본 실행은 로컬 Codex/Claude다. 공식 Chat 위임은 작업별로 필요성과 권한을
+확인한다. 먼저 [official-chat-delegation.md](official-chat-delegation.md)를 읽는다.
 
-Provisioned for this user under `~/.local/share/ai-web-development/`:
+## 현재 지원 경계
 
-- `bin/web-development.ps1`: portable bundle/import/synthesis/final review helper.
-- `bin/start-web-gpt.ps1`: open the installed Codex Web GPT launcher.
-- `bin/start-web-codex.ps1`: interactive Codex with the supplementary CODEX_HOME.
-- `bin/start-rdc.ps1`: start the pinned RDC device agent for pairing/connection.
-- `bin/stop-rdc.ps1`: stop only the PID/start-time recorded by this launcher.
-- `tools/desktop-commander`: pinned npm installation, separate from product dependencies.
-- `runs` / `inbox`: local task artifacts, never part of a public source commit.
-- `connection-status.json`: installation/check results. Authentication fields may
-  be pending; verify current readiness before routing work.
+- 공식 기존 Chat 전송/읽기 도구가 실제 제공될 때만 사용한다. 일반 Chat과
+  승인된 추론 수준을 확인하며, Work/Codex/API로 몰래 바꾸지 않는다.
+- RDC는 별도 제3자 앱이다. 해당 웹 클라이언트에 공식 앱 연결/OAuth가 필요하고
+  기기 인증과 웹 연결은 별개다. 계정·기기·작업 경로를 현재 상태로 확인한다.
+- 원격 endpoint: https://mcp.desktopcommander.app/mcp (OAuth).
+- 기존 Windows 설치의 bin/start-rdc.ps1 및 stop-rdc.ps1은 작업별 기기 에이전트
+  실행/종료에 사용한다. 다른 작업자가 사용 중인 에이전트를 임의 종료하지 않는다.
+- WSL 전역 스킬 설치와 RDC 연결은 별개다. Windows 장치에서 WSL을 실행할 때는
+  정확한 배포판·Linux worktree·명령 권한을 지정한다. 다른 머신으로 인증을 복사하지 않는다.
 
-Installed target versions: Codex Web GPT **5.0.6**, Desktop Commander **0.2.50**.
-Check the runtime status; do not assume newer upstream main documentation describes
-the installed release. Upgrade only as a separate verified operation.
+## 폐기된 안내
 
-## Web GPT
+웹쫀쿠 비공식 Chat 호출과 UI/DOM/CDP 자동 전송·추출은 현재 경로에서 사용하지
+않는다. 과거 start-web-gpt/start-web-codex 실행기와 설치 성공 기록은 역사적 자료다.
+이 문서 정리는 이미 실행 중인 앱을 종료하거나 계정·저장 데이터를 삭제하지 않는다.
+새 설치기는 이 두 실행기를 배포하지 않는다. 과거 모델 슬러그/스모크 성공을
+현재 정책 승인이나 xhigh 가능성의 증거로 사용하지 않는다.
 
-Start the launcher and sign in directly in its embedded ChatGPT browser. The
-launcher owns a separate browser profile; never copy ChatGPT cookies or Codex
-`auth.json` into it. Run its browser smoke test before dispatching real tasks.
-
-Prefer bounded review conversations or the launcher's manual-send mode when it
-fits the task. `Zero Risk` is the upstream mode name, not a safety guarantee.
-Automatic browser-only supports images but no local tool harness. Full mode adds
-an OpenAI tunnel/custom connector; RDC can supply a separate web-to-local channel
-without exposing the full Codex harness. Don't configure both without a need.
-
-**Route ownership:** the upstream “Install models” action modifies the target
-Codex Responses route. The supplied `start-web-gpt.ps1` launches production mode
-with three child-only environment overrides supported in 5.0.6: CODEX_HOME points
-to `web-codex-home`, CODEX_CHATGPT_WEB_HOME to `web-bridge`, and
-CODEX_WEB_GPT_LAUNCHER_DATA_DIR to `web-launcher`, all under this installation root.
-Use this wrapper rather than the default Start-menu shortcut to keep normal
-Codex/Claude settings unchanged. Complete login, smoke test and Install models in
-that isolated launcher, then use `start-web-codex.ps1`. The isolated Codex may need
-its own official `start-web-codex.ps1 -Login`; do not copy existing credentials.
-Select a web model explicitly; never change a requested model/effort silently.
-Avoid `--dev-profile`: it is an upstream synthetic development harness.
-
-Delegated web work defaults to `chatgpt-web/extra-high` and reasoning `xhigh`,
-including synthesis. The start-web-codex wrapper passes both explicitly.
-Verify account eligibility before dispatch; never downgrade silently or treat a
-prompt asking for deep thinking as proof that the UI/runtime selected xhigh.
-The earlier connectivity smoke used `chatgpt-web/high` (High); that historical
-check does not establish xhigh availability on every account.
-The bare `chatgpt-web` is not a model slug. Use the native `/model` picker for
-account-eligible rows; preserve the user's chosen model and effort. An isolated
-official Codex login is separate from embedded browser login. After both logins,
-`doctor --json` checks the route and proxy; a real Codex response verifies dispatch.
-Browser-only emits a local-tools-unavailable notice by design. Use the separately
-connected RDC web client for file handoffs; it is not injected into every bridge turn.
-
-Source: https://github.com/miuuyy/codex-chatgpt-web/tree/v5.0.6
-
-## Remote Desktop Commander
-
-Remote MCP endpoint: `https://mcp.desktopcommander.app/mcp` (OAuth).
-
-1. Run `start-rdc.ps1`. The agent prints a device code and verification URL.
-2. Sign in to the service; compare the terminal code with the browser code before
-   authorizing this machine. Authentication credentials stay with the service.
-3. Add the remote MCP in ChatGPT/Claude Web using the endpoint and OAuth. Sign in
-   with the same RDC account. Native client registration alone does not connect
-   the web client. If account/workspace policies hide custom MCP, report that fact.
-4. Verify the selected device, read a nonsensitive task fixture and write a reply
-   into that task's inbox. Read it locally and compare contents before declaring
-   web-to-local access operational.
-
-The Windows device agent covers Windows files and terminal. For WSL code, use an
-explicit `wsl -d Ubuntu-24.04 -- ...` command and Linux worktree paths or separately
-install a Linux agent if needed. WSL skills are installed independently; a Windows
-device connection does not prove a Linux agent exists.
-
-The agent uses the invoking user's file and shell permissions. `allowedDirectories`
-only constrains file tools; it does not confine terminal commands. Exact worktree
-ownership is a workflow rule, not OS sandboxing. The hosted relay carries tool
-requests/results. Device credentials and tool logs must stay outside review bundles.
-Do not add persistent auto-start or a full-machine capability without a concrete
-need; use the on-demand launcher, and stop it after remote work is done.
-
-Sources:
-- https://github.com/desktop-commander/remote-desktop-commander/blob/main/docs/SETUP.md
-- https://github.com/desktop-commander/remote-desktop-commander/blob/main/SECURITY.md
-
-## When a connection is unavailable
-
-Prepare the bundles and finish independent local work. Ask only for the missing
-login/connection action and state the exact reason. Do not fabricate remote outputs,
-claim dry runs as live acceptance, switch model/effort, bypass a limit, or silently
-replace web reviewers with local agents. Manual transmission remains an available
-route, clearly labelled as manual. Fully automatic browser transport has additional
-service-terms constraints; no CAPTCHA or protective-measure bypass is part of setup.
+공식 Chat 도구/설정/권한이 없으면 해당 위임을 미실행으로 기록하고 로컬 작업을
+계속한다. 비용은 미측정이며 비공식 전송으로 폴백하지 않는다.
