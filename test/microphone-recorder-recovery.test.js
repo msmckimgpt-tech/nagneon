@@ -79,3 +79,43 @@ test('recorder start failure is synchronous and leaves no timers behind',()=>{
   }),/start failed/);
   assert.equal(clock.pending(),0);
 });
+
+for(const emitStop of [true,false]){
+  test(`retired recorder callbacks cannot stop the successor after ${emitStop?'normal stop':'watchdog recovery'}`,()=>{
+    const clock=makeClock(),instances=[],errors=[],segments=[];
+    const dispose=startMicrophoneRecorder({
+      stream:{},analyser:analyser(),mimeType:'audio/webm',active:()=>true,onLevel:()=>{},clock,stopEventTimeoutMs:10,
+      recorderFactory:()=>recorder(instances,{emitStop,emitData:true}),
+      onSegment:blob=>segments.push(blob),onFailure:error=>errors.push(error)
+    });
+    clock.advance(emitStop?6000:6010);
+    assert.equal(instances.length,2);assert.equal(instances[1].state,'recording');
+    const segmentCount=segments.length;
+    instances[0].onerror();
+    instances[0].ondataavailable({data:new Blob(['late'])});
+    instances[0].onstop();
+    assert.deepEqual(errors,[]);
+    assert.equal(instances[1].state,'recording');
+    assert.equal(instances[1].stopCalls,0);
+    assert.equal(instances.length,2);
+    assert.equal(segments.length,segmentCount);
+    dispose();assert.equal(clock.pending(),0);
+    instances[1].onerror();assert.deepEqual(errors,[]);
+  });
+}
+
+test('an active recorder error still stops recording and reports once',()=>{
+  const clock=makeClock(),instances=[],errors=[];
+  const dispose=startMicrophoneRecorder({
+    stream:{},analyser:analyser(),mimeType:'audio/webm',active:()=>true,onLevel:()=>{},clock,
+    recorderFactory:()=>recorder(instances),
+    onSegment:()=>{},onFailure:error=>errors.push(error)
+  });
+  instances[0].onerror();instances[0].onerror();
+  assert.equal(errors.length,1);
+  assert.equal(instances[0].state,'inactive');
+  assert.equal(instances[0].stopCalls,1);
+  assert.equal(clock.pending(),0);
+  clock.advance(12000);assert.equal(instances.length,1);
+  dispose();
+});

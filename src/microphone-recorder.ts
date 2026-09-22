@@ -84,7 +84,7 @@ export function startMicrophoneRecorder(options:{
     };
     rec.ondataavailable=event=>{if(!finalized&&event.data.size)parts.push(event.data);};
     rec.onstop=()=>finish(false);
-    rec.onerror=()=>fail(new Error('마이크 녹음기가 오류로 중단되었습니다.'));
+    rec.onerror=()=>{if(!finalized&&!disposed&&current===rec)fail(new Error('마이크 녹음기가 오류로 중단되었습니다.'));};
     try{rec.start();}catch(error){finalized=true;clearTimers();if(current===rec)current=null;throw error;}
     meter=clock.setInterval(()=>{
       if(finalized||disposed||!options.active())return requestStop();
