@@ -35,6 +35,10 @@ class InstallTests(unittest.TestCase):
     def test_install_preserves_docs_and_is_idempotent(self):
         initial = {str(p): p.read_bytes() for p in self.docs}
         self.assertGreater(self.run_install()['changed'], 0)
+        if os.name == 'nt':
+            installed = self.home / '.local/share/ai-web-development/bin/repair-rdc.ps1'
+            self.assertEqual(installed.read_bytes(),
+                             (INSTALLER.parent / 'launchers/repair-rdc.ps1').read_bytes())
         for doc in self.docs:
             data = doc.read_bytes()
             self.assertEqual(data[:data.index(BEGIN)], self.prefix)
@@ -126,7 +130,7 @@ class InstallTests(unittest.TestCase):
                   "ForEach-Object { $tokens=$null; $errors=$null; "
                   "[System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null; "
                   "if($errors.Count){$errors | Out-String | Write-Error; exit 1}; $count++ }; "
-                  "if($count -ne 5){exit 2}")
+                  "if($count -ne 6){exit 2}")
         result = subprocess.run(['powershell', '-NoProfile', '-Command', script], env=env,
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
