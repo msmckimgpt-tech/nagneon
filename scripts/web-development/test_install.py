@@ -51,6 +51,26 @@ class InstallTests(unittest.TestCase):
         for content in initial.values():
             self.assertIn(content, [p.read_bytes() for p in backups])
 
+    def test_existing_official_policy_replaced_and_outside_preserved(self):
+        begin = b'<!-- BEGIN OFFICIAL-CHAT-DELEGATION -->'
+        end = b'<!-- END OFFICIAL-CHAT-DELEGATION -->'
+        for doc in self.docs:
+            doc.write_bytes(doc.read_bytes() + begin + b'old delegate everything' + end + b'\nTAIL')
+        self.run_install()
+        for doc in self.docs:
+            data = doc.read_bytes()
+            self.assertNotIn(b'old delegate everything', data)
+            self.assertIn(self.suffix, data)
+            self.assertTrue(data.endswith(b'\nTAIL'))
+            self.assertEqual(data.count(begin), 1)
+        self.assertTrue(self.run_install('--check')['up_to_date'])
+
+    def test_malformed_official_policy_rejected_before_mutation(self):
+        self.docs[0].write_bytes(self.docs[0].read_bytes() + b'<!-- BEGIN OFFICIAL-CHAT-DELEGATION -->')
+        before = {str(p): p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
+        self.run_install(expected=2)
+        self.assertEqual(before, {str(p): p.read_bytes() for p in self.home.rglob('*') if p.is_file()})
+
     def test_check_is_read_only(self):
         before = {str(p): p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
         self.assertFalse(self.run_install('--check', expected=1)['up_to_date'])
