@@ -76,14 +76,34 @@ test('historical images are filtered for new viewers, ended sources, session and
   assert.equal(source[0].capture.screen.frames.length,3);
 });
 
-test('provider separates current and historical images, strips pixels from JSON and maps final attachment indexes',()=>{
-  const {capture}=fixture();const p=new OpenAIProvider({});
-  const payload=p.payload({settings:defaults,history:[],image:current,speech:'이거',liveSpeech:[{messageId:'one',source:'microphone',capture}]});
+test('provider orders speech-time evidence before current video and maps final attachment indexes',()=>{
+  const {capture}=fixture();const p=new OpenAIProvider({}),screenTimeline={sourceId:'live',frames:[{index:1,capturedAt:T+30000}]};
+  const payload=p.payload({settings:defaults,history:[],frames:[{image:current}],screenTimeline,speech:'이거',liveSpeech:[{messageId:'one',source:'microphone',capture}]});
   const content=payload.input[0].content,metadata=JSON.parse(content[0].text);
-  assert.equal(content[1].image_url,current);assert.equal(content[2].image_url,old);
-  assert.deepEqual(metadata.liveSpeech[0].speechScreen.frames.map(f=>f.index),[2,3,4]);
+  assert.deepEqual(content.slice(1).map(entry=>entry.image_url),[old,old,old,current]);
+  assert.deepEqual(metadata.liveSpeech[0].speechScreen.frames.map(f=>f.index),[1,2,3]);
+  assert.deepEqual(metadata.screenTimeline.frames.map(f=>f.index),[4]);
   assert.equal(content[0].text.includes('data:image'),false);assert.equal(metadata.hasImage,true);
   assert.match(payload.instructions,/현재 화면으로 과거 대상을 바꾸지/);
+  const historicalOnly=p.payload({settings:defaults,history:[],speech:'이거',liveSpeech:[{messageId:'one',source:'microphone',capture}]});
+  assert.equal(JSON.parse(historicalOnly.input[0].content[0].text).hasImage,true);
+  assert.equal(historicalOnly.input[0].content.length,4);
+});
+
+test('multiple speech captures map distinct images without mutating reusable live metadata',()=>{
+  const {capture}=fixture(),p=new OpenAIProvider({});
+  capture.screen.frames.forEach((f,i)=>{f.image=img('speech '+i);});
+  const second=structuredClone(capture);second.screen.frames=[{image:img('second speech'),at:T+2500}];
+  const liveSpeech=[{messageId:'one',source:'microphone',capture},{messageId:'two',source:'microphone',capture:second}];
+  const frames=[{image:current},{image:img('latest live')}],screenTimeline={frames:[{index:1,capturedAt:T+30000},{index:2,capturedAt:T+31000}]};
+  const args={settings:defaults,history:[],frames,screenTimeline,liveSpeech},before=structuredClone(args);
+  for(let attempt=0;attempt<2;attempt++){
+    const content=p.payload(args).input[0].content,metadata=JSON.parse(content[0].text);
+    assert.deepEqual(content.slice(1).map(f=>f.image_url),[...capture.screen.frames.map(f=>f.image),second.screen.frames[0].image,...frames.map(f=>f.image)]);
+    assert.deepEqual(metadata.liveSpeech.map(s=>s.speechScreen.frames.map(f=>f.index)),[[1,2,3],[4]]);
+    assert.deepEqual(metadata.screenTimeline.frames.map(f=>f.index),[5,6]);
+  }
+  assert.deepEqual(args,before);
 });
 
 test('delayed speech reaches actual Studio provider with original scene while live viewing stays current',async t=>{
