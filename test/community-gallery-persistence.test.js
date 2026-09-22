@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {resolve,sep} from 'node:path';
+import {startServer} from '../server/index.js';
+import {AudienceData} from '../server/data-schema.js';
+
+test('42nd gallery recommendation, comment and private receipt survive durable save and server restart',async t=>{
+  const tempRoot=resolve(tmpdir()),dir=mkdtempSync(resolve(tempRoot,'nagneon-gallery-'));
+  assert.ok(dir.startsWith(tempRoot+sep));
+  t.after(()=>rmSync(dir,{recursive:true}));
+  const options={port:0,dataDir:dir,persist:true,localSpeech:false,provider:{status:()=>({configured:true})}};
+  const first=await startServer(options);t.after(()=>first.close());
+  const post=first.studio.community.post({title:'저장 회귀',text:'격리된 합성 게시글'});
+  first.studio.community.addComments(post.id,[],undefined,Array.from({length:41},(_,i)=>({personaId:`viewer_${i}`,recommended:true})));
+  const before=JSON.parse(readFileSync(resolve(dir,'world.json'),'utf8')).audience.posts.find(p=>p.id===post.id);
+  assert.equal(before.votes.length,41);
+  const receipt={viewerId:'viewer_41',revision:'a'.repeat(64),at:Date.now()};
+  first.studio.community.addComments(post.id,[{text:'함께 저장됩니다',name:'시험 관객',personaId:'viewer_41',kind:'ai',parentId:null}],JSON.stringify(first.studio.community.get(post.id)),[{personaId:'viewer_41',recommended:true}],receipt);
+  const saved=JSON.parse(readFileSync(resolve(dir,'world.json'),'utf8')).audience;
+  AudienceData.parse(saved);
+  const expected=saved.posts.find(p=>p.id===post.id);
+  assert.equal(expected.votes.length,42);
+  assert.equal(new Set(expected.votes).size,42);
+  assert.equal(expected.comments.length,1);
+  assert.deepEqual(expected.activityReads,[receipt]);
+  await first.close();
+  const second=await startServer({...options,provider:{status:()=>({configured:true})}});t.after(()=>second.close());
+  assert.deepEqual(second.studio.audience.data.posts.find(p=>p.id===post.id),expected);
+  const response=await fetch(second.url+'/api/community/posts/'+post.id,{headers:{Authorization:'Bearer '+second.accessToken,'X-Backseat-Client':'studio'}});
+  assert.equal(response.status,200);
+  const visible=await response.json();
+  assert.equal(visible.votes.length,42);
+  assert.equal(visible.comments.length,1);
+  assert.equal(visible.activityReads,undefined);
+  await second.close();
+});

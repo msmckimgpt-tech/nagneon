@@ -21,6 +21,12 @@ test('comments, replies and votes persist together; retries of a vote do not mul
   s.community.removeComment(p.id,c.id);assert.equal(s.community.get(p.id).comments[1].parentId,c.id);assert.throws(()=>s.community.comment(p.id,{text:'bad',parentId:c.id}));s.community.recommend(p.id,false);assert.deepEqual(s.community.get(p.id).votes,[]);
   s.community.remove(p.id);assert.throws(()=>s.community.get(p.id));
 });
+test('gallery recommendations are not capped by the legacy 41-viewer boundary',t=>{
+  const s=studio(t),p=s.community.post({title:'추천 경계',text:'42명 이상의 관객도 추천할 수 있어야 합니다.'}),raw=s.audience.data.posts.find(post=>post.id===p.id);
+  raw.votes=Array.from({length:41},(_,i)=>`viewer_${i}`);const expected=JSON.stringify(s.community.get(p.id));
+  s.community.addComments(p.id,[],expected,[{personaId:'viewer_41',recommended:true}]);const saved=s.community.get(p.id);
+  assert.equal(saved.votes.length,42);assert.equal(new Set(saved.votes).size,42);assert.equal(GalleryPost.parse(saved).votes.length,42);
+});
 test('gallery storage failure leaves both original audience and posts unchanged',t=>{
   const s=studio(t),p=s.community.post({title:'test',text:'original'}),before=structuredClone(s.audience.data);s.audience.save=()=>{throw Error('synthetic disk failure');};
   assert.throws(()=>s.community.comment(p.id,{text:'cannot save'}),/disk failure/);assert.deepEqual(s.audience.data,before);assert.throws(()=>s.community.recommend(p.id,true));assert.deepEqual(s.audience.data,before);

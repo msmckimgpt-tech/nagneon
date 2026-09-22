@@ -43,6 +43,11 @@ test('gallery silent reading, no-vote choice and private receipt are committed t
  const raw=f.s.audience.data.posts[0];assert.equal(raw.comments.length,0);assert.equal(raw.votes.length,0);assert.equal(raw.activityReads[0].viewerId,'momo');AudienceData.parse(f.s.audience.data);
  assert.equal(f.s.community.get(p.id).activityReads,undefined);assert.ok(!JSON.stringify(f.s.state()).includes('activityReads'));await f.visit(COMMUNITY_COOLDOWN+1);assert.equal(f.calls,1);
 });
+test('gallery autonomous visit can commit the 42nd recommendation with its comment and private read receipt',async t=>{
+ const f=fixture(t,async()=>output([reply('일정 확인했어요')],[{personaId:'momo',recommended:true}])),p=f.s.community.post({title:'추천 경계',text:'42번째 추천도 다른 효과와 함께 저장되어야 합니다.'});
+ f.s.audience.data.posts.find(post=>post.id===p.id).votes=Array.from({length:41},(_,i)=>`legacy_${i}`);await f.visit();const raw=f.s.audience.data.posts.find(post=>post.id===p.id);
+ assert.equal(raw.votes.length,42);assert.ok(raw.votes.includes('momo'));assert.equal(raw.comments.length,1);assert.equal(raw.activityReads.length,1);AudienceData.parse(f.s.audience.data);
+});
 test('gallery comments and votes roll back if durable save fails; attempts survive to throttle retry',async t=>{
  const f=fixture(t,async()=>{f.s.audience.save=()=>{throw Error('synthetic commit failure');};return output([reply('푹 쉬어요')],[{personaId:'momo',recommended:true}]);});
  f.s.community.post({title:'일정',text:'내일 쉬어요'});await f.visit();const p=f.s.audience.data.posts[0];
