@@ -200,7 +200,7 @@ export class Studio extends EventEmitter {
             ...this.prepareMessage('streamer', text, 'streamer'),
             ...(source === 'microphone' ? { transcription: { source: 'microphone' } } : {}),
           },
-          { witnesses: hearers },
+          { witnesses: hearers, publishState: false },
         ),
       source,
       capture,
@@ -371,7 +371,7 @@ export class Studio extends EventEmitter {
       time: this.now(),
     };
   }
-  publishMessage(msg, { witnesses = this.presentWitnesses() } = {}) {
+  publishMessage(msg, { witnesses = this.presentWitnesses(), publishState = true } = {}) {
     this.messages.push(msg);
     if (this.running && this.settings.mode === 'live')
       try {
@@ -393,7 +393,8 @@ export class Studio extends EventEmitter {
       }
     if (msg.meme) this.culture.recordUse(msg.personaId);
     this.messages = this.messages.slice(-500);
-    this.publish();
+    // Speech publishes after its receipt and pending-reaction cancellation are complete.
+    if (publishState) this.publish();
     return msg;
   }
   addMessage(personaId, text, kind = 'chat') {
