@@ -24,11 +24,12 @@ function harness({fetch,reactApi}){
   const imports={
     react,
     './useSystemSound':{useSystemSound:()=>({status:'idle',level:0})},
+    './useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},
     './useClipBuffer':{useClipBuffer:()=>({buffering:false,takeAt:async()=>null})},
     './clip-uploads':{ClipUploads},
     './api':{api:reactApi},
     './speech-flow':speechFlow,
-    './microphone-recorder.ts':{startMicrophoneRecorder:()=>()=>{}},
+    './continuous-listening.ts':{ContinuousListening:class{}},
     './temporal-frames':{TemporalFrames},
     './temporal-capture':{startTemporalCapture:()=>()=>{}},
     './capture-preparation':{prepareCapture:async()=>{throw new Error('not used');},releaseCapture:()=>{}}

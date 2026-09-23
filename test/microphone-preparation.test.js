@@ -11,17 +11,17 @@ import * as capturePreparation from '../src/capture-preparation.ts';
 const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
 function harness(fetch,getUserMedia){
-  const errors=[],queues=[],outboxes=[],timers=new Set();let timerId=0;
-  class Queue extends speechFlow.SpeechQueue{constructor(options){super(options);queues.push(this);}}
+  const errors=[],listeners=[],outboxes=[],timers=new Set();let timerId=0;
   class Outbox extends speechFlow.SpeechOutbox{constructor(){super();outboxes.push(this);}}
+  class Listener{constructor(options){this.options=options;this.drained=new Promise(resolve=>{this.resolveDrain=resolve;});listeners.push(this);}async start(){this.timer=++timerId;timers.add(this.timer);return this;}stopCapture(){timers.delete(this.timer);}}
   const state={running:true,sessionId:'test-session',settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
   const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:()=>{}};
-  const imports={react,'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechQueue:Queue,SpeechOutbox:Outbox},'./microphone-recorder.ts':{startMicrophoneRecorder:()=>{const id=++timerId;timers.add(id);return()=>timers.delete(id);}},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
+  const imports={react,'./useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechOutbox:Outbox},'./continuous-listening.ts':{ContinuousListening:Listener},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
   const module={exports:{}};
   class Recorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.onstop?.();}}
   class Context{resume(){return Promise.resolve();}createMediaStreamSource(){return {connect(){}};}createAnalyser(){return {fftSize:512,getFloatTimeDomainData(){}};}close(){return Promise.resolve();}}
   vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,id);return imports[id];},fetch,navigator:{mediaDevices:{getUserMedia:async()=>{const stream=await getUserMedia();if(stream&&!stream.getAudioTracks)stream.getAudioTracks=stream.getTracks;return stream;}}},MediaRecorder:Recorder,AudioContext:Context,AbortController,Error,Blob,Float32Array,performance:{now:()=>0},setInterval:()=>{timers.add(++timerId);return timerId;},clearInterval:id=>timers.delete(id),setTimeout:()=>{timers.add(++timerId);return timerId;},clearTimeout:id=>timers.delete(id)});
-  return {media:module.exports.useMedia(state,error=>errors.push(error)),errors,state,timers,queues,outboxes};
+  return {media:module.exports.useMedia(state,error=>errors.push(error)),errors,state,timers,listeners,outboxes};
 }
 
 test('microphone device acquisition waits for the recognizer handshake',async()=>{
@@ -49,15 +49,33 @@ test('broadcast stop while permission is pending stops the late stream without r
   assert.equal(stops,1);assert.deepEqual(h.errors,[]);assert.equal(h.timers.size,0);
 });
 
-test('worker preparation failure recovers the same audio without stopping capture or discarding queued speech',async()=>{
-  let stops=0,audio=0,prepares=0;const h=harness(async url=>url==='/api/audio/prepare'?{ok:true,json:async()=>{prepares++;return {ok:true};}}:++audio===1?{ok:false,json:async()=>({error:'인식기 종료',needsPreparation:true})}:{ok:true,json:async()=>({text:'복구된 발언'+audio})},async()=>({getTracks:()=>[{stop(){stops++;}}]}));
-  await h.media.startMic();h.media.say('이미 인식된 말');h.queues[0].enqueue({blob:new Blob(['failed'])});h.queues[0].enqueue({blob:new Blob(['queued'])});await turn();
-  assert.equal(audio,3);assert.equal(prepares,2);assert.equal(stops,0);assert.equal(h.queues[0].pending.length,0);assert.ok(h.timers.size>0);
-  assert.deepEqual(h.outboxes[0].items.map(i=>i.text),['이미 인식된 말','복구된 발언2','복구된 발언3']);assert.equal(h.state.running,true);assert.equal(h.errors.length,0);h.media.stopMic();assert.equal(h.timers.size,0);
+test('recognized speech from the continuous listener enters the existing delivery outbox in order',async()=>{
+  let stops=0;const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>({getTracks:()=>[{stop(){stops++;}}]}));
+  await h.media.startMic();h.media.say('이미 입력된 말');
+  const capture={startedAt:100,endedAt:200};
+  h.listeners[0].options.onTranscript('첫 발언',capture);
+  h.listeners[0].options.onTranscript('둘째 발언',{startedAt:200,endedAt:300});
+  await turn();
+  assert.deepEqual(h.outboxes[0].items.map(i=>i.text),['이미 입력된 말','첫 발언','둘째 발언']);
+  assert.equal(h.outboxes[0].items[1].capture.startedAt,100);
+  assert.equal(stops,0);h.media.stopMic();assert.equal(h.timers.size,0);
 });
 
-test('an invalid segment keeps capture active and the next recorded utterance is delivered',async()=>{
-  let stops=0,audio=0;const h=harness(async url=>url==='/api/audio/prepare'?{ok:true,json:async()=>({ok:true})}:++audio===1?{ok:false,json:async()=>({error:'잘못된 음성 구간'})}:{ok:true,json:async()=>({text:'다음 정상 발언'})},async()=>({getTracks:()=>[{stop(){stops++;}}]}));
-  await h.media.startMic();h.queues[0].enqueue({blob:new Blob(['invalid'])});h.queues[0].enqueue({blob:new Blob(['valid'])});await turn();
-  assert.equal(stops,0);assert.equal(audio,2);assert.match(h.errors[0],/잘못된 음성 구간.*마이크는 켜져/);assert.equal(h.outboxes[0].items[0].text,'다음 정상 발언');h.media.stopMic();assert.equal(h.timers.size,0);
+test('speech captured before reconnect is delivered before the new microphone epoch',async()=>{
+  const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>({getTracks:()=>[{stop(){}}]}));
+  await h.media.startMic();const first=h.listeners[0];h.media.stopMic();
+  first.options.onTranscript('이전 입력',{startedAt:100,endedAt:200});
+  await h.media.startMic();h.listeners[1].options.onTranscript('새 입력',{startedAt:300,endedAt:400});
+  await turn();assert.deepEqual(h.outboxes[0].items.map(item=>item.text),['이전 입력']);
+  first.resolveDrain();await turn();
+  assert.deepEqual(h.outboxes[0].items.map(item=>item.text),['이전 입력','새 입력']);
+  h.state.running=false;h.listeners[1].options.onTranscript('방송 후 입력',{startedAt:500,endedAt:600});
+  await turn();assert.equal(h.outboxes[0].items.length,2);
+  h.media.stopMic();
+});
+
+test('a capture processor failure releases the device and requests reconnect visibly',async()=>{
+  let stops=0;const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>({getTracks:()=>[{stop(){stops++;}}]}));
+  await h.media.startMic();h.listeners[0].options.onCaptureFailure();
+  assert.equal(stops,1);assert.match(h.errors.at(-1),/연속 캡처가 끊겼습니다/);assert.equal(h.timers.size,0);
 });

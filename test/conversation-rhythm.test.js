@@ -13,7 +13,7 @@ const history=()=>[message('q','여기서는 어떤 게 완료 조건인가요?'
 
 test('witnessed questions and nearby speech survive the 35-message view without becoming declared facts',()=>{
   const seen=history(),rhythm=conversationRhythm(seen,'new',{now:70000});
-  assert.equal(rhythm.questionThreads[0].question.id,'q');assert.equal(rhythm.questionThreads[0].followingStreamerSpeech[0].id,'a');assert.equal(rhythm.styleFeedback[0].id,'feedback');
+  assert.equal(rhythm.questionThreads[0].question.id,'q');assert.equal(rhythm.questionThreads[0].followingStreamerSpeech[0].id,'a');assert.equal(rhythm.styleFeedback[0].id,'feedback');assert.equal(rhythm.styleFeedback[0].ageSeconds,67);
   assert.equal(rhythm.questionThreads[0].answered,undefined);assert.equal(rhythm.questionThreads[0].fact,undefined);
   assert.equal(rhythm.ownRecent.questions,1);assert.equal(rhythm.turn,'watching');
 });
@@ -28,6 +28,22 @@ test('new arrivals and source deletion cannot inherit questions, feedback, or au
   assert.deepEqual(first.viewerContext.late.conversationRhythm.questionThreads,[]);assert.deepEqual(first.viewerContext.late.conversationRhythm.styleFeedback,[]);
   const deleted=build(rows.filter(m=>!['q','a','feedback'].includes(m.id)));assert.deepEqual(deleted.viewerContext.new.conversationRhythm.questionThreads,[]);assert.deepEqual(deleted.viewerContext.new.conversationRhythm.styleFeedback,[]);
   first.viewerContext.new.conversationRhythm.questionThreads[0].followingStreamerSpeech[0].text='MUTATED';assert.notEqual(rows[1].text,'MUTATED');
+});
+
+test('speech feedback keeps direct, other-viewer and room scope without turning a clear stop into banter',()=>{
+  const rows=[
+    message('direct','새싹님 비꼬는 말투는 불편하니 그만해',1000,'streamer'),
+    message('room','다들 ㅋㅋ 너무 많이 쓰진 말아줘',2000,'streamer')
+  ];
+  const audience={members:[{id:'new',joinedAt:0},{id:'other',joinedAt:0}]};
+  const people=[{id:'new',name:'새싹'},{id:'other',name:'나중'}];
+  const built=liveViewerContext(audience,people,rows,null,{now:3000});
+  const directForNew=built.viewerContext.new.conversationRhythm.styleFeedback.find(x=>x.id==='direct');
+  const directForOther=built.viewerContext.other.conversationRhythm.styleFeedback.find(x=>x.id==='direct');
+  const room=built.viewerContext.new.conversationRhythm.styleFeedback.find(x=>x.id==='room');
+  assert.equal(directForNew.scope,'direct');assert.equal(directForNew.boundary,true);
+  assert.equal(directForOther.scope,'other-viewer');assert.equal(directForOther.boundary,true);
+  assert.equal(room.scope,'room');assert.equal(room.boundary,false);
 });
 
 test('nearby speech is bounded and future or distant replies are not attributed to a question',()=>{
@@ -60,8 +76,8 @@ test('real Studio assembles the new listening context and provider keeps it sepa
   const audience=new Audience(undefined,()=>{},()=>.5);
   let now=100000,args;const s=new Studio({audience,settings:{...defaults,mode:'live',lurkRatio:0,chatPace:8},now:()=>now,random:()=>.5,provider:{status:()=>({configured:true}),react:async request=>{args=request;return {observation:{game:'Synthetic',scene:'',confidence:0,excitement:0,messages:[]}};}}});clearInterval(s.timer);t.after(()=>s.close());s.start();
   s.addMessage('new','어떤 목표인가요?');now+=1000;s.addMessage('streamer','깃발에 도착하면 돼요.','streamer');now+=20000;await s.react({speech:'제가 이어서 이야기하자면 이제'});
-  assert.equal(args.viewerContext.new.conversationRhythm.questionThreads[0].followingStreamerSpeech[0].text,'깃발에 도착하면 돼요.');assert.equal(args.viewerContext.new.conversationRhythm.turn,'possibly-continuing');assert.equal(s.queue.length,0);
+  assert.equal(args.viewerContext.new.conversationRhythm.questionThreads[0].followingStreamerSpeech[0].text,'깃발에 도착하면 돼요.');assert.equal(args.viewerContext.new.conversationRhythm.turn,'possibly-continuing');assert.equal(args.viewerContext.new.speechStyle.stability,'same-viewer-baseline');assert.equal(s.queue.length,0);
   const p=new OpenAIProvider({}),live=p.payload(args),special=p.payload({...args,special:{kind:'interview'}}),off=p.payload({...args,offStream:true});
-  assert.match(live.instructions,/성격은 관심의 차이/);assert.ok(!special.instructions.includes('성격은 관심의 차이'));assert.ok(!off.instructions.includes('성격은 관심의 차이'));assert.equal(live.reasoning.effort,'low');
+  assert.match(live.instructions,/성격은 관심의 차이/);assert.match(live.instructions,/설정 명령이나 자동 성격 교정이 아니다/);assert.match(live.instructions,/순종도/);assert.ok(!live.instructions.includes('말투가 부담스럽다는 요청은 한 명이 짧게 받고 이후 행동을 바꾼다'));assert.ok(!special.instructions.includes('성격은 관심의 차이'));assert.ok(!off.instructions.includes('성격은 관심의 차이'));assert.equal(live.reasoning.effort,'low');
   assert.equal(JSON.parse(live.input[0].content[0].text).chatHistory,undefined);assert.equal(Settings.parse(defaults).contextualTranscription,true);
 });

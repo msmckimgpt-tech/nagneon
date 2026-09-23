@@ -30,6 +30,7 @@ import { temporalVideo } from './temporal-video.js';
 import { VIDEO_REACTION_TTL_MS } from '../shared/temporal-policy.js';
 import { sameViewingVisit, retainPresentReactions } from './live-presence.js';
 import { ReactionDiagnostics } from './reaction-diagnostics.js';
+import { isPlayfulPushbackText } from './viewer-speech-adaptation.js';
 
 export class Studio extends EventEmitter {
   constructor({
@@ -439,6 +440,7 @@ export class Studio extends EventEmitter {
     if (this.settings.mode === 'live')
       try {
         this.audience.message(msg.personaId, msg.text, this.settings);
+        this.autonomy?.recordStyleTrial?.(msg);
       } catch (error) {
         this.log(`관객 기억 저장 실패: ${error.message}`);
         this.lastError = error.message;
@@ -517,6 +519,7 @@ export class Studio extends EventEmitter {
       loreIds,
       screenSourceId,
       visits,
+      banterAllowed,
       advicePolicy,
       adviceRequestId,
       diagnosticId,
@@ -558,12 +561,15 @@ export class Studio extends EventEmitter {
         continue;
       }
       const p = this.settings.personas.find((p) => p.id === m.personaId && p.enabled);
-      const blocked = this.settings.blockedWords.some((w) =>
-        m.text
-          .normalize('NFKC')
-          .toLocaleLowerCase()
-          .includes(w.normalize('NFKC').toLocaleLowerCase()),
-      );
+      const blocked =
+        this.autonomy?.violatesStyleBoundary?.(m.personaId, m.text) ||
+        (origin === 'live' && isPlayfulPushbackText(m.text) && !banterAllowed?.[m.personaId]) ||
+        this.settings.blockedWords.some((w) =>
+          m.text
+            .normalize('NFKC')
+            .toLocaleLowerCase()
+            .includes(w.normalize('NFKC').toLocaleLowerCase()),
+        );
       const recent = [...this.messages.slice(-60), ...this.queue];
       const duplicate =
         origin === 'live'
@@ -1150,6 +1156,7 @@ export class Studio extends EventEmitter {
         now: capturedAt,
         viewing,
         externalChat: this.externalChat,
+        privateMembers: this.audience.data.members,
         addressViewers,
       },
     );
@@ -1278,6 +1285,12 @@ export class Studio extends EventEmitter {
           loreIds: [...operation.loreIds],
           chatDriven: true,
           visits,
+          banterAllowed: Object.fromEntries(
+            Object.entries(personalContext.viewerContext).map(([id, value]) => [
+              id,
+              value.playfulPushback?.allowed === true,
+            ]),
+          ),
           advicePolicy,
           expiresAt: capturedAt + SCREEN_REACTION_TTL_MS,
         },
@@ -1306,6 +1319,12 @@ export class Studio extends EventEmitter {
       loreIds: [...operation.loreIds],
       chatDriven,
       visits,
+      banterAllowed: Object.fromEntries(
+        Object.entries(personalContext.viewerContext).map(([id, value]) => [
+          id,
+          value.playfulPushback?.allowed === true,
+        ]),
+      ),
       advicePolicy,
       adviceRequestId,
       screenSourceId: screenTimeline?.sourceId,
@@ -1336,6 +1355,9 @@ export class Studio extends EventEmitter {
     personalContext,
     game,
   }) {
+    this.audience.observePresence(observation, witnesses, capturedAt, this.now(), {
+      visual: !!image,
+    });
     const donations = this.economy.reward({
       observation,
       settings: this.settings,
@@ -1346,8 +1368,18 @@ export class Studio extends EventEmitter {
     for (const d of donations) this.publishMessage(donationMessage(d));
     if (this.autonomy) {
       const clipSpeech = this.speechInbox.sources(speechBatch.ids);
+      const styleSourceId = speechBatch.ids.length
+        ? speechBatch.ids.join(',').slice(0, 200)
+        : `${this.sessionId}:${capturedAt}`;
       try {
-        this.autonomy.evolve(observation.viewerChanges, speech, witnesses);
+        this.autonomy.observeStyleScene?.(speech, witnesses, {
+          sourceId: styleSourceId,
+          capturedAt,
+        });
+        this.autonomy.evolve(observation.viewerChanges, speech, witnesses, {
+          sourceId: styleSourceId,
+          capturedAt,
+        });
         this.clipFeatures.spectatorPicks(observation, {
           image,
           speech: speechBatch.ids.length ? clipSpeech.map((e) => e.text).join('\n') : speech,

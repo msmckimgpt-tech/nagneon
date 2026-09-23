@@ -24,6 +24,7 @@ import { Knowledge } from './knowledge.js';
 import { LocalSound } from './local-sound.js';
 import { soundRoutes } from './sound-routes.js';
 import { LocalSpeech } from './local-speech.js';
+import { SpeechRecoveryStore } from './speech-recovery-store.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
 import { Clips } from './clips.js';
@@ -167,6 +168,7 @@ async function startServerImpl(
   const clipInspector = new ClipInspector(runtime.clips);
   const runtimeComponents = runtime.components ? new RuntimeComponents(runtime.components) : null;
   if (runtimeComponents) {
+    onResource(() => runtimeComponents.close());
     runtime.speech.prepare = (signal, device) =>
       runtimeComponents.prepare('microphone', signal, device);
     runtime.sound.prepare = (signal) => runtimeComponents.prepare('sound', signal);
@@ -251,6 +253,9 @@ async function startServerImpl(
   }
   if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);
   const world = new World(worldStore.data, worldStore.save);
+  const speechRecovery = persist
+    ? new SpeechRecoveryStore(resolve(dataDir, 'speech-recovery'))
+    : null;
   if (
     stores.some(
       (store) =>
@@ -348,6 +353,15 @@ async function startServerImpl(
       : res
           .status(401)
           .json({ error: '앱 연결 인증이 필요합니다. Nagneon 창에서 다시 연결하세요.' }),
+  );
+  // Studio users may read/moderate resident attachments, not upload into
+  // another resident's post. Reject before parsing bodies; internal resident
+  // generation/storage remains available through SocialRuntime.
+  app.post('/api/social/threads/:id/attachments', (_req, res) =>
+    res.status(403).json({
+      code: 'resident-attachments-only',
+      error: '이 게시글에는 스트리머가 파일을 추가할 수 없습니다. 주민의 첨부는 열람할 수 있어요.',
+    }),
   );
   app.use(express.json({ limit: '3mb' }));
   app.use((req, res, next) =>
@@ -928,6 +942,34 @@ async function startServerImpl(
       }
     },
   );
+  app.post(
+    '/api/audio/raw',
+    express.raw({ type: 'application/octet-stream', limit: '64kb' }),
+    async (req, res) => {
+      if (!speechRecovery)
+        return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+      const result = await speechRecovery.append({
+        sessionId: req.headers['x-speech-session'],
+        inputEpoch: req.headers['x-speech-epoch'],
+        sequence: Number(req.headers['x-speech-sequence']),
+        startFrame: Number(req.headers['x-speech-frame']),
+        frameCount: Number(req.headers['x-speech-count']),
+        data: req.body,
+      });
+      res.json({ ok: true, ...result });
+    },
+  );
+  app.get('/api/audio/raw/:sessionId/:inputEpoch', async (req, res) => {
+    if (!speechRecovery)
+      return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+    const audio = await speechRecovery.readRange(
+      req.params.sessionId,
+      req.params.inputEpoch,
+      Number(req.query.start),
+      Number(req.query.end),
+    );
+    res.type('audio/wav').send(audio);
+  });
   app.post('/api/moderate', (req, res) => {
     const { action, id } = z
       .object({ action: z.enum(['delete', 'ban', 'unban', 'clear']), id: z.string().default('') })
@@ -992,9 +1034,22 @@ async function startServerImpl(
   );
   const server = await listenBrowserLoopback(createServer(app), { port });
   expectedHost = `127.0.0.1:${server.address().port}`;
+  // 기존 설치는 앱 시작을 막지 않고 확인한다. 다운로드나 음성 장치는 시작하지 않는다.
+  void runtimeComponents?.inspectInstalled();
   // Start the local worker only when the renderer requests audio preparation.
   const health = setInterval(() => studio.publish(), 5000);
   health.unref();
+  if (speechRecovery)
+    void speechRecovery
+      .sweep()
+      .catch((error) => console.warn('마이크 원음 보존 정리 실패:', error.message));
+  const speechRetention = setInterval(() => {
+    if (speechRecovery)
+      void speechRecovery
+        .sweep()
+        .catch((error) => console.warn('마이크 원음 보존 정리 실패:', error.message));
+  }, 60000);
+  speechRetention.unref();
   return {
     server,
     studio,
@@ -1004,6 +1059,7 @@ async function startServerImpl(
     close: () => {
       if (closing) return closing;
       clearInterval(health);
+      clearInterval(speechRetention);
       obsInput.disconnect();
       // Start every cleanup even if another one fails, and keep the event loop
       // alive until all owned requests have left their cleanup/finally blocks.

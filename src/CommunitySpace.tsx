@@ -4,6 +4,7 @@ import { api } from './api';
 import type { State } from './types';
 import './social-community.css';
 import { SocialDiscussion, type Discussion } from './SocialDiscussion';
+import { CommunitySettings } from './CommunitySettings';
 type Post = Discussion & {
   id: string;
   communityId: string;
@@ -173,15 +174,21 @@ function OutsideCommunity({
       cancelled = true;
     };
   }, [active, selectedId, revision, audienceKey, refresh]);
+  const preferenceWrite = useRef(false);
   async function patch(value: Partial<Prefs>) {
-    if (busy) return;
+    if (busy || preferenceWrite.current) return;
+    preferenceWrite.current = true;
     setBusy(true);
     try {
       await api('social/preferences', value, 'PATCH');
+      setData((current) =>
+        current ? { ...current, preferences: { ...current.preferences, ...value } } : current,
+      );
       setRefresh((v) => v + 1);
     } catch (e) {
       onError((e as Error).message);
     } finally {
+      preferenceWrite.current = false;
       setBusy(false);
     }
   }
@@ -211,78 +218,12 @@ function OutsideCommunity({
           새로고침
         </button>
       </div>
-      <details className="social-settings">
-        <summary>커뮤니티 설정 · 자동활동 {p.enabled ? 'ON' : 'OFF'}</summary>
-        <label>
-          <input
-            type="checkbox"
-            checked={p.enabled}
-            disabled={busy}
-            onChange={(e) => void patch({ enabled: e.target.checked })}
-          />{' '}
-          주민 자동활동
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={p.arrivalsEnabled}
-            disabled={busy}
-            onChange={(e) => void patch({ arrivalsEnabled: e.target.checked })}
-          />{' '}
-          글을 읽은 주민의 다음 방송 방문
-        </label>
-        <p className="muted">
-          앱이 열려 있는 동안 연결된 AI의 사용량을 소비합니다. 방송과 내 요청이 우선합니다.
-        </p>
-        <label>
-          <input
-            type="checkbox"
-            checked={p.creativeImages}
-            disabled={busy}
-            onChange={(e) => void patch({ creativeImages: e.target.checked })}
-          />{' '}
-          주민 창작 이미지 · 픽셀 그림
-        </label>
-        <p className="muted">
-          기본 OFF. 켜면 기존 AI가 일상 글과 함께 간단한 PNG 그림을 만들 수 있어요. 별도 유료 이미지
-          API는 사용하지 않습니다.
-        </p>
-        {p.hiddenThreads.length > 0 && (
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => void patch({ hiddenThreads: [] })}
-          >
-            숨긴 글 다시 표시 ({p.hiddenThreads.length})
-          </button>
-        )}
-        {data.communities.map((c) => (
-          <div key={c.id}>
-            <label>
-              <input
-                type="checkbox"
-                checked={!p.mutedCommunities.includes(c.id)}
-                disabled={busy}
-                onChange={() => toggle('mutedCommunities', c.id)}
-              />
-              {c.name} 활동
-            </label>
-            <div className="social-topic-settings">
-              {c.topics.map((t) => (
-                <label key={t.id}>
-                  <input
-                    type="checkbox"
-                    checked={!p.mutedTopics.includes(t.id)}
-                    disabled={busy}
-                    onChange={() => toggle('mutedTopics', t.id)}
-                  />
-                  {t.label}
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </details>
+      <CommunitySettings
+        preferences={p}
+        communities={data.communities}
+        busy={busy}
+        onPatch={patch}
+      />
       {data.quarantined ? (
         <p role="status">기록 복구 확인이 필요해 커뮤니티 열람과 활동을 보류하고 있어요.</p>
       ) : data.blockedReason ? (
@@ -363,20 +304,20 @@ function OutsideCommunity({
         >
           내 이야기 찾기
         </button>
-        <label>
-          <input
-            type="checkbox"
-            checked={bookmarked}
-            onChange={(e) =>
-              reading.move(() => {
-                setBookmarked(e.target.checked);
-                setOffset(0);
-                setSelected(null);
-              }, true)
-            }
-          />
-          북마크
-        </label>
+        <button
+          type="button"
+          className="secondary social-bookmark-filter"
+          aria-pressed={bookmarked}
+          onClick={() =>
+            reading.move(() => {
+              setBookmarked((value) => !value);
+              setOffset(0);
+              setSelected(null);
+            }, true)
+          }
+        >
+          북마크만 보기
+        </button>
       </form>
       <div ref={reading.ref} className="community-reading-content" tabIndex={-1}>
         {selected ? (

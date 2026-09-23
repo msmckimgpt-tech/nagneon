@@ -1,11 +1,12 @@
 import {useEffect,useRef,useState} from 'react';
 import {useSystemSound} from './useSystemSound';
+import {useSoundAnalysisSource} from './useSoundAnalysisSource';
 import {api} from './api';
 import type {State} from './types';
 import {useClipBuffer} from './useClipBuffer';
 import {ClipUploads} from './clip-uploads';
-import {SpeechQueue,SpeechOutbox,recognizeWithRecovery,type SpeechCapture} from './speech-flow';
-import {startMicrophoneRecorder} from './microphone-recorder.ts';
+import {SpeechOutbox,type SpeechCapture} from './speech-flow';
+import {ContinuousListening} from './continuous-listening.ts';
 import {TemporalFrames} from './temporal-frames';
 import {startTemporalCapture} from './temporal-capture';
 import {prepareCapture,releaseCapture,type CapturePhase} from './capture-preparation';
@@ -18,13 +19,16 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const micRetryAt=useRef(0),runtimeMicRequested=useRef(false);
   const micPreparation=useRef<AbortController|null>(null);
   const capturePreparation=useRef<AbortController|null>(null),[capturePreparing,setCapturePreparing]=useState<CapturePhase|null>(null);
-  const recording=useRef(false),stopRecorder=useRef<(()=>void)|null>(null),context=useRef<AudioContext|null>(null);
+  const recording=useRef(false),listening=useRef<ContinuousListening|null>(null);
+  const priorListeningDrain=useRef<Promise<void>>(Promise.resolve());
   const stateRef=useRef(state);stateRef.current=state;const pendingSpeech=useRef(new SpeechOutbox());const epoch=useRef(0),wake=useRef<()=>void>(()=>{});
-  const speechQueue=useRef<SpeechQueue<{blob:Blob;capture?:SpeechCapture},{text:string;cues?:{delivery?:string};capture?:SpeechCapture}>|null>(null);
   const clipUploads=useRef<ClipUploads|null>(null);
   const errorRef=useRef(onError);errorRef.current=onError;
   const [outputStream,setOutputStream]=useState<MediaStream|null>(null),[picture,setPicture]=useState(true);const pictureRef=useRef(true);
-  const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
+  const analysisStream=useSoundAnalysisSource(outputStream,message=>errorRef.current(message));
+  // Analysis owns audio-only clones. Model/decoder failures must not stop the
+  // original system tracks or the independent hotclip recorder.
+  const sound=useSystemSound(analysisStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>errorRef.current(message+' 소리 분석을 확인해주세요. 클립 녹음 연결은 별도로 유지합니다.'));
   const clipRuntimeReady=!state?.runtimeComponents||state.runtimeComponents.components.find(c=>c.id==='audio')?.status==='ready';
   const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled&&clipRuntimeReady,state?.sessionId || null,outputStream,message=>errorRef.current(message));
   // Settings can enable clipping after an existing screen connection. Prepare
@@ -41,8 +45,8 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   function stopSound(){if(!pictureRef.current){stopScreen();return;}cancelCapture();clipUploads.current?.dispose();screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}
   function cancelCapture(){captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;setCapturePreparing(null);}
   function stopScreen(){cancelCapture();endFrames();clipUploads.current?.dispose();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setOutputStream(null);setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}captureVideo.current=null;}
-  function stopMic(){clipUploads.current?.dispose();epoch.current++;micPreparation.current?.abort();micPreparation.current=null;setMicPreparing(false);recording.current=false;speechQueue.current?.reset();speechQueue.current=null;stopRecorder.current?.();stopRecorder.current=null;micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
-  function stopAll(){runtimeMicRequested.current=false;stopScreen();stopMic();pendingSpeech.current.clear();}
+  function stopMic(){clipUploads.current?.dispose();epoch.current++;micPreparation.current?.abort();micPreparation.current=null;setMicPreparing(false);recording.current=false;const listener=listening.current;listener?.stopCapture();if(listener)priorListeningDrain.current=Promise.all([priorListeningDrain.current,listener.drained]).then(()=>{});listening.current=null;micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;setMic(false);setLevel(0);}
+  function stopAll(){runtimeMicRequested.current=false;stopScreen();stopMic();priorListeningDrain.current=Promise.resolve();if(pendingSpeech.current.items.some(item=>item.source==='microphone'))errorRef.current('방송 종료 전에 전달되지 않은 음성 발언이 있습니다. 최근 24시간의 로컬 원음 파일에서 복구할 수 있습니다.');pendingSpeech.current.clear();}
   async function share(sourceId?:string,options={systemAudio:false,picture:true}){
     if(capturePreparation.current)return;
     const ticket=++captureEpoch.current,preparation=new AbortController();capturePreparation.current=preparation;
@@ -99,23 +103,19 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       if(generation!==epoch.current||!stateRef.current?.running)return;
       const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       if(generation!==epoch.current||!stateRef.current?.running){stream.getTracks().forEach(t=>t.stop());return;}micStream.current=stream;
-      const ctx=new AudioContext();context.current=ctx;const source=ctx.createMediaStreamSource(stream);const analyser=ctx.createAnalyser();analyser.fftSize=512;source.connect(analyser);
-      await ctx.resume();if(generation!==epoch.current||!stateRef.current?.running)return;recording.current=true;setMic(true);
+      if(generation!==epoch.current||!stateRef.current?.running)return;
       for(const track of stream.getAudioTracks())track.onended=()=>{if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+1000;errorRef.current('마이크 연결이 끊겨 다시 연결하고 있습니다.');}};
-      const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
-      const queue=new SpeechQueue<{blob:Blob;capture?:SpeechCapture},{text:string;cues?:{delivery?:string};capture?:SpeechCapture}>({
-        execute:async({blob,capture},signal)=>recognizeWithRecovery(async()=>{const res=await fetch('/api/audio',{method:'POST',headers:{'Content-Type':mime,'X-Backseat-Client':'studio'},body:blob,signal});const result=await res.json();if(!res.ok)throw Object.assign(new Error(result.error),{needsPreparation:result.needsPreparation===true});return {...result,capture};},async()=>{const res=await fetch('/api/audio/prepare',{method:'POST',headers:{'X-Backseat-Client':'studio'},signal});const result=await res.json();if(!res.ok)throw Error(result.error||'음성 인식 재연결 실패');},signal),
-        onResult:result=>{if(generation===epoch.current&&recording.current&&result.text){setTranscript(result.text);setDelivery(result.cues?.delivery||'');say(result.text,'microphone',result.capture);}},
-        onError:e=>{if(generation!==epoch.current)return;errorRef.current((e instanceof Error?e.message:'음성 인식 실패')+' 마이크는 켜져 있습니다. 인식하지 못한 말은 다시 들려주세요.');}
-      });speechQueue.current=queue;
-      stopRecorder.current=startMicrophoneRecorder({
-        stream,analyser,mimeType:mime,
-        active:()=>recording.current&&generation===epoch.current,
+      const speechSessionId=stateRef.current.sessionId,deliveryGate=priorListeningDrain.current;
+      const listener=await new ContinuousListening({sessionId:speechSessionId,track:stream.getAudioTracks()[0],
         onLevel:value=>setLevel(value),
         attachScreen:capture=>{capture.screen=temporal.current.speechWindow(capture.startedAt,capture.endedAt);},
-        onSegment:(blob,capture)=>{if(queue.enqueueLatest({blob,capture}))errorRef.current('인식이 밀려 오래된 대기 음성 하나를 건너뛰었어요. 마이크는 켜져 있습니다. 필요한 말은 다시 들려주세요.');},
-        onFailure:()=>{if(generation===epoch.current){stopMic();errorRef.current('마이크 녹음을 이어갈 수 없습니다. 입력 장치를 확인해주세요. 자동으로 다시 연결합니다.');}}
-      });
+        onTranscript:(text,capture,cues)=>{void deliveryGate.then(()=>{if(stateRef.current?.running&&stateRef.current.sessionId===speechSessionId){setTranscript(text);setDelivery(cues?.delivery||'');say(text,'microphone',capture);}});},
+        onError:message=>{if(stateRef.current?.sessionId===speechSessionId)errorRef.current(message);},
+        onStorageFailure:()=>{if(generation===epoch.current){runtimeMicRequested.current=false;stopMic();}},
+        onCaptureFailure:()=>{if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+1000;errorRef.current('마이크 연속 캡처가 끊겼습니다. 연결을 확인하고 다시 시도합니다.');}}
+      }).start();
+      if(generation!==epoch.current||!stateRef.current?.running){listener.stopCapture();return;}
+      listening.current=listener;recording.current=true;setMic(true);
     }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;const components=stateRef.current?.runtimeComponents;const needed=['audio','microphone',...(stateRef.current?.settings.speechDevice==='gpu'?['gpu']:[])];const needsPreparation=components&&needed.some(id=>components.components.find(c=>c.id===id)?.status!=='ready');if(needsPreparation)runtimeMicRequested.current=false;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+(needsPreparation?' 구성을 준비한 뒤 마이크를 다시 켜주세요.':' 자동으로 다시 연결합니다.'));}}
     finally{acquiringMic.current=false;if(micPreparation.current===preparation){micPreparation.current=null;setMicPreparing(false);}}
   }
@@ -146,6 +146,6 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
     wake.current=()=>void tick();void tick();const timer=setInterval(()=>void tick(),1500);return()=>{disposed=true;wake.current=()=>{};clearInterval(timer);};
   },[state?.running,state?.sessionId]);
   useEffect(()=>{if(state){if(wasRunning.current&&!state.running)stopAll();wasRunning.current=state.running;}},[state?.running]);
-  useEffect(()=>()=>{epoch.current++;micPreparation.current?.abort();micPreparation.current=null;speechQueue.current?.reset();pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;screenStream.current?.getTracks().forEach(t=>t.stop());if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}recording.current=false;stopRecorder.current?.();stopRecorder.current=null;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
+  useEffect(()=>()=>{epoch.current++;micPreparation.current?.abort();micPreparation.current=null;pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;screenStream.current?.getTracks().forEach(t=>t.stop());if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}recording.current=false;listening.current?.stopCapture();listening.current=null;micStream.current?.getTracks().forEach(t=>t.stop());},[]);
   return {video,sharing,capturePreparing,cancelCapture,soundSharing:!!outputStream,soundStatus:sound.status,soundLevel:sound.level,stopSound,mic,micPreparing,level,transcript,delivery,share,stopScreen,startMic,stopMic,stopAll,say,clipBuffering:clips.buffering};
 }

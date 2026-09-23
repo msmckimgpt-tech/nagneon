@@ -33,11 +33,11 @@ test('provider API persists nonsecret choice, keeps audio, and rejects unsafe tr
   }finally{release?.();await service?.close();await rm(folder,{recursive:true,force:true});}
 });
 
-test('hosted model API restores saved configuration and resets stale probes',async()=>{
+for(const model of ['gpt-5.4-mini','gpt-5.6-luna','gpt-6-sol','gpt-6-luna'])test(`hosted model API restores ${model} and resets stale probes`,async()=>{
   const folder=await mkdtemp(resolve('artifacts/hosted-selection-'));let service;
   const fake=config=>new OpenAIProvider({OPENAI_API_KEY:'fixture-secret',...hostedModelEnv(config)});
   const options={port:0,dataDir:folder,localSpeech:false,providerFactories:{codex:fake,openai:fake}};
-  const config={kind:'codex',model:'gpt-5.4-mini',effort:'none'};
+  const config={kind:'codex',model,effort:'none'};
   const post=async body=>fetch(service.url+'/api/connection/provider',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(body)});
   try{
     service=await startServer(options);const response=await post(config);assert.equal(response.ok,true);assert.deepEqual((await response.json()).config,config);
