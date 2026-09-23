@@ -1,4 +1,4 @@
-.saved-note { color:#bcf591 }
+.saved-note { color:var(--neon) }
 .sidebar { overflow-y:auto }
 .sidebar nav { flex-shrink:0 }
 .storage-notice p { font-size:12px;overflow-wrap:anywhere;line-height:1.7 }

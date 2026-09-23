@@ -1,5 +1,16 @@
 # 내 발언 표시 전환 성능
 
+## 2026-09-23 발언 수신의 중복 상태 생성 제거
+
+새 발언을 받을 때 메시지를 기록하면서 한 번, 발언 접수와 이전 반응 취소를 끝낸 뒤 다시 한 번 상태를 발행하던 경로를 정리했다. 이제 `receiveSpeech`는 접수 기록과 취소 처리를 끝낸 상태를 동기적으로 한 번 발행한다. `publishMessage`의 기본 즉시 발행은 유지해 일반 관객 메시지와 큐 전달은 바뀌지 않는다. 타이머나 추가 표시 대기는 도입하지 않았다.
+
+- 회귀 검사 4개: 접수·이전 반응 취소·유료 반응 보존, 재시도 중복 방지와 직접 메시지 발행, 입력 대기열 초과 거절, 기억 저장 실패 시 메시지와 오류 안내 보존.
+- 실제 로컬 HTTP/SSE 합성 검사: 초기 상태 1개와 발언 처리 후 상태 1개를 수신했다. 후속 상태의 이전 반응 대기 수는 0이며 메시지 ID가 HTTP 접수 결과와 일치한다. 모델 호출과 물리 장치 사용은 0회다.
+- `npm run check`: 포매팅, 712개 검사, TypeScript/Vite 빌드 통과. `npm audit --audit-level=high`: 취약점 0건.
+- 증거는 `review-speech-publish-20260923/artifacts/`의 `speech-publication-focused.log`, `check-resumed.log`, `audit-resumed.log`, `speech-publication-http-result.json`이다. 설치본 적용, 실제 사용자 방송 지연 또는 전체 상태 발행 빈도 개선을 검증한 결과는 아니다.
+
+## 기존 표시 전환 개선
+
 2026-09-13 사용자 보고: 오버레이에서 내 발언 표시를 누를 때마다 성능이 저하된다.
 
 - 작업: `fix/overlay-display-performance`, `G:/dev/ai/00_game_backseat-worktrees/overlay-display-performance`

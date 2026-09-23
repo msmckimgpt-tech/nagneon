@@ -1,13 +1,13 @@
 .guided-layout { --guide-height: 176px; }
-.guided-tutorial { position: sticky; top:0; z-index: 5; display:flex; gap:24px; align-items:center; padding:18px 28px; min-height:176px; box-sizing:border-box; background:#202936; border-bottom:2px solid #b6f36c; color:#f4f5f7; }
+.guided-tutorial { position: sticky; top:0; z-index: 5; display:flex; gap:24px; align-items:center; padding:18px 28px; min-height:176px; box-sizing:border-box; background:#202936; border-bottom:2px solid var(--neon); color:#f4f5f7; }
 .tutorial-copy { flex:1; min-width:0; }
 .guided-tutorial h2 { margin:6px 0; font-size:20px; }
 .guided-tutorial p { margin:0; line-height:1.6; max-width:780px; }
 .tutorial-actions { display:flex; flex-wrap:wrap; gap:8px; max-width:390px; align-items:center; }
 .tutorial-actions small { width:100%; color:#bdc6d5; line-height:1.5; }
 .tutorial-actions [role=alert] { color:#ffbdad; }
-.tutorial-target { outline:3px solid #b6f36c!important; outline-offset:4px; box-shadow:0 0 0 7px #b6f36c25!important; scroll-margin:calc(var(--guide-height,176px) + 24px) 24px 24px; }
-.first-viewer-status { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 14px; padding:10px 16px; border:1px solid #67744e; border-radius:10px; background:#b6f36c0a; font-size:13px; }
+.tutorial-target { outline:3px solid var(--neon)!important; outline-offset:4px; box-shadow:0 0 0 7px var(--accent-focus)!important; scroll-margin:calc(var(--guide-height,176px) + 24px) 24px 24px; }
+.first-viewer-status { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 14px; padding:10px 16px; border:1px solid var(--accent-border); border-radius:10px; background:var(--accent-soft); font-size:13px; }
 .guided-layout .sidebar { position:relative; top:auto; height:auto; min-height:calc(100dvh - var(--guide-height)); }
 .guided-layout .workspace { margin-left:0; min-width:0; flex:1; }
 .guided-layout .studio-workspace { height:calc(100dvh - var(--guide-height)); min-height:650px; }
