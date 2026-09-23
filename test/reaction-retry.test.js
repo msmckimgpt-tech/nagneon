@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Studio} from '../server/studio.js';
+import {Audience} from '../server/audience.js';
 import {defaults} from '../shared/defaults.js';
 
 function setup(t) {
   let now=1_000_000,fail=false,requests=0;
-  const studio=new Studio({now:()=>now,random:()=>0.5,settings:{...defaults,mode:'live',lurkRatio:0,intervalSeconds:5},provider:{status:()=>({configured:true}),react:async()=>{
+  // Keep the audience's independent RNG stable: a random departure changes
+  // viewing identity and is not an unchanged-input retry scenario.
+  const audience=new Audience(undefined,undefined,()=>0.5);
+  const studio=new Studio({audience,now:()=>now,random:()=>0.5,settings:{...defaults,mode:'live',lurkRatio:0,intervalSeconds:5},provider:{status:()=>({configured:true}),react:async()=>{
     requests++;if(fail)throw Error('synthetic unavailable');
     return {observation:{game:'Test',scene:'synthetic',confidence:0.9,excitement:0.2,messages:[]},usage:{total_tokens:1}};
   }}});
