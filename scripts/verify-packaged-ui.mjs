@@ -104,7 +104,7 @@ const evaluate = async (expression) => {
 };
 async function until(expression) {
   for (let i = 0; i < 100; i++) {
-    if (await evaluate(`Boolean(${expression})`)) return;
+    if (await evaluate(`(async()=>Boolean(${expression}))()`)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw Error('UI did not become ready: ' + expression);
@@ -214,11 +214,14 @@ try {
     `(async()=>{const s=await (await fetch('/api/state')).json();const r=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({...s.settings,mode:'rehearsal'})});return r.status;})()`,
   );
   assert.equal(changed, 200);
-  await until("document.body.innerText.includes('리허설 시작')");
+  const enabledButton = (label) =>
+    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&b.textContent.trim()===${JSON.stringify(label)})`;
+  await until(enabledButton('리허설 시작'));
   await click('리허설 시작');
-  await until("document.body.innerText.includes('방송 종료')");
+  await until(enabledButton('방송 종료'));
   await click('방송 종료');
-  await until("document.body.innerText.includes('리허설 시작')");
+  await until(enabledButton('리허설 시작'));
+  await until("await fetch('/api/state').then(r=>r.json()).then(s=>s.running===false)");
   assert.equal(
     await evaluate(
       "(async()=>{const s=await (await fetch('/api/state')).json();return s.running;})()",
