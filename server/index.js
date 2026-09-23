@@ -2,6 +2,8 @@ import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutor
 import { SpeechCapture } from './speech-screen.js';
 import { DebugConfig, initialDebug, withDebugPrompt, debugRoutes } from './debug-mode.js';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenBrowserLoopback, validateBrowserListenPort } from './browser-loopback.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
@@ -72,6 +74,7 @@ export async function startServer({
   providerFactories,
   providerSwitchAllowed = () => true,
 } = {}) {
+  validateBrowserListenPort(port);
   const access = createLocalAccess({ browserConnect });
   let expectedHost;
   const stores = [];
@@ -923,19 +926,13 @@ export async function startServer({
           : error.message || '요청 처리 실패',
     }),
   );
-  const server = await new Promise((resolve, reject) => {
-    const s = app.listen(port, '127.0.0.1', () => resolve(s));
-    s.on('error', reject);
-  });
-  expectedHost = `127.0.0.1:${server.address().port}`;
-  // Start the local worker only when the renderer requests audio preparation.
-  const health = setInterval(() => studio.publish(), 5000);
-  health.unref();
-  return {
+  const server = createServer(app);
+  let health;
+  const service = {
     server,
     studio,
     obsInput,
-    url: `http://${expectedHost}`,
+    url: '',
     accessToken: access.token,
     close: () => {
       if (closing) return closing;
@@ -965,7 +962,9 @@ export async function startServer({
         invoke(
           () =>
             new Promise((done, fail) => {
-              server.close((error) => (error ? fail(error) : done()));
+              server.close((error) =>
+                error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? fail(error) : done(),
+              );
               server.closeAllConnections();
             }),
         ),
@@ -979,6 +978,23 @@ export async function startServer({
       return closing;
     },
   };
+  try {
+    await listenBrowserLoopback(server, { port });
+  } catch (error) {
+    // A failed startup still owns timers/workers created during assembly.
+    try {
+      await service.close();
+    } catch (cleanup) {
+      throw new AggregateError([error, cleanup], '앱 연결 준비와 종료 정리에 실패했습니다.');
+    }
+    throw error;
+  }
+  expectedHost = `127.0.0.1:${server.address().port}`;
+  service.url = `http://${expectedHost}`;
+  // Start the local worker only when the renderer requests audio preparation.
+  health = setInterval(() => studio.publish(), 5000);
+  health.unref();
+  return service;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const service = await startServer({
