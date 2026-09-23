@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { domainOrigin, publicAddress, getPublic, collectDomain, extractDocument } from '../server/culture/source.js';
 import { CultureLearning, withCultureContext } from '../server/culture/learning.js';
+import { AiControl } from '../server/ai-control.js';
 import { Settings } from '../server/schema.js';
 import { defaults } from '../shared/defaults.js';
 import { OpenAIProvider, format } from '../server/provider.js';
@@ -14,6 +15,7 @@ function setup(options = {}) {
   let now = 1000000;
   const s = { now: () => now, settings: Settings.parse({ ...defaults, mode: 'live', cultureDomains: [origin] }), audience: { data: { posts: [] } }, queue: [], epoch: 1,
     provider: { status: () => ({ configured: true }), react: async () => ({ observation: { cultureAnalysis: analysis, messages: [] } }) }, reserveCall() { this.calls = (this.calls || 0) + 1; }, tokens: 0, publish() {} };
+  s.ai = new AiControl({now:s.now}); s.ai.update({background:true});
   const learning = new CultureLearning(s, { collect: async () => collected, ...options }); s.culture = learning;
   learning.sync();
   return { s, learning, advance: (ms = 60001) => { now += ms; }, run: async () => { learning.tick(); await learning.active?.promise; } };

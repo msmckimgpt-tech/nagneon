@@ -17,6 +17,7 @@ function fixture(t,react=async()=>output(),stored={}){
  const audience=new Audience(stored.audience||{members:{momo:member(),luna:member()},posts:[],lore:[]});
  const clips=new Clips({data:stored.clips||[],now:()=>now,save:v=>ClipsData.parse(v)});
  const s=new Studio({audience,clips,settings:{...defaults,personas:defaults.personas.filter(p=>['momo','luna'].includes(p.id)),mode:'live'},now:()=>now,random:()=>0,provider:{status:()=>({configured:true}),react:(a,signal)=>{calls++;last=a;return react(a,signal);}}});
+ s.ai.update({background:true}); // Explicit opt-in: these tests exercise allowed background activity.
  clearInterval(s.timer);t.after(()=>s.close());
  const visit=async(ms=60001)=>{now+=ms;s.pump();await s.communityActivity.active?.promise;};
  const clip=()=>clips.create({title:'처음 푼 퍼즐',game:'퍼즐',scene:'마지막 조각을 맞췄다',participants:[],messages:[{id:randomUUID(),personaId:'streamer',name:'방장',kind:'streamer',text:'드디어 맞췄다',time:now}],sessionId:randomUUID(),source:'spectator'});

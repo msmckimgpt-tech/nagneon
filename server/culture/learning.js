@@ -68,7 +68,7 @@ export class CultureLearning {
   }
   available() {
     const s = this.s;
-    return !this.closed && !this.active && !s.running && !s.busy && !s.audioBusy && !s.autonomy?.waiting && !s.communityActivity?.active && !s.queue.length && s.settings.mode === 'live' && s.settings.memesEnabled && s.provider.status().configured && s.now() - this.lastInput >= 60000;
+    return !this.closed && !this.active && !s.running && !s.busy && !s.audioBusy && !s.autonomy?.waiting && !s.communityActivity?.active && !s.queue.length && s.settings.mode === 'live' && s.settings.memesEnabled && s.ai.allowed('culture') && s.provider.status().configured && s.now() - this.lastInput >= 60000;
   }
   tick() {
     if (this.closed || this.storageError) return;
@@ -96,10 +96,12 @@ export class CultureLearning {
       if (s.running || s.busy || s.audioBusy || s.communityActivity?.active || s.autonomy?.waiting) return;
       s.reserveCall();
       const result = await s.provider.react({
+        aiFeature: 'culture',
         settings: { ...s.settings, personas: [], webSearch: false }, history: [], offStream: true,
         cultureSource: { origin: item.origin, documents: collected.documents },
       }, signal);
       if (!valid()) return;
+      s.ai.assertCurrent(result);
       const analysis = CultureAnalysis.parse(result.observation.cultureAnalysis);
       // Store paraphrased patterns only. Never treat model inference as verified trending evidence.
       const raw = collected.documents.map(d => d.text).join(' ');
@@ -108,6 +110,7 @@ export class CultureLearning {
       }
       this.change(d => Object.assign(d.sources.find(v => v.origin === item.origin), { analysis, digest: collected.digest, checkedAt: s.now(), analyzedAt: s.now(), urls: collected.documents.map(d => d.url), failures: 0, error: '' }));
       s.tokens += Number(result.usage?.total_tokens) || 0;
+      s.ai.accepted(result);
     } catch (error) {
       if (!valid()) return;
       try { this.change(d => { const row = d.sources.find(v => v.origin === item.origin); row.failures = Math.min(10, row.failures + 1); row.error = '공개 자료 수집·분석을 완료하지 못했습니다. 다음 주기에 다시 확인합니다.'; row.nextAt = Math.max(row.nextAt, s.now() + Math.min(7 * 24, 12 * 2 ** row.failures) * HOUR, Number.isFinite(error.retryAt) ? Math.min(error.retryAt, s.now() + 30 * 24 * HOUR) : 0); }); }

@@ -19,6 +19,7 @@ import { repeatedChat } from './chat-quality.js';
 import { admitTranscriptCorrection, transcriptAnomaly } from './transcript-correction.js';
 import { revisesLiveSituation } from './streamer-expression.js';
 import { Community } from './community.js';
+import { AiControl } from './ai-control.js';
 import { CommunityActivity } from './community-activity.js';
 import { CultureLearning } from './culture/learning.js';
 import { ClipPerception } from './clip-perception.js';
@@ -44,11 +45,13 @@ export class Studio extends EventEmitter {
     clips,
     clipPerception,
     cultureLearning,
+    aiControl,
     storageStatus = () => ({ warnings: [], recovered: [] }),
   } = {}) {
     super();
     this.runtime = { snapshot: () => ({}), beforeStop: [] };
-    this.provider = provider;
+    this.ai = aiControl || new AiControl({ now: () => this.now() });
+    this.provider = this.ai.wrap(provider);
     this.settings = Settings.parse(settings);
     this.persist = persist;
     this.now = now;
@@ -84,6 +87,42 @@ export class Studio extends EventEmitter {
     this.communityActivity = new CommunityActivity(this);
     this.culture = new CultureLearning(this, cultureLearning);
     this.clipPerception = clipPerception || new ClipPerception();
+    this.ai.bind({
+      context: () => ({
+        settings: this.settings,
+        sessionId: this.sessionId,
+        localSpeech: this.provider.localSpeech,
+        community: this.communityActivity.snapshot(),
+        culture: this.culture.snapshot(),
+      }),
+      onChange: () => this.publish(),
+      onPolicy: (affected, before) => {
+        const after = this.ai.data.policy;
+        if (
+          affected.includes('community') ||
+          before.paused !== after.paused ||
+          before.background !== after.background ||
+          before.features.community !== after.features.community
+        )
+          this.communityActivity.interrupt();
+        if (
+          affected.includes('culture') ||
+          before.paused !== after.paused ||
+          before.background !== after.background ||
+          before.features.culture !== after.features.culture
+        )
+          this.culture.interrupt();
+        if (affected.includes('reaction') || affected.includes('ambient')) {
+          if (affected.includes(this.liveReaction?.aiFeature)) this.liveReaction.controller.abort();
+          this.queue = this.queue.filter(
+            (m) => m.origin !== 'live' || !affected.includes(m.aiFeature || 'reaction'),
+          );
+          this.speechInbox.clear();
+          this.ambient.reset();
+          this.viewing.reset();
+        }
+      },
+    });
   }
   resetCounters() {
     this.reactions.reset();
@@ -154,6 +193,7 @@ export class Studio extends EventEmitter {
       messages: this.messages,
       events: this.events,
       observation: this.observation,
+      ai: this.ai.snapshot(),
       calls: this.calls,
       tokens: this.tokens,
       busy: this.busy && !this.communityActivity?.active,
@@ -188,6 +228,8 @@ export class Studio extends EventEmitter {
       if (capture.screen && capture.screen.sessionId !== sessionId)
         throw new Error('이미 끝난 방송의 화면은 전달할 수 없습니다.');
     }
+    if (this.settings.mode === 'live' && !this.ai.allowed('reaction'))
+      throw new Error(this.ai.reason('reaction'));
     const hearers = this.presentWitnesses().filter(
       (id) => !capture || this.audience.data.members[id]?.joinedAt <= capture.startedAt,
     );
@@ -300,6 +342,7 @@ export class Studio extends EventEmitter {
     this.sessionId = randomUUID();
     this.startedAt = this.now();
     try {
+      this.ai.startSession(this.sessionId);
       if (this.settings.mode === 'live') {
         this.audience.start(this.settings, this.now()).forEach((e) => this.log(e));
         this.autonomy?.start();
@@ -353,6 +396,7 @@ export class Studio extends EventEmitter {
     this.publish();
   }
   close() {
+    this.ai.close();
     void this.culture.close();
     this.communityActivity.close();
     void this.clipPerception.close();
@@ -665,6 +709,14 @@ export class Studio extends EventEmitter {
     else this.communityActivity.interrupt();
     if (video && this.endedVideoSources.has(video.sourceId)) return { skipped: 'ended-screen' };
     if (!this.running) throw new Error('방송을 먼저 시작하세요.');
+    if (
+      this.settings.mode === 'live' &&
+      !this.ai.allowed('reaction') &&
+      !this.ai.allowed('ambient')
+    ) {
+      this.speechInbox.clear();
+      return { skipped: 'ai-blocked' };
+    }
     if (this.busy) return { skipped: 'busy' };
     if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
     const speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
@@ -695,11 +747,17 @@ export class Studio extends EventEmitter {
     if (prepared.skipped) return prepared;
     const { viewing, frames, screenTimeline, idleConversation, watchingCompany } = prepared;
     image = prepared.image;
+    const aiFeature = idleConversation ? 'ambient' : 'reaction';
+    if (this.settings.mode === 'live' && !this.ai.allowed(aiFeature)) {
+      this.speechInbox.acknowledge(speechBatch.ids);
+      return { skipped: 'ai-blocked' };
+    }
     let diagnosticId,
       diagnosticOutcome = 'accepted';
     const operation = {
       controller: new AbortController(),
       hasSpeech: !!speech,
+      aiFeature,
       superseded: false,
       sourceId: idleConversation ? undefined : screenTimeline?.sourceId,
     };
@@ -762,6 +820,7 @@ export class Studio extends EventEmitter {
         const responseStartedAt = this.now();
         const result = await this.provider.react(
           {
+            aiFeature,
             settings: eligibleSettings,
             history: [],
             previous: null,
@@ -783,6 +842,8 @@ export class Studio extends EventEmitter {
           },
           signal,
         );
+        this.ai.assertCurrent(result);
+        const previousQueue = new Set(this.queue);
         const accepted = this.acceptLiveReaction({
           context,
           result,
@@ -797,6 +858,9 @@ export class Studio extends EventEmitter {
           idleConversation,
           image,
         });
+        for (const message of this.queue)
+          if (!previousQueue.has(message)) message.aiFeature = aiFeature;
+        if (!accepted) this.ai.accepted(result);
         if (accepted) {
           diagnosticOutcome = accepted.outcome;
           return accepted.result;
@@ -808,6 +872,17 @@ export class Studio extends EventEmitter {
       this.retryAt = 0;
       return { ok: true };
     } catch (error) {
+      if (Number.isFinite(error.aiGenerated))
+        this.reactions.generated(diagnosticId, error.aiGenerated);
+      if (['ai_blocked', 'ai_cancelled'].includes(error.code)) {
+        diagnosticOutcome = 'stopped';
+        this.speechInbox.acknowledge(speechBatch.ids);
+        return { skipped: 'ai-blocked' };
+      }
+      if (epoch !== this.epoch) {
+        diagnosticOutcome = 'stopped';
+        return { skipped: 'stopped' };
+      }
       diagnosticOutcome = operation.superseded
         ? 'superseded'
         : epoch !== this.epoch
@@ -1346,6 +1421,7 @@ export class Studio extends EventEmitter {
           settings: { ...this.settings, personas: participants },
           history: this.messages,
           previous: this.observation,
+          aiFeature: 'summary',
           speech: '방송을 함께 본 관객들의 짧은 후기를 작성해주세요.',
           audience: this.audience.data,
           offStream: true,
@@ -1371,6 +1447,7 @@ export class Studio extends EventEmitter {
           kind: 'ai',
         });
       }
+      this.ai.accepted(result);
       this.log('방송 후 관객 후기 생성');
       return { ok: true };
     } finally {

@@ -8,7 +8,7 @@ import {GalleryPost} from '../server/community.js';
 import {startServer} from '../server/index.js';
 
 function studio(t,react=async()=>({observation:{messages:[],communityVotes:[]}})){
-  const s=new Studio({settings:{...defaults,mode:'live'},provider:{status:()=>({configured:true}),react},audience:new Audience(undefined,()=>{},()=>.5)});clearInterval(s.timer);s.start();s.stop();t.after(()=>s.close());return s;
+  const s=new Studio({settings:{...defaults,mode:'live'},provider:{status:()=>({configured:true}),react},audience:new Audience(undefined,()=>{},()=>.5)});clearInterval(s.timer);s.ai.update({features:{gallery:true}});s.start();s.stop();t.after(()=>s.close());return s;
 }
 test('legacy posts become readable gallery entries without rewriting their original content',t=>{
   const s=studio(t),old={id:'old',name:'이전 관객',text:'지난 방송 후기\n다음에도 기대해요',time:1,kind:'ai'};s.audience.data.posts.push(old);

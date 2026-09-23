@@ -28,7 +28,7 @@ test('server close owns a Codex call with an independent caller signal through f
     child.kill=()=>{killed=true;return true;};spawned.resolve();return child;
   });provider.available=true;provider.check=async()=>provider.status();
   const service=await startServer({port:0,persist:false,localSpeech:false,provider});
-  const request=service.studio.provider.react({settings:structuredClone(defaults),history:[],speech:'synthetic',image:'data:image/jpeg;base64,eA=='},new AbortController().signal);
+  const request=service.studio.provider.react({aiFeature:'reaction',settings:structuredClone(defaults),history:[],speech:'synthetic',image:'data:image/jpeg;base64,eA=='},new AbortController().signal);
   const rejection=assert.rejects(request,/취소/);await spawned.promise;
   let closed=false;const closing=service.close();assert.equal(service.close(),closing);closing.then(()=>closed=true);
   assert.equal(killed,true);assert.equal(existsSync(dir),true);await Promise.resolve();assert.equal(closed,false);

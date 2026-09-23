@@ -11,6 +11,7 @@ export class Ambient {
   reset(){this.active=null;this.until=0;this.quietUntil=0;this.turns=0;this.nextIdleAt=0;}
   idle(witnesses,{observing=false}={}){
     const s=this.studio,now=s.now();
+    if(!s.ai.allowed('ambient'))return null;
     if(now<this.quietUntil||now<this.nextIdleAt||s.queue.length)return null;
     // The system manager is not a substitute audience. Do not spend the
     // opportunity before an actual viewer is present, including quiet lurkers.

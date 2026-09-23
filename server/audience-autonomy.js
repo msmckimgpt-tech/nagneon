@@ -75,6 +75,7 @@ export class AudienceAutonomy {
     if(path!=='clip'&&clip)throw Error('클립 유입 경로를 확인하세요.');
     const actualClip=path==='clip'?s.clips.get(z.string().uuid().parse(clip?.id)):null;
     const encounter=actualClip?arrivalClipSnapshot(actualClip):null;
+    const aiFeature=path==='points'?'invite':'discovery';s.ai.assertAllowed(aiFeature);
     const source=this.source(path,actualClip),cost=path==='points'?ARRIVAL_PRICE:0,at=s.now();
     this.world.change(d=>{
       if(d.economy.balance<cost)throw new Error('새로운 만남에 필요한 포인트가 부족합니다.');
@@ -86,8 +87,9 @@ export class AudienceAutonomy {
     const signal=firstTutorial?AbortSignal.timeout(180000):s.controller.signal;
     try{
       const individuality=arrivalIndividuality(s.settings.personas,source.key,()=>s.random());
-      const result=await s.provider.react({settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,individuality,usedNames:s.settings.personas.map(p=>p.name),clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},signal);
+      const result=await s.provider.react({aiFeature,settings:{...s.settings,personas:[],webSearch:false},history:[],previous:null,speech:'',special:{kind:'audience-arrival',source,intent:profiles[source.key].intent,individuality,usedNames:s.settings.personas.map(p=>p.name),clip:actualClip?{interest:arrivalClipInterest(actualClip,s.settings)}:null,instruction:'이 유입 동기와 관심 분야로 지금 처음 방송에 들어오는 독립적인 한국어 AI 관객 한 명을 arrival에 구성한다. 실제 사이트 이용자나 기존 관객을 복제하지 않는다. 이름과 성향은 스스로 구성한다. 구체적인 클립 줄거리·대사·방송 참여 경험·기존 친분은 성격이나 가치관에 만들어 넣지 않는다. 클립을 접한 실제 내용은 별도 경험으로 전달된다. messages는 비운다.'}},signal);
       signal.throwIfAborted();
+      s.ai.assertCurrent(result);
       if(!firstTutorial&&(epoch!==s.epoch||!s.running))throw new Error('방송이 끝나 새로운 만남을 취소했습니다.');
       s.tokens+=Number(result.usage?.total_tokens)||0;const birth=result.observation.arrival;
       if(!birth)throw new Error('관객을 구성하지 못해 포인트를 반환합니다.');
@@ -104,6 +106,7 @@ export class AudienceAutonomy {
         s.economy.entry(d.economy,'purchase',0,`새로운 만남 완료 · ${cost}P 사용`);
       });
       s.audience.presence[p.id]=firstTutorial?'away':s.random()<s.settings.lurkRatio?'lurking':'active';s.log(`${p.name} 첫 방문`);
+      s.ai.accepted(result);
       return {id:requestId,...this.world.data.autonomy.receipts[requestId]};
     }catch(error){
       this.world.change(d=>{const receipt=d.autonomy.receipts[requestId];if(receipt.status!=='pending')return;receipt.status='failed';receipt.error=error.message;
@@ -115,7 +118,7 @@ export class AudienceAutonomy {
     const s=this.studio,now=s.now();this.seconds+=Math.min(2,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;
     if(now-this.lastSaved>=60000){this.world.change(d=>{d.autonomy.broadcastSeconds=this.seconds;});this.lastSaved=now;}
     if(now<this.nextCheck)return;this.nextCheck=now+60000;
-    if(s.busy||this.pending||this.waiting||now-this.world.data.autonomy.lastArrivalAt<300000)return;
+    if(!s.ai.allowed('discovery')||s.busy||this.pending||this.waiting||now-this.world.data.autonomy.lastArrivalAt<300000)return;
     // No catch-up bursts after suspend, no waiting character pool. Rates are
     // simulation choices: a 3% chance/minute after ten minutes of actual uptime.
     const used=new Set(Object.values(this.world.data.autonomy.receipts).filter(r=>r.status==='completed').map(r=>r.source.clipId));

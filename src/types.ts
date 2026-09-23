@@ -101,6 +101,7 @@ export type SoundState = {
 export type BroadcastSessionState =
   { running: true; sessionId: string } | { running: false; sessionId: string | null };
 export type State = BroadcastSessionState & {
+  ai?: import('./ai-types').AiState;
   runtimeComponents?: {
     components: Array<{
       id: string;

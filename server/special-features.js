@@ -42,10 +42,11 @@ export class SpecialFeatures {
     const prior=s.economy.data.purchases.find(p=>p.kind===kind&&p.key===key&&p.status==='completed');if(prior&&kind==='thought')return prior;
     const retry=s.economy.data.purchases.find(p=>p.id===requestId);if(retry)return s.economy.purchase(requestId,kind,key,retry.cost).receipt;
     if(s.busy)throw new Error('관객이 응답 중입니다. 잠시 뒤 다시 실행하세요.');
+    s.ai.assertAllowed(kind);
     const held=kind==='contract'?s.economy.reserveContract(quoteId,requestId,s.sessionId):s.economy.purchase(requestId,kind,key,rules.prices[kind]);if(held.existing)return held.receipt;
     const epoch=s.epoch;s.busy=true;if(s.controller.signal.aborted)s.controller=new AbortController();s.reserveCall();s.publish();
     try{
-      const result=await s.provider.react({settings:{...s.settings,personas:people,chatPace:kind==='contract'?people.length:3,webSearch:false},history:s.messages,previous:s.observation,audience:{members:people.map(p=>({id:p.id,...s.audience.data.members[p.id],...(['interview','thought'].includes(kind)?{privateInterviews:this.preferences(p.id)}:{})}))},speech:'',special},s.controller.signal);
+      const result=await s.provider.react({aiFeature:kind,settings:{...s.settings,personas:people,chatPace:kind==='contract'?people.length:3,webSearch:false},history:s.messages,previous:s.observation,audience:{members:people.map(p=>({id:p.id,...s.audience.data.members[p.id],...(['interview','thought'].includes(kind)?{privateInterviews:this.preferences(p.id)}:{})}))},speech:'',special},s.controller.signal);
       if(epoch!==s.epoch)throw new Error('방송 상태가 바뀌어 실행을 취소했습니다.');
       if(people.some(p=>!s.settings.personas.some(current=>current.id===p.id&&current.enabled)))throw new Error('관객이 제거되거나 참여를 중지해 포인트를 반환했습니다.');
       if(kind==='contract'&&people.some(p=>!['active','lurking'].includes(s.audience.presence[p.id])))throw new Error('합의한 관객이 자리를 비워 포인트를 반환했습니다.');
@@ -53,8 +54,10 @@ export class SpecialFeatures {
       const seen=new Set();const messages=result.observation.messages.filter(m=>people.some(p=>p.id===m.personaId)&&!(m.spoiler&&s.settings.spoilerGuard)&&!s.settings.blockedWords.some(w=>m.text.normalize('NFKC').toLocaleLowerCase().includes(w.normalize('NFKC').toLocaleLowerCase()))).filter(m=>{if(kind==='contract'&&seen.has(m.personaId))return false;seen.add(m.personaId);return true;});
       if(!messages.length||(kind==='contract'&&people.some(p=>!seen.has(p.id))))throw new Error('합의한 응답을 완성하지 못해 포인트를 반환했습니다.');
       const output={kind,title:kind==='thought'?'채팅 뒤의 속마음':kind==='interview'?'취향 인터뷰':'합의한 채팅 행동',at:s.now(),personaId:people[0].id,question:special.instruction,sourceMessage:special.sourceMessage,messages:messages.map(m=>({...m,name:people.find(p=>p.id===m.personaId).name})),note:kind==='thought'?'AI 캐릭터의 창작 독백입니다. 모델의 비공개 추론이 아닙니다.':kind==='interview'?'캐릭터 설정과 대화 기록을 바탕으로 구성한 가상 취향 답변입니다.':'현재 방송에서 한 번 수행한 채팅 행동입니다.'};
+      s.ai.assertCurrent(result);
       const receipt=s.economy.finish(requestId,output);
       if(kind==='contract')for(const m of messages)s.addMessage(m.personaId,m.text,'chat');
+      s.ai.accepted(result);
       return receipt;
     }catch(error){s.economy.refund(requestId,error.message);throw error;}
     finally{if(epoch===s.epoch)s.busy=false;s.publish();}

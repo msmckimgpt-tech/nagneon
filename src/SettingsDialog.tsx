@@ -29,8 +29,10 @@ const TABS:{id:TabId;label:string;Icon:LucideIcon}[]=[
 const tabId=(id:TabId)=>`settings-tab-${id}`;
 const panelId=(id:TabId)=>`settings-panel-${id}`;
 
-export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
+export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab='broadcast',onDashboard}:{
   state:State;
+  initialTab?:TabId;
+  onDashboard?:()=>void;
   initial:Settings;
   onClose:()=>void;
   onSaved:()=>void;
@@ -38,7 +40,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
 }){
   const [draft,setDraft]=useState<Settings>(()=>structuredClone(initial));
   const [domainText,setDomainText]=useState(()=>initial.cultureDomains?.join('\n')||'');
-  const [active,setActive]=useState<TabId>('broadcast');
+  const [active,setActive]=useState<TabId>(initialTab);
   const [pending,setPending]=useState(false);
   const [error,setError]=useState('');
   const [apiKey,setApiKey]=useState('');
@@ -228,7 +230,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
 
       case 'connection':
         return <>
-          <ConnectionPanel state={state}/>
+          <ConnectionPanel state={state}/>{onDashboard&&<button type="button" className="secondary" onClick={onDashboard}>AI 대시보드에서 전체 사용량·실행 허용 관리</button>}
           {!['codex','ollama'].includes(state.provider.kind||'')&&<label className="set-field">OpenAI API 키 (앱 종료 시 삭제)
             <div className="inline-form">
               <input type="password" autoComplete="off" value={apiKey} placeholder="API 키"

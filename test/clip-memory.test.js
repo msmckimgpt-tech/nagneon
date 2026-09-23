@@ -23,14 +23,14 @@ const fake=(react=async()=>result([reply()]))=>({status:()=>({configured:true}),
 const allItems=rows=>rows.flatMap(c=>c.items);
 async function folder(){await mkdir('artifacts',{recursive:true});return mkdtemp(resolve('artifacts/clip-memory-test-'));}
 function fixture(t,{provider=fake(),save=()=>{}}={}){
-  let now=T+1000;const clips=new Clips({now:()=>now,save}),s=new Studio({provider,clips,settings:{...defaults,mode:'live',maxCalls:50,discovery:{...defaults.discovery,enabled:false}},now:()=>now,random:()=>.5});clearInterval(s.timer);s.start();t.after(()=>s.close());
+  let now=T+1000;const clips=new Clips({now:()=>now,save}),s=new Studio({provider,clips,settings:{...defaults,mode:'live',maxCalls:50,discovery:{...defaults.discovery,enabled:false}},now:()=>now,random:()=>.5});clearInterval(s.timer);s.ai.update({features:{clip:true}});s.start();t.after(()=>s.close());
   const c=clips.create(base());return {s,clips,c,tick:()=>now+=1000};
 }
 
 test('autonomous reading with retired HTTP trigger survives restart/rename into only that viewers live context and deletion removes the source',async()=>{
   const dir=await folder();let service,args;const provider=fake(async a=>{args=a;return result(a.special?[reply()]:[]);});
   try{
-    service=await startServer({port:0,dataDir:dir,provider,localSpeech:false});seedMetAudience(service.studio);const s=service.studio;clearInterval(s.timer);s.configure({...s.settings,mode:'live',category:'just-chatting',chatPace:4,lurkRatio:0,maxCalls:30});s.start();
+    service=await startServer({port:0,dataDir:dir,provider,localSpeech:false});seedMetAudience(service.studio);const s=service.studio;s.ai.update({background:true});clearInterval(s.timer);s.configure({...s.settings,mode:'live',category:'just-chatting',chatPace:4,lurkRatio:0,maxCalls:30});s.start();
     const gift=donationMessage({id:randomUUID(),at:T,amount:24,anonymous:true,text:'퍼즐 해결 축하'}),c=s.clips.create(base({messages:[gift]}));
     const parent=s.clips.comment(c.id,{name:'플레이어',text:'기차 소리 별명은 야간열차로 할게요'});
     const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};

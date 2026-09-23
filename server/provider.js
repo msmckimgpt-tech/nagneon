@@ -30,7 +30,7 @@ export class OpenAIProvider {
     this.model=env.OPENAI_MODEL || 'gpt-6-astra'; this.effort=env.OPENAI_REASONING_EFFORT || 'low';
     this.transcriptionModel=env.OPENAI_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe'; this.fetcher=fetcher;
   }
-  status() { return { configured:!!this.key, model:this.model, effort:this.effort, transcriptionModel:this.transcriptionModel }; }
+  status() { return { kind:'openai', configured:!!this.key, model:this.model, effort:this.effort, transcriptionModel:this.transcriptionModel }; }
   async request(path,body,signal,multipart=false) {
     if (!this.key) throw new Error('API 키가 없습니다. 연결 설정에서 입력하거나 .env를 설정하세요.');
     const response=await this.fetcher(`${this.base}/${path}`, {method:'POST', headers:{Authorization:`Bearer ${this.key}`,...(multipart?{}:{'Content-Type':'application/json'})}, body:multipart?body:JSON.stringify(body),signal:AbortSignal.any([signal,AbortSignal.timeout(45000)])});
@@ -110,16 +110,18 @@ viewerKnowledge는 관객 개인별 게임 지식이다. 각 personaId 항목에
   }
   async react(args,signal) {
     const result=await this.request('responses',this.payload(args),signal);
+    args.onAiUsage?.(result.usage);
     if(result.status && result.status!=='completed') throw new Error('AI 응답이 완료되지 않았습니다. 출력 제한 또는 모델 설정을 확인하세요.');
     const raw=result.output_text || result.output?.filter(o=>o.type==='message').flatMap(o=>o.content || []).filter(c=>c.type==='output_text').map(c=>c.text).join('');
     if(!raw) throw new Error('AI가 채팅 응답을 반환하지 않았습니다.');
     try { return { observation:Observation.parse(JSON.parse(raw)), usage:result.usage || {} }; }
     catch { throw new Error('AI 응답 형식이 올바르지 않아 채팅을 표시하지 않았습니다.'); }
   }
-  async transcribe(buffer,mime,signal) {
+  async transcribe(buffer,mime,signal,onAiUsage) {
     const form=new FormData(); form.append('model',this.transcriptionModel);form.append('language','ko');
     form.append('file',new Blob([buffer],{type:mime}),'microphone.'+(mime.includes('mp4')?'mp4':'webm'));
     const result=await this.request('audio/transcriptions',form,signal,true);
+    onAiUsage?.(result.usage);
     if(typeof result.text!=='string') throw new Error('음성 인식 결과가 없습니다.');
     return result.text.slice(0,3000);
   }
