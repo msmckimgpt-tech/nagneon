@@ -97,7 +97,10 @@ export type SoundState = {
     systemSpeech: string;
   };
 };
-export type State = {
+// A stopped broadcast may retain its last ID; initial/failed starts have none.
+export type BroadcastSessionState =
+  { running: true; sessionId: string } | { running: false; sessionId: string | null };
+export type State = BroadcastSessionState & {
   runtimeComponents?: {
     components: Array<{
       id: string;
@@ -186,8 +189,6 @@ export type State = {
     lore: { id: string; text: string; createdAt?: number; expiresAt?: number | null }[];
     posts: GalleryPost[];
   };
-  running: boolean;
-  sessionId: string;
   startedAt: number | null;
   messages: Message[];
   events: { id: string; time: number; text: string }[];
