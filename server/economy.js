@@ -27,10 +27,13 @@ export class Economy {
     return w;
   }
   snapshot(personas){
-    const copy=structuredClone(this.data);const wallets={};
+    // Recharge is projected without mutating persisted wallets. Private moments and
+    // purchase fingerprints/shares are not part of the public snapshot to clone.
+    const copy={wallets:structuredClone(this.data.wallets),purchases:this.data.purchases};const wallets={};
     for(const p of personas){const w=this.wallet(copy,p.id);wallets[p.id]={balance:w.balance,cap:rules.walletCap,nextRefillAt:w.balance<rules.walletCap-this.incoming(copy,p.id)?w.refillAt+rules.refillSeconds*1000:null};}
-    const quotes=copy.quotes.map(({floor,...q})=>({...q,status:q.status==='open'&&q.expiresAt<=this.now()?'expired':q.status}));
-    return {balance:copy.balance,wallets,ledger:copy.ledger.map(e=>e.kind==='donation'?publicDonation(e):e),quotes,purchases:copy.purchases.map(({fingerprint,shares,...p})=>p),rules};
+    const quotes=this.data.quotes.map(({floor,...q})=>({...q,status:q.status==='open'&&q.expiresAt<=this.now()?'expired':q.status}));
+    // Public nested records remain detached so callers cannot alter saved history.
+    return {...structuredClone({balance:this.data.balance,wallets,ledger:this.data.ledger.map(e=>e.kind==='donation'?publicDonation(e):e),quotes,purchases:this.data.purchases.map(({fingerprint,shares,...p})=>p)}),rules};
   }
   // Read-only, free streamer lookup. No personality/profile unlock is implied.
   donationHistory(personas=[]){return this.data.ledger.filter(e=>e.kind==='donation').slice().reverse().map(e=>({
