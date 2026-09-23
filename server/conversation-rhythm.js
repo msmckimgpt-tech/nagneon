@@ -1,7 +1,19 @@
 // Derived from witnessed, still-retained public messages only. These are
 // listening aids, not assertions that a question was answered or a fact learned.
 const utterance=m=>({id:m.id,at:m.time,text:m.text.slice(0,180),fictional:!!m.fictional,...(m.transcription?.correction?{transcriptionCorrection:{text:m.transcription.correction.text.slice(0,180),source:'contextual-stt'}}:{})});
-export const isChatQuestion=text=>/[?？]/.test(text)||/(?:나요|까요|인가요|뭔가요|뭐예요)[.!…\s]*$/.test(text);
+export function isChatQuestion(text){
+  // A listening/retrieval cue only: never insert punctuation into saved speech
+  // or declare that a nearby message answered this question.
+  if(/[?？]/.test(text))return true;
+  const line=text.trim().replace(/[.!…\sㅋㅎㅠㅜ]+$/u,'').normalize('NFKC');
+  if(/(?:나요|까요|인가요|뭔가요|뭐예요)$/.test(line))return true;
+  if(/(?:어때(?:요)?|어떰)$/.test(line))return true;
+  // Embedded/reported questions and free-choice statements are not direct
+  // questions. Keep ambiguous yes/no statements conservative without prosody.
+  if(/(?:는지|인지|을지|라고|라는|든|라도|봐도)/.test(line)||/[가-힣]+지\s*(?:아직\s*)?(?:모르|몰라|알|궁금|고민|생각|확인)/.test(line))return false;
+  const interrogative=/(?:^|[\s,.!…])(?:뭐(?:가|를|랑|로)?|뭘|무슨|무엇(?:을|이)?|어떤|어느|누구(?:가|를|랑|와)?|누가|언제|어디(?:로|서|에)?|어떻게|왜|얼마나|몇(?:시|명|개|번|분)?)(?=\s|[,.!…]|$)/.test(line);
+  return interrogative&&/(?:래|까|어|아|해|돼|지|야|요)$/.test(line);
+}
 const tokens=text=>new Set(text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu)||[]);
 const similarity=(a,b)=>{let score=0;for(const x of a)for(const y of b)if(x===y||x.length>=3&&y.length>=3&&(x.includes(y)||y.includes(x)))score++;return Math.min(3,score);};
 
