@@ -1,3 +1,4 @@
+import {addGenrePresets,genrePresets} from '../shared/genre-presets.js';
 import {DebugPanel} from './DebugPanel';
 import {StorageSettings} from './StorageSettings';
 import {useMemo,useRef,useState,type KeyboardEvent} from 'react';
@@ -58,6 +59,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
   function updateGame(index:number,patch:Partial<Game>){
     setDraft(prev=>({...prev,games:prev.games.map((g,i)=>i===index?{...g,...patch}:g)}));
   }
+  const missingGenres=genrePresets.filter(game=>!draft.games.some(existing=>existing.id===game.id)).length;
   function addGame(){
     setDraft(prev=>({...prev,games:[...prev.games,{
       id:crypto.randomUUID(),name:'새 게임',genre:'기타',
@@ -337,6 +339,14 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
       case 'games':
         return <>
           <p className="field-note">실제 방송에서 인식한 게임과 직접 추가한 프로필이 관객의 관찰 기준이 됩니다.</p>
+          <button type="button" className="secondary"
+            disabled={missingGenres===0||draft.games.length+missingGenres>100}
+            onClick={()=>setDraft(prev=>({...prev,games:addGenrePresets(prev.games)}))}>
+            <Plus size={15}/> {missingGenres===0?'장르 기본값 추가됨':'장르 기본값 추가'}
+          </button>
+          <p className="field-note">로그라이크·호러·소울라이크·샌드박스·리듬·시뮬레이션 중 없는 항목만 추가합니다. 기존 설정은 유지되며 저장 후 적용됩니다.
+            {missingGenres>0&&draft.games.length+missingGenres>100&&' 게임 프로필은 최대 100개까지 저장할 수 있어 전체 장르 기본값을 추가할 공간이 부족합니다.'}
+          </p>
           {draft.games.map((g,i)=><div className="persona-editor" key={g.id}>
             <div className="set-row">
               <label className="set-field">게임 이름
