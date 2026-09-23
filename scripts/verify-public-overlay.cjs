@@ -25,6 +25,7 @@ app.whenReady().then(async()=>{
     }
     assert.equal(await win.webContents.executeJavaScript('document.querySelector(".overlay-public-disclosure").textContent.includes("AI 관객")'),true);
     assert.equal(await win.webContents.executeJavaScript('document.querySelector(".overlay-public-disclosure").textContent.includes("가상 포인트")'),true);
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector(".overlay-public-disclosure").textContent.includes("이전 장면이나 대화에 늦게 도착")'),true);
     assert.equal(await win.webContents.executeJavaScript('getComputedStyle(document.querySelector(".overlay-public-disclosure")).opacity'),'1');
     fs.writeFileSync(join(out,'public.png'),(await win.webContents.capturePage()).toPNG());
     service.studio.configure({...settings,overlayMode:'private'});

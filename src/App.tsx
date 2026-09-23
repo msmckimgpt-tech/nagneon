@@ -217,6 +217,8 @@ export function App() {
             AI 관객과 함께하는 방송 · 가상 포인트
             <br />
             <small>관객 수와 포인트는 플랫폼의 실제 시청자·후원이 아닙니다</small>
+            <br />
+            <small>AI 반응은 이전 장면이나 대화에 늦게 도착할 수 있습니다</small>
           </div>
         )}
         <div className="overlay-grip">
