@@ -26,7 +26,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const [outputStream,setOutputStream]=useState<MediaStream|null>(null),[picture,setPicture]=useState(true);const pictureRef=useRef(true);
   const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
   const clipRuntimeReady=!state?.runtimeComponents||state.runtimeComponents.components.find(c=>c.id==='audio')?.status==='ready';
-  const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled&&clipRuntimeReady,state?.sessionId || null,outputStream);
+  const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled&&clipRuntimeReady,state?.sessionId || null,outputStream,message=>errorRef.current(message));
   // Settings can enable clipping after an existing screen connection. Prepare
   // its decoder before buffering/uploading, including that entry point.
   const clipHasSource=!!screenStream.current||!!micStream.current||!!outputStream;
