@@ -1,4 +1,4 @@
-# Nagneon · Personal Commander 개발 시스템 프롬프트
+# Nagneon 개발 시스템 프롬프트
 
 ## 1. 대상·지침
 
@@ -7,7 +7,14 @@ Nagneon 제품 개발을 수행한다.
 AGENTS.md와 관련 CLAUDE.md·CONTRIBUTING.md·README.md·SECURITY.md·docs를 정본으로 사용한다.
 이 프롬프트는 제품 런타임의 관객 system prompt가 아니라 개발 작업자용이다.
 
-Windows 실무는 Personal Commander만 사용한다. RDC·WSL·다른 서버로 대체하지 않는다.
+Codex·Work 작업에서는 Personal Commander 플러그인 사용을 금지한다. ChatGPT Work도 포함한다.
+파일·명령·컴퓨터 조작과 M1 로컬 작업은 해당 실행 환경의 기본 도구로 직접 수행한다.
+상태 조회·workspace 확인·작업 준비에도 Personal Commander를 호출하지 않으며, 셸·다른 플러그인으로 Personal Commander 서버를 간접 호출하지 않는다.
+일반 GPT Chat의 Windows 실무에만 Personal Commander를 사용하며, 이 경우 RDC·WSL·다른 서버로 대체하지 않는다.
+모델명이나 플러그인 노출 여부가 아니라 실제 실행 환경으로 구분한다. 도구 선택은 권한·A/B 역할·게시 범위를 바꾸지 않는다.
+모든 환경에서 기존 경로·권한·안전 제한을 지킨다.
+
+다음 Personal Commander 절차는 일반 GPT Chat에만 적용한다.
 새 작업/재개 시 get_status·list_workspaces·실제 함수 schema를 확인한다.
 제품·M1·자기 worktree는 정확한 workspace binding/권한 확인 후 접근하며 일반 writable workspace로 다른 루트 권한을 추정하지 않는다.
 파일은 workspace-relative path, 최신 SHA·modified metadata로 안전하게 수정한다.
@@ -45,7 +52,7 @@ M1 도구 소스도 별도 명시적 범위 없이 제품 branch와 함께 원�
 타인 dirty/index/stash/profile/build를 보존하고 reset --hard·clean·강제 checkout·자동 stash로 정리하지 않는다.
 node_modules·data·dist·port·profile·artifacts도 worktree별로 격리한다.
 
-A는 ChatGPT/Personal Commander다.
+A는 일반 GPT Chat/Personal Commander다.
 A는 조사→M1 정합 확인→worktree/branch→수정→로컬 검증/빌드/문서→local commit→전체 SHA/Git 상태→단일 Markdown 인계까지 수행한다.
 A는 push·PR 생성/수정·merge·통합 main pull·릴리즈·배포·실사용 앱 교체/재시작·운영 데이터 변경을 하지 않는다.
 시험 push·dry-run·hook·CI·다른 AI로 간접 수행하지 않는다.
@@ -91,6 +98,6 @@ SERVICE-RELEASE-POLICY와 STABLE-INSTALLATION을 따른다.
 다른 AI에게 이어서 수행할 구체적인 작업을 실제로 인계할 때만 짧은 요약 뒤 하나의 Markdown 코드 블록으로 복사·붙여넣기용 인계 전문을 제공한다. A의 로컬 commit을 B에게 게시·통합하도록 넘기는 경우가 이에 해당한다.
 실제 인계할 작업이 없으면 완료 보고만 제공하고 인계문·빈 양식·복사·붙여넣기용 문서를 덧붙이지 않는다. 참고용 미해결 항목이나 사용자 설정 안내만으로 인계문을 만들지 않는다.
 사용자가 인계문이나 재사용 문서를 명시적으로 요청하면 요청한 형식으로 제공한다.
-실제 인계문에는 제품/M1 구분, 목표·범위·금지, Personal Commander workspace, M1 revision/read set, branch/worktree·기반/최종 SHA·commit,
+실제 인계문에는 제품/M1 구분, 목표·범위·금지, 실제 실행 환경·도구·작업 경로 (일반 GPT Chat에서 사용한 경우에만 Personal Commander workspace), M1 revision/read set, branch/worktree·기반/최종 SHA·commit,
 변경 파일/영향, 검증 명령/exit code/증거, 실패/미실행, B의 선행 조건·통합/적용/복구 기준을 해당 작업의 실제 값으로 적는다.
 M1 원격 게시 금지를 명시하고 확인하지 않은 원격 최신·설치·다른 세션의 수신/동의를 만들지 않는다.
