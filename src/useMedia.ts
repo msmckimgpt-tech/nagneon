@@ -4,7 +4,8 @@ import {api} from './api';
 import type {State} from './types';
 import {useClipBuffer} from './useClipBuffer';
 import {ClipUploads} from './clip-uploads';
-import {VoiceBoundary,SpeechQueue,SpeechOutbox,VOICE_MAX_MS,recognizeWithRecovery,type SpeechCapture} from './speech-flow';
+import {SpeechQueue,SpeechOutbox,recognizeWithRecovery,type SpeechCapture} from './speech-flow';
+import {startMicrophoneRecorder} from './microphone-recorder.ts';
 import {TemporalFrames} from './temporal-frames';
 import {startTemporalCapture} from './temporal-capture';
 import {prepareCapture,releaseCapture,type CapturePhase} from './capture-preparation';
@@ -17,7 +18,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const micRetryAt=useRef(0),runtimeMicRequested=useRef(false);
   const micPreparation=useRef<AbortController|null>(null);
   const capturePreparation=useRef<AbortController|null>(null),[capturePreparing,setCapturePreparing]=useState<CapturePhase|null>(null);
-  const recording=useRef(false),recorder=useRef<MediaRecorder|null>(null),context=useRef<AudioContext|null>(null);
+  const recording=useRef(false),stopRecorder=useRef<(()=>void)|null>(null),context=useRef<AudioContext|null>(null);
   const stateRef=useRef(state);stateRef.current=state;const pendingSpeech=useRef(new SpeechOutbox());const epoch=useRef(0),wake=useRef<()=>void>(()=>{});
   const speechQueue=useRef<SpeechQueue<{blob:Blob;capture?:SpeechCapture},{text:string;cues?:{delivery?:string};capture?:SpeechCapture}>|null>(null);
   const clipUploads=useRef<ClipUploads|null>(null);
@@ -40,7 +41,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   function stopSound(){if(!pictureRef.current){stopScreen();return;}cancelCapture();clipUploads.current?.dispose();screenStream.current?.getAudioTracks().forEach(t=>t.stop());setOutputStream(null);}
   function cancelCapture(){captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;setCapturePreparing(null);}
   function stopScreen(){cancelCapture();endFrames();clipUploads.current?.dispose();screenStream.current?.getTracks().forEach(t=>t.stop());screenStream.current=null;setOutputStream(null);setSharing(false);if(video.current)video.current.srcObject=null;if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}captureVideo.current=null;}
-  function stopMic(){clipUploads.current?.dispose();epoch.current++;micPreparation.current?.abort();micPreparation.current=null;setMicPreparing(false);recording.current=false;speechQueue.current?.reset();speechQueue.current=null;if(recorder.current?.state==='recording')recorder.current.stop();micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
+  function stopMic(){clipUploads.current?.dispose();epoch.current++;micPreparation.current?.abort();micPreparation.current=null;setMicPreparing(false);recording.current=false;speechQueue.current?.reset();speechQueue.current=null;stopRecorder.current?.();stopRecorder.current=null;micStream.current?.getTracks().forEach(t=>t.stop());micStream.current=null;void context.current?.close();context.current=null;setMic(false);setLevel(0);}
   function stopAll(){runtimeMicRequested.current=false;stopScreen();stopMic();pendingSpeech.current.clear();}
   async function share(sourceId?:string,options={systemAudio:false,picture:true}){
     if(capturePreparation.current)return;
@@ -107,20 +108,14 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
         onResult:result=>{if(generation===epoch.current&&recording.current&&result.text){setTranscript(result.text);setDelivery(result.cues?.delivery||'');say(result.text,'microphone',result.capture);}},
         onError:e=>{if(generation!==epoch.current)return;errorRef.current((e instanceof Error?e.message:'음성 인식 실패')+' 마이크는 켜져 있습니다. 인식하지 못한 말은 다시 들려주세요.');}
       });speechQueue.current=queue;
-      function segment(){
-        if(!recording.current||generation!==epoch.current)return;
-        const rec=new MediaRecorder(stream,{mimeType:mime});recorder.current=rec;const parts:BlobPart[]=[];const boundary=new VoiceBoundary(performance.now()),wallStartedAt=Date.now();
-        const samples=new Float32Array(analyser.fftSize);
-        const meter=setInterval(()=>{analyser.getFloatTimeDomainData(samples);const rms=Math.sqrt(samples.reduce((a,b)=>a+b*b,0)/samples.length);setLevel(Math.min(1,rms*8));if(boundary.sample(rms,performance.now())&&rec.state==='recording')rec.stop();},50);
-        rec.ondataavailable=e=>{if(e.data.size)parts.push(e.data);};
-        rec.onstop=()=>{clearInterval(meter);clearTimeout(timer);if(generation!==epoch.current||!recording.current)return;segment();if(!boundary.hasSpeech||!parts.length)return;
-          const capture=boundary.capture(wallStartedAt);if(capture)capture.screen=temporal.current.speechWindow(capture.startedAt,capture.endedAt);
-          if(queue.enqueueLatest({blob:new Blob(parts,{type:mime}),capture}))errorRef.current('인식이 밀려 오래된 대기 음성 하나를 건너뛰었어요. 마이크는 켜져 있습니다. 필요한 말은 다시 들려주세요.');
-        };
-        rec.onerror=()=>{if(generation===epoch.current){stopMic();errorRef.current('마이크 녹음을 이어갈 수 없습니다. 입력 장치를 확인해주세요. 자동으로 다시 연결합니다.');}};
-        rec.start();const timer=setTimeout(()=>{if(rec.state==='recording')rec.stop();},VOICE_MAX_MS);
-      }
-      segment();
+      stopRecorder.current=startMicrophoneRecorder({
+        stream,analyser,mimeType:mime,
+        active:()=>recording.current&&generation===epoch.current,
+        onLevel:value=>setLevel(value),
+        attachScreen:capture=>{capture.screen=temporal.current.speechWindow(capture.startedAt,capture.endedAt);},
+        onSegment:(blob,capture)=>{if(queue.enqueueLatest({blob,capture}))errorRef.current('인식이 밀려 오래된 대기 음성 하나를 건너뛰었어요. 마이크는 켜져 있습니다. 필요한 말은 다시 들려주세요.');},
+        onFailure:()=>{if(generation===epoch.current){stopMic();errorRef.current('마이크 녹음을 이어갈 수 없습니다. 입력 장치를 확인해주세요. 자동으로 다시 연결합니다.');}}
+      });
     }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;const components=stateRef.current?.runtimeComponents;const needed=['audio','microphone',...(stateRef.current?.settings.speechDevice==='gpu'?['gpu']:[])];const needsPreparation=components&&needed.some(id=>components.components.find(c=>c.id===id)?.status!=='ready');if(needsPreparation)runtimeMicRequested.current=false;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+(needsPreparation?' 구성을 준비한 뒤 마이크를 다시 켜주세요.':' 자동으로 다시 연결합니다.'));}}
     finally{acquiringMic.current=false;if(micPreparation.current===preparation){micPreparation.current=null;setMicPreparing(false);}}
   }
@@ -135,8 +130,8 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
     const tick=async()=>{
       const s=stateRef.current;if(disposed||!s?.running||s.sessionId!==session)return;
       try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');speechVersion++;return result;});}
-      catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');return;}
-      const current=stateRef.current;if(disposed||pendingSpeech.current.items.length||inFlight||!current?.running||current.sessionId!==session||current.busy)return;
+      catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');}
+      const current=stateRef.current;if(disposed||inFlight||!current?.running||current.sessionId!==session||current.busy)return;
       if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt)return;
       inFlight=true;
       const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
@@ -151,6 +146,6 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
     wake.current=()=>void tick();void tick();const timer=setInterval(()=>void tick(),1500);return()=>{disposed=true;wake.current=()=>{};clearInterval(timer);};
   },[state?.running,state?.sessionId]);
   useEffect(()=>{if(state){if(wasRunning.current&&!state.running)stopAll();wasRunning.current=state.running;}},[state?.running]);
-  useEffect(()=>()=>{epoch.current++;micPreparation.current?.abort();micPreparation.current=null;speechQueue.current?.reset();pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;screenStream.current?.getTracks().forEach(t=>t.stop());if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}recording.current=false;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
+  useEffect(()=>()=>{epoch.current++;micPreparation.current?.abort();micPreparation.current=null;speechQueue.current?.reset();pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;screenStream.current?.getTracks().forEach(t=>t.stop());if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}recording.current=false;stopRecorder.current?.();stopRecorder.current=null;micStream.current?.getTracks().forEach(t=>t.stop());void context.current?.close();},[]);
   return {video,sharing,capturePreparing,cancelCapture,soundSharing:!!outputStream,soundStatus:sound.status,soundLevel:sound.level,stopSound,mic,micPreparing,level,transcript,delivery,share,stopScreen,startMic,stopMic,stopAll,say,clipBuffering:clips.buffering};
 }

@@ -16,7 +16,7 @@ function harness(fetch,getUserMedia){
   class Outbox extends speechFlow.SpeechOutbox{constructor(){super();outboxes.push(this);}}
   const state={running:true,sessionId:'test-session',settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
   const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:()=>{}};
-  const imports={react,'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechQueue:Queue,SpeechOutbox:Outbox},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
+  const imports={react,'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechQueue:Queue,SpeechOutbox:Outbox},'./microphone-recorder.ts':{startMicrophoneRecorder:()=>{const id=++timerId;timers.add(id);return()=>timers.delete(id);}},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
   const module={exports:{}};
   class Recorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.onstop?.();}}
   class Context{resume(){return Promise.resolve();}createMediaStreamSource(){return {connect(){}};}createAnalyser(){return {fftSize:512,getFloatTimeDomainData(){}};}close(){return Promise.resolve();}}
