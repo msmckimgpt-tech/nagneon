@@ -4,12 +4,31 @@
 
 방송 설정 → 연결·사용량 → **AI 제공처·관객 모델 선택**에서 모델과 추론 수준을 선택하고 **선택한 설정 적용**을 누른다. 이 버튼이 즉시 저장하며 대화창의 다른 설정 저장과는 독립적이다. **모델 응답 확인 · 1회 사용**으로 선택한 모델의 실제 연결을 확인한다.
 
-- GPT-6 Astra, GPT-5.4 mini, GPT-5.6 Luna를 선택할 수 있다. mini는 none/low/medium/high/xhigh, Astra는 low/medium/high/xhigh, Luna는 none/low/medium/high/xhigh/max를 제공한다.
-- ‘앱 기본 설정 사용’은 기존 OPENAI_MODEL/OPENAI_REASONING_EFFORT 환경 설정을 따른다. 설정이 없으면 기존 기본값 gpt-6-astra/low다. 이번 변경은 사용자 기본값을 자동으로 mini로 전환하지 않는다.
+- GPT-6 Astra, **GPT-6 Sol · 경량**, **GPT-6 Luna · 초경량**, GPT-5.4 mini, GPT-5.6 Luna를 선택할 수 있다. GPT-6 Sol·Luna와 GPT-5.6 Luna는 none/low/medium/high/xhigh/max, mini는 none/low/medium/high/xhigh, Astra는 low/medium/high/xhigh를 제공한다.
+- ‘앱 기본 설정 사용’은 기존 OPENAI_MODEL/OPENAI_REASONING_EFFORT 환경 설정을 따른다. 설정이 없으면 기존 기본값 gpt-6-astra/low다. 새 모델 추가로 기존 선택값이나 앱 기본 모델을 자동 변경하지 않는다.
 - 선택값은 해당 프로필의 provider-choice.json에 저장되어 재시작 후 복원된다. API 키는 이 파일에 저장하지 않는다.
 - 방송·연습·응답 생성·계정 연결 중에는 변경할 수 없다. 변경하면 이전 모델의 연결 시험 결과를 초기화한다. 로컬 음성 인식, 사용자/전역 Codex 설정은 별개다.
 - 관객 대화·화면 반응과 같은 제공처를 쓰는 관객 활동에 함께 적용된다. 관객별로 서로 다른 모델을 배정하는 기능은 아니다.
 - 모델을 선택할 수 있다는 것은 현재 계정의 접근 권한을 보장하지 않는다. 오류가 나면 사용 가능한 모델로 다시 선택한다. 다른 모델이나 유료 API로 자동 전환하지 않는다.
+
+## GPT-6 Sol·Luna 구성 (2026-09-23)
+
+| 앱 분류 | 표시 이름 | 요청에 전달하는 모델 ID |
+|---|---|---|
+| 경량 | GPT-6 Sol | `gpt-6-sol` |
+| 초경량 | GPT-6 Luna | `gpt-6-luna` |
+
+두 모델은 `none`, `low`, `medium`, `high`, `xhigh`, `max` 추론 수준을 제공한다. 모델 ID와 추론 수준은 [공식 Sol 문서](https://developers.openai.com/api/docs/models/gpt-6-sol)와 [공식 Luna 문서](https://developers.openai.com/api/docs/models/gpt-6-luna)를 기준으로 한다. 경량·초경량은 앱의 선택 분류이며 특정 응답 시간이나 구독 사용량 절감률을 보장하지 않는다.
+
+설정 화면과 서버의 단일 제공처 검증은 같은 `shared/audience-models.json`을 사용한다. 새 모델을 기존 모델 앞에 표시하되 GPT-5.4 mini·GPT-5.6 Luna의 저장값과 선택 가능 여부는 유지한다. 역할별 연결·대체 경로·관객별 할당 정책은 변경하지 않는다.
+
+구성 회귀 검사는 `node --test test/audience-models.test.js test/provider-selection-api.test.js`로 실행한다. 실제 Electron 설정 화면의 선택·저장·재시작 복원·추론 수준 보정은 빌드 후 다음 명령으로 검사한다. 각 실행은 별도 프로필·데이터 폴더와 로컬 포트를 사용한다.
+
+```powershell
+node_modules/electron/dist/electron.exe --disable-gpu scripts/verify-audience-model-settings.cjs --gpt6
+```
+
+이 명령은 합성 제공처를 사용하므로 실제 구독/API 사용량을 소비하지 않는다. 화면 검증 결과는 `artifacts/model-settings-ui-*/result.json`과 모델별 PNG에 저장한다. 실제 모델 호출은 별도로 `--live`를 지정할 때만 수행되며 사용량을 소비한다. GPT-6 Sol·Luna의 실제 계정 접근 권한, 응답 품질·지연은 이번 구성 검증과 별개다. 아래 과거 GPT-5.6 Luna 실측을 GPT-6 Luna 성능으로 해석하지 않는다.
 
 ## 2026-09-15 구독 경로 실측
 

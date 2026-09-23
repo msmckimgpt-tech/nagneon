@@ -1,4 +1,4 @@
-// Hidden real Electron UI/server, isolated saves. --live makes two real subscription probes.
+// Hidden real Electron UI/server, isolated saves. --live enables subscription probes; --gpt6 includes Sol/Luna.
 const {app,BrowserWindow,session}=require('electron');
 const {resolve,join}=require('node:path');
 const {pathToFileURL}=require('node:url');
@@ -57,6 +57,28 @@ app.whenReady().then(async()=>{
     await probe();
     if(live){const result=report.probes.at(-1);assert.ok(result.status==='ready'||(result.status==='failed'&&result.reason==='model'));if(result.status==='failed')assert.match(await js('document.body.innerText'),/선택한 관객 모델/);}
     fs.writeFileSync(join(out,'mini.png'),(await win.webContents.capturePage()).toPNG());
+    // --gpt6 uses synthetic providers unless --live is explicitly supplied.
+    if(process.argv.includes('--gpt6')){
+      for(const [model,label] of [['gpt-6-sol','GPT-6 Sol · 경량'],['gpt-6-luna','GPT-6 Luna · 초경량']]){
+        await choose('관객 모델',model);
+        assert.equal(await js(`document.querySelector('[aria-label="관객 모델"]').selectedOptions[0].textContent`),label);
+        assert.deepEqual(await js(`[...document.querySelector('[aria-label="관객 추론 수준"]').options].map(o=>o.value).filter(Boolean)`),['none','low','medium','high','xhigh','max']);
+        for(const effort of ['none','max']){
+          await choose('관객 추론 수준',effort);await click('선택한 설정 적용');
+          await until(`document.querySelector('.account-summary').textContent.includes(${JSON.stringify(model)})&&document.querySelector('.account-summary').textContent.includes(${JSON.stringify(effort)})`);
+          assert.deepEqual(JSON.parse(fs.readFileSync(join(out,'data/provider-choice.json'),'utf8')),{kind:'codex',model,effort});
+          assert.equal(service.studio.provider.model,model);assert.equal(service.studio.provider.effort,effort);
+          assert.equal(service.studio.state().connectionProbe.status,'untested');
+          win.destroy();await service.close();await start();await open();
+          assert.equal(await js(`document.querySelector('[aria-label="관객 모델"]').value`),model);
+          assert.equal(await js(`document.querySelector('[aria-label="관객 추론 수준"]').value`),effort);
+          await probe();assert.equal(report.probes.at(-1).status,'ready');assert.equal(report.probes.at(-1).model,model);
+          report.checks.push(`${model}/${effort}: exact tier label, effort list, saved config, server/renderer restart and ${live?'subscription':'synthetic'} probe`);
+        }
+        win.setSize(540,960);await new Promise(r=>setTimeout(r,250));assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);
+        fs.writeFileSync(join(out,`${model}.png`),(await win.webContents.capturePage()).toPNG());win.setSize(1100,1000);
+      }
+    }
     if(luna){
       await choose('관객 모델','gpt-5.6-luna');await choose('관객 추론 수준','low');await click('선택한 설정 적용');
       await until(`document.querySelector('.account-summary').textContent.includes('gpt-5.6-luna')&&!document.querySelector('.connection-problem')`);
