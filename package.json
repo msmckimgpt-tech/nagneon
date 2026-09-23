@@ -14,8 +14,8 @@
     "test": "node --test test/*.test.js",
     "check": "npm run format:check && npm run test && npm run build",
     "package:windows": "npm run check && node scripts/package-windows.mjs",
-    "format": "prettier --write src/App.tsx src/style.css src/types.ts server/studio.js server/index.js",
-    "format:check": "prettier --check src/App.tsx src/style.css src/types.ts server/studio.js server/index.js"
+    "format": "prettier --write src/App.tsx src/style.css src/types.ts server/studio.js server/index.js \"server/decision/*.js\" test/decision-service.test.js docs/DECISION-ASSIST.md",
+    "format:check": "prettier --check src/App.tsx src/style.css src/types.ts server/studio.js server/index.js \"server/decision/*.js\" test/decision-service.test.js docs/DECISION-ASSIST.md"
   },
   "dependencies": {
     "@grpc/grpc-js": "1.14.4",

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Studio} from '../server/studio.js';
-import {defaults} from '../shared/defaults.js';
 import {Audience} from '../server/audience.js';
+import {defaults} from '../shared/defaults.js';
 
 function setup(t) {
   let now=1_000_000,fail=false,requests=0;

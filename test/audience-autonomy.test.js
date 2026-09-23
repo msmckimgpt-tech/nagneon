@@ -146,7 +146,7 @@ test('legacy migration keeps met IDs/history, archives unmet candidates, and doe
 });
 
 test('natural arrivals create at the actual chance, avoid suspend catch-up and use real spectator clip sources',async t=>{
-  let args;const service=await open(t,{provider:fake(async value=>{args=value;return result({arrival:birth});})});start(service);const s=service.studio;let now=Date.now();s.now=()=>now;s.random=()=>0;s.autonomy.start();
+  let args;const service=await open(t,{provider:fake(async value=>{args=value;return result({arrival:birth});})});start(service);const s=service.studio;s.social.preferences({enabled:false});let now=Date.now();s.now=()=>now;s.random=()=>0;s.autonomy.start();
   for(let i=0;i<599;i++){now+=1000;s.pump();}assert.equal(s.settings.personas.length,1);assert.equal(s.calls,0);
   now+=1000;s.pump();await waitFor(()=>!s.busy);assert.equal(s.settings.personas.length,2);assert.equal(args.special.source.path,'broadcast');assert.equal(s.economy.data.balance,200);
   now+=3600000;s.pump();await waitFor(()=>!s.busy);assert.ok(s.calls<=2,'one chance at wake, no backlog');

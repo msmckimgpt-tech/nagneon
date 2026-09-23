@@ -37,7 +37,7 @@ export class ConversationJournal {
   }
   pin(id,pinned){this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry)throw new Error('대화 기억을 찾을 수 없습니다.');if(entry.pinned===pinned)return false;if(pinned&&next.entries.filter(e=>e.pinned).length>=PIN_LIMIT)throw new Error(`대화는 ${PIN_LIMIT}개까지 고정할 수 있습니다.`);entry.pinned=pinned;});}
   annotateTranscription(id,correction){let changed=false;this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry||entry.personaId!=='streamer'||entry.transcription?.source!=='microphone'||entry.transcription.correction)return false;entry.transcription=Transcription.parse({source:'microphone',correction});changed=true;});if(changed)this.normalized.delete(id);return changed;}
-  forget(ids){const set=new Set(ids);this.change(next=>{const kept=next.entries.filter(e=>!set.has(e.id));if(kept.length===next.entries.length)return false;next.entries=kept;});}
+  forget(ids){this.beforeForget?.(ids);const set=new Set(ids);this.change(next=>{const kept=next.entries.filter(e=>!set.has(e.id));if(kept.length===next.entries.length)return false;next.entries=kept;});}
   summary(){return {revision:this.data.revision,count:this.data.entries.length,pinned:this.data.entries.filter(e=>e.pinned).length,limit:JOURNAL_LIMIT,pinLimit:PIN_LIMIT};}
   list({viewerId='',query='',pinned=false,offset=0,limit=30}={}){
     const needle=normalize(query).trim();const matches=this.data.entries.filter(e=>(!viewerId||e.witnesses.includes(viewerId))&&(!pinned||e.pinned)&&(!needle||normalize(memoryText(e)+' '+e.name+' '+e.title).includes(needle))).slice().reverse();
