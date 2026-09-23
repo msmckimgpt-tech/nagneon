@@ -258,7 +258,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       'five communities include unaffiliated resident posts; only real audience authors have badges',
     );
     const before = JSON.stringify(s.world.data);
-    await js("document.querySelector('.social-search input[type=checkbox]').click()");
+    await js("document.querySelector('.social-bookmark-filter').click()");
     await until("document.querySelector('.social-empty')?.textContent.includes('현재 검색·필터')");
     await click('전체 이야기 보기');
     await until("document.querySelectorAll('.social-post').length===3");
@@ -320,15 +320,23 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       }),
     );
     const selected = s.social.data().threads.find((t) => t.kind === 'mention');
-    await js(
-      `(async()=>{const bytes=Uint8Array.from(atob('${png.toString('base64')}'),c=>c.charCodeAt(0));const file=new File([bytes],'검증그림.png',{type:'image/png'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('input[type=file]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`,
-    );
+    assert.equal(await js("document.querySelector('.social-detail input[type=file]')===null"),true);
+    const rejected = await fetch(service.url + '/api/social/threads/' + selected.id + '/attachments', {
+      method: 'POST', headers: {'Authorization': headers.Authorization,
+        'X-Backseat-Client': 'studio','Content-Type': 'application/octet-stream'},
+      body: png,
+    });
+    assert.equal(rejected.status, 403);
+    assert.equal((await rejected.json()).code, 'resident-attachments-only');
+    assert.equal(s.social.detail(selected.id).attachments.length, 0);
+    s.social.attach(selected.id, png, '주민 검증그림.png');
     await js("document.querySelector('.social-discussion').scrollIntoView({block:'start'})");
     await until("document.querySelector('.social-attachments img')?.naturalWidth===256");
     assert.equal(s.social.detail(selected.id).attachments.length, 1);
-    await js(
-      `(async()=>{const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d'),stream=canvas.captureStream(10),rec=new MediaRecorder(stream,{mimeType:'video/webm'}),chunks=[];rec.ondataavailable=e=>chunks.push(e.data);const stopped=new Promise(r=>rec.onstop=r);rec.start();for(let i=0;i<12;i++){ctx.fillStyle=i%2?'#77ccaa':'#335577';ctx.fillRect(0,0,64,64);await new Promise(r=>setTimeout(r,100));}rec.stop();await stopped;stream.getTracks().forEach(t=>t.stop());const transfer=new DataTransfer();transfer.items.add(new File(chunks,'검증영상.webm',{type:'video/webm'}));const input=document.querySelector('input[type=file]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`,
+    const video = await js(
+      `(async()=>{const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d'),stream=canvas.captureStream(10),rec=new MediaRecorder(stream,{mimeType:'video/webm'}),chunks=[];rec.ondataavailable=e=>chunks.push(e.data);const stopped=new Promise(r=>rec.onstop=r);rec.start();for(let i=0;i<12;i++){ctx.fillStyle=i%2?'#77ccaa':'#335577';ctx.fillRect(0,0,64,64);await new Promise(r=>setTimeout(r,100));}rec.stop();await stopped;stream.getTracks().forEach(t=>t.stop());const bytes=new Uint8Array(await new Blob(chunks).arrayBuffer());return Array.from(bytes);})()`,
     );
+    s.social.attach(selected.id, Buffer.from(video), '주민 검증영상.webm');
     await until("document.querySelector('.social-attachments video')?.readyState>=2");
     assert.equal(await js("document.querySelector('.social-attachments video').autoplay"), false);
     await js("document.querySelector('.social-attachments video').play()");
@@ -350,15 +358,15 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     win.setSize(1280, 900);
     await new Promise((r) => setTimeout(r, 500));
     report.checks.push(
-      'real form comment/reply, recommendation and actual PNG upload/render and WebM playback; 520px discussion layout',
+      'real form comment/reply and recommendation; streamer upload denied before body parsing, resident PNG/WebM render and play; 520px layout',
     );
 
     writeFileSync(join(out, 'desktop.png'), (await win.webContents.capturePage()).toPNG());
     report.screenshots.push('desktop.png');
     await click('← 글 목록');
     await js("document.querySelector('.social-settings').open=true");
-    await js("document.querySelector('.social-settings input').click()");
-    await until("document.querySelector('.social-settings summary').textContent.includes('OFF')");
+    await js("document.querySelector('.social-settings [role=switch]').click()");
+    await until("document.querySelector('.social-settings summary').textContent.includes('꺼짐')");
     assert.equal(s.social.enabled(), false);
     report.checks.push('OFF reaches authoritative runtime');
     win.setSize(520, 820);
