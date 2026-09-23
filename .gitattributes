@@ -4,3 +4,6 @@ src/style.css text eol=lf
 src/types.ts text eol=lf
 server/studio.js text eol=lf
 server/index.js text eol=lf
+server/decision/*.js text eol=lf
+test/decision-service.test.js text eol=lf
+docs/DECISION-ASSIST.md text eol=lf
