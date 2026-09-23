@@ -244,14 +244,22 @@ try {
   if (process.argv.includes('--social')) {
     await click('방송 밖 이야기');await until("!!document.querySelector('.community-sections')");
     await click('바깥 커뮤니티');await until("!!document.querySelector('.outside-community .social-settings')");
-    assert.equal(await evaluate("document.querySelectorAll('.social-community-list button').length"),5);
+    assert.equal(await evaluate("document.querySelectorAll('.social-community-list button').length"),6);
     const prefs=await evaluate("fetch('/api/social/communities').then(r=>r.json()).then(d=>d.preferences)");
     assert.equal(prefs.enabled,true);assert.equal(prefs.arrivalsEnabled,true);
+    if(process.argv.includes('--social-residents')) {
+      await until("document.querySelectorAll('.social-post').length===2");
+      assert.equal(await evaluate("document.querySelectorAll('.social-post .social-viewer-badge').length"),1);
+      const authors=await evaluate("fetch('/api/social/search').then(r=>r.json()).then(d=>d.posts.map(p=>({author:p.author,viewer:p.authorIsViewer})))");
+      assert.ok(authors.some(p=>p.author==='일반주민검증'&&!p.viewer));assert.ok(authors.some(p=>p.author==='관객검증'&&p.viewer));
+      await writeFile(join(output,'resident-authors.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
+      report.checks.push('persisted independent author and current audience highlight survive packaged launch');
+    }
     const before=await readFile(join(profile,'data/world.json'),'utf8');
     await click('내 이야기 찾기');await until("!document.querySelector('.social-search button').disabled");
     assert.equal(await readFile(join(profile,'data/world.json'),'utf8'),before);
     await writeFile(join(output,'social.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
-    report.checks.push('delivered four communities, default ON and pure ego search');
+    report.checks.push('delivered five communities, default ON and pure ego search');
     await click('방송 커뮤니티');await until("!!document.querySelector('.community-gallery')");
     await click('방송실');
   }

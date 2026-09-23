@@ -86,6 +86,10 @@ export class SocialRuntime {
       text: t.text,
       at: t.at,
       author: r?.persona.name || '주민',
+      authorIsViewer:
+        !!r &&
+        this.s.settings.personas.some((p) => p.id === r.persona.id && !p.system) &&
+        this.s.audience.data.members[r.persona.id]?.sessions > 0,
       sourceStatus: !t.source
         ? 'daily'
         : this.validSource(t.source)
@@ -189,7 +193,8 @@ export class SocialRuntime {
     );
     for (const c of activeCommunities) {
       const residents = d.residents.filter((r) => r.communityId === c.id),
-        topic = c.topics.find((t) => !d.preferences.mutedTopics.includes(t.id));
+        topics = c.topics.filter((t) => !d.preferences.mutedTopics.includes(t.id)),
+        topic = topics[0];
       if (!topic) continue;
       if (residents.filter((r) => !r.admitted).length < 2 && d.residents.length < 128) {
         out.push({
@@ -203,15 +208,19 @@ export class SocialRuntime {
       }
       for (const r of residents) {
         if (s.settings.personas.some((p) => p.id === r.persona.id && !p.enabled)) continue;
-        const latest = d.threads.filter((t) => t.residentId === r.id).at(-1);
+        const ownPosts = d.threads.filter((t) => t.residentId === r.id),
+          latest = ownPosts.at(-1),
+          lastDaily = ownPosts.filter((t) => t.kind === 'daily').at(-1),
+          dailyTopic =
+            topics[(topics.findIndex((t) => t.id === lastDaily?.topicId) + 1) % topics.length];
         if (!latest || now - latest.at >= 2 * 3600000)
           out.push({
             kind: 'social-daily',
             id: r.id,
             viewer: r.persona,
-            raw: { residentId: r.id, communityId: c.id, topicId: topic.id },
+            raw: { residentId: r.id, communityId: c.id, topicId: dailyTopic.id },
             revision: digest({ r: r.id, day: Math.floor(now / 7200000) }),
-            weight: 6,
+            weight: r.admitted ? 4 : 12,
           });
         const entry = s.journal.data.entries
           .slice()
@@ -354,10 +363,10 @@ export class SocialRuntime {
     const instruction = birth
       ? '이 공동체에 사는 새로운 가상 주민 한 명을 arrival에 구성한다. 기존 관객/실제 이용자를 복제하지 말고 방송인과의 친분이나 시청 경험을 만들지 않는다. messages는 비운다.'
       : target.kind === 'social-read'
-        ? '제공된 게시글을 실제로 읽는 가상 사건이다. 본인 취향으로 방송에 관심이 생겼으면 communityVotes에 자신의 personaId와 recommended=true, 아니면 false를 반환한다. messages는 비운다. 직접 방송을 목격했다고 주장하지 않는다.'
+        ? '제공된 게시글을 실제로 읽는 가상 사건이다. 방송 방문은 의무가 아니다. 글을 읽고 그냥 지나쳐도 정상이며, 본인 취향과 맞아 방송에 관심이 생겼을 때만 communityVotes에 자신의 personaId와 recommended=true, 아니면 false를 반환한다. messages는 비운다. 직접 방송을 목격했다고 주장하지 않는다.'
         : target.kind === 'social-mention'
           ? '제공된 공개 방송 발언만 직접 목격 근거다. 공동체 취향에 맞는 짧은 감상 글 하나를 messages에 쓰거나 침묵한다. 다른 사건/영상/관객/친분을 지어내지 않는다.'
-          : '방송인과 무관한 이 공동체의 일상 글 하나를 messages에 쓴다. 주제에 대한 독립적인 취향·시행착오를 한국어 게시글 말투로 표현한다. 현실 뉴스/유행/날짜/실제 사이트 방문을 지어내지 않는다. 침묵도 정상이다.';
+          : '이곳은 특정 방송인의 팬 게시판이 아니다. 방송을 보거나 관객이 되지 않아도 계속 머무는 일반 주민으로서, 방송인과 무관한 이 공동체의 일상 글 하나를 messages에 쓴다. 공동체의 말투와 규범을 반영하되 홍보나 방문 예고로 마무리하지 않는다. 주제에 대한 독립적인 취향·시행착오를 한국어 게시글 말투로 표현한다. 현실 뉴스/유행/날짜/실제 사이트 방문을 지어내지 않는다. 침묵도 정상이다.';
     s.reserveCall();
     const result = await s.provider.react(
       {

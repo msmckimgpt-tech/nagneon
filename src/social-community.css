@@ -213,3 +213,31 @@
   border-radius: 8px;
   background: #ffffff1a;
 }
+
+.social-post.social-viewer-post,
+.social-detail.social-viewer-post {
+  border-left: 3px solid #64d8c7;
+  background: #64d8c70c;
+}
+.social-detail.social-viewer-post {
+  padding: 16px;
+  border-radius: 10px;
+}
+.social-author,
+.social-post .social-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.social-viewer-badge,
+.social-post .social-viewer-badge {
+  color: #a5f3e5;
+  background: #267f723d;
+  border: 1px solid #64d8c766;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
