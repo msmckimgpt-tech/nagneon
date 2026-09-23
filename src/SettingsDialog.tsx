@@ -177,8 +177,9 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
               </select>
             </label>
             <label className="set-field">초기 잠수 관객 비율 {Math.round(draft.lurkRatio*100)}%
-              <input type="range" min={0} max={0.9} step={0.05} value={draft.lurkRatio}
+              <input type="range" min={0} max={0.9} step={0.05} value={draft.lurkRatio} aria-describedby="settings-help-lurkRatio"
                 onChange={e=>update('lurkRatio',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-lurkRatio">방송 시작 때 채팅보다 조용히 시청하는 관객의 비율이에요. 이름을 부르면 대화에 참여할 수 있어요.</span>
             </label>
           </div>
           <label className="set-field">방송 안팎의 커뮤니티 규범
@@ -208,13 +209,15 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
               </select>
             </label>
             <label className="set-field">잘못된 게임 훈수 연출 {Math.round(draft.mistakenAdvice*100)}%
-              <input type="range" min={0} max={1} step={0.05} value={draft.mistakenAdvice}
+              <input type="range" min={0} max={1} step={0.05} value={draft.mistakenAdvice} aria-describedby="settings-help-mistakenAdvice"
                 onChange={e=>update('mistakenAdvice',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-mistakenAdvice">훈수가 허용될 때, 일부러 틀린 게임 훈수를 하는 연출의 정도예요. 0%면 이 연출을 요청하지 않아요. 실제 오류율을 뜻하지는 않아요.</span>
             </label>
           </div>
           <label className="set-field">관심 끌기 연출 {Math.round(draft.attentionSeeking*100)}%
-            <input type="range" min={0} max={1} step={0.05} value={draft.attentionSeeking}
+            <input type="range" min={0} max={1} step={0.05} value={draft.attentionSeeking} aria-describedby="settings-help-attentionSeeking"
               onChange={e=>update('attentionSeeking',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-attentionSeeking">훈수가 허용될 때, 관심을 끌려고 게임을 아는 척하는 연출의 정도예요. 0%면 이 연출을 요청하지 않아요.</span>
           </label>
           <label className="set-check">
             <input type="checkbox" checked={draft.webSearch} onChange={e=>update('webSearch',e.target.checked)}/>
@@ -236,8 +239,9 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
           </label>}
           <div className="set-row">
             <label className="set-field">AI 반응 최소 간격 (초)
-              <input type="number" min={5} max={120} value={draft.intervalSeconds}
+              <input type="number" min={5} max={120} value={draft.intervalSeconds} aria-describedby="settings-help-intervalSeconds"
                 onChange={e=>update('intervalSeconds',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-intervalSeconds">자동 화면 반응을 요청하는 최소 간격이에요. 응답 완료 시간은 모델과 연결 상태에 따라 달라요. 발언에 대한 요청은 별도로 처리해요.</span>
             </label>
           </div>
           <p className="field-note">화면은 응답을 기다리는 동안에도 0.5초마다 모으고, 최근 16초에서 최대 8장을 시간순으로 전달해요. 간격이 길거나 응답이 늦으면 일부 장면을 놓칠 수 있어요. 간격을 늘리면 자동 화면 반응 요청이 줄어들어요. 계정 제공처의 사용 한도는 별도로 적용됩니다. 리허설 모드에서는 사용량이 들지 않아요.</p>
@@ -252,13 +256,15 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
               </select>
             </label>
             <label className="set-field">관객별 슬로우 모드 (초)
-              <input type="number" min={0} max={60} value={draft.slowModeSeconds}
+              <input type="number" min={0} max={60} value={draft.slowModeSeconds} aria-describedby="settings-help-slowModeSeconds"
                 onChange={e=>update('slowModeSeconds',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-slowModeSeconds">같은 관객의 채팅을 표시하는 최소 간격이에요. 0초면 이 대기 시간을 두지 않아요.</span>
             </label>
           </div>
-          <label className="set-field">한 번에 반응할 관객 수
-            <input type="number" min={1} max={8} value={draft.chatPace}
+          <label className="set-field">한 번에 표시할 채팅 수
+            <input type="number" min={1} max={8} value={draft.chatPace} aria-describedby="settings-help-chatPace"
               onChange={e=>update('chatPace',Number(e.target.value))}/>
+              <span className="field-note" id="settings-help-chatPace">한 번의 반응에서 받을 채팅 수의 기준이에요. 전체 관객 수를 제한하거나 매번 이 수만큼 말하게 하지는 않아요.</span>
           </label>
           <label className="set-field">매니저 운영 지침
             <textarea value={draft.managerRules} maxLength={3000}

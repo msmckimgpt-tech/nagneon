@@ -32,7 +32,7 @@
 | 1-2 | 첫 실행에서 보여주는 캐릭터가 실제로는 존재하지 않는다. | 수정: 가상 인물 미리보기 대신 실제 빈 방송실·도우미·초대 안내 |
 | 1-3 | 그 도우미가 관객 행세를 한다. | 수정: system 페르소나 리허설 채팅 제외, 빈 방은 notice |
 | 1-4 | 정보 밀도가 폰트 크기로 도망갔다. | 수정: CSS 8~10px 글씨를 최소 11px로 확대; 격리 화면 검사 통과 |
-| 1-5 | 설정이 32개 필드인데 섹션 제목은 3개다. | 사실 정정: 설정은 이미 7개 탭. 고급 항목 설명은 추가 검토 |
+| 1-5 | 설정이 32개 필드인데 섹션 제목은 3개다. | 수정: 기존 7개 탭 유지, 혼동하기 쉬운 6개 설정의 한국어 설명과 접근성 연결 추가 |
 | 1-6 | 아이콘 버튼의 접근성이 반쪽이다. | 수정: title-only icon 버튼과 알림 닫기에 aria-label |
 | 1-7 | 오버레이가 방송 송출용인지 개인 모니터용인지 불명확하다. | 수정: 개인/공개 선택과 AI·가상 포인트 표시. 실제 OBS 캡처 검증 남음 |
 | 2-1 | 지금 이 저장소의 main에서 `npm run check`가 실패한다. | 해결: main npm ci 후 679개 테스트·빌드 재현. 기존 CI 절차 확인 |
@@ -284,3 +284,13 @@
 원본 551bae5(기존 main 이력 동기화 후0d3fde9)를 격리 squash 통합했다. 필수 검사676/676·빌드 통과(artifacts/critical-review-integration/cpu-guidance-check.log). 사용자의 실제 설치를0.1.4로 업데이트하고 네 구성을 추가 네트워크 다운로드 없이 검증 설치했다. 실제 프로필의 렌더러/API에서 관객6명·이름/식별자·제목·잔액 보존, 방송 중지 상태를 확인하고 정상 종료 후 디버깅 옵션 없이 다시 실행했다. 앱은 사용자 일반 실행 상태로 인계했다. 원본 user-update-014-config.json, user-runtime-installed.json, user-start-014.json, user-normal-launch-014.json은 작업 artifacts/critical-review에 있다. 후속 개발에서 이 사용자 앱을 시험 프로세스로 취급하지 않는다.
 
 CPU 필수 여부는 공개0.1.4 전달 모듈과 모델로 검증했다. 명시적 CPU/int8, GPU 런타임 경로 없음, fallback=false에서 합성 한국어 전사 통과(준비4.319초·전사1.997초). 게임 FPS나 전체 정확도/다른 PC 지원 실측은 아니다. GPU/CPU 자원 선택 설명은 다음 배포에 포함할 소스 변경이며 현재 사용자의0.1.4에는 기존 CPU 선택 기능이 있다. 자세한 범위는 CPU-SPEECH.md. 무료 제공/제공처 조건을 README에 명시했다. 다음은 원장의 콘텐츠/게임 프로필·반응 지연/전송/백오프·공개 연결·작업 공간 정리 등 남은 항목이며 전체 목표를 완료로 표시하지 않는다.
+
+
+## 설정 설명과 의미 정리 (2026-09-23)
+
+- 잠수 관객 비율, 잘못된 훈수·관심 끌기 연출, 반응 최소 간격, 관객별 슬로우 모드, 한 번에 표시할 채팅 수에 설명을 추가했다. 입력과 설명을 aria-describedby로 연결했다.
+- chatPace는 전체 관객 수가 아니라 한 반응에서 수용하는 채팅 수이므로 화면 이름을 바로잡았다. 기본값·저장 형식·범위·기존 7개 탭은 변경하지 않았다. 연출 비율을 실제 모델 오류율이나 응답 완료 시간으로 오해하지 않도록 구분했다.
+- 격리 worktree review-settings-help-20260923에서 npm ci, 최종 npm run check의 708개 검사·TypeScript/Vite 빌드, npm audit --audit-level=high(0건), diff 검사를 통과했다.
+- 실제 Electron 렌더러의 합성 인메모리 프로필에서 설명 6개의 표시·연결·설정값 보존과 1440×980, 420×900, 1280×900/200% 확대의 3개 관련 탭을 확인했다. 9개 조합에서 가로 넘침이 없고 기존 UI 회귀 포함 12개 검사를 통과했다. 실사용 계정·장치·프로필은 사용하지 않았다. 스크린리더 음성 출력은 별도 미검증이다.
+- 전체 검사 중 provider-selection-api의 fetch failed 2건을 보존했다. 해당 파일 2/2 재검사와 최종 전체 708/708 검사는 통과했으며 최초 연결 실패의 원인은 확정하지 않았다.
+- 원본: 해당 worktree artifacts/settings-check-final.log(실패), settings-provider-recheck.log, settings-check-verified.log, settings-audit.log, settings-ui.log, settings-help-ui/help-checks.json 및 PNG. 검증 스크립트는 artifacts/verify-settings-help.cjs에 보존했다. 로컬 검증이며 설치·릴리즈 완료를 뜻하지 않는다.
