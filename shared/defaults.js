@@ -16,6 +16,7 @@ export const defaults = {
   showStreamerMessages: true,
   overlayMode: 'private',
   communityActivityEnabled: true,
+  memesEnabled: true, cultureDomains: [],
   speechDevice: 'gpu',
   contextualTranscription: true,
   streamerStyle: '친근한 한국어 트위치식 채팅. 적당한 드립과 응원, 요청할 때만 훈수.', adviceMode: 'on-request',

@@ -89,6 +89,7 @@ export class CommunityActivity {
     if(media){await s.clipPerception.assertCurrent(s.clips,id,media,signal);if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;}
     const current=s.settings.personas.find(p=>p.id===viewer.id&&p.enabled&&!p.system);if(!current||!s.audience.data.members[viewer.id]?.sessions)return;
     let m=result.observation.messages.find(m=>m.personaId===viewer.id&&validText(s,m));
+    if(m?.meme&&!s.culture.canUse(m.personaId))m=undefined;
     let parentId=m?.replyTo||null;
     if(parentId){const parent=comments.find(c=>c.id===parentId&&!c.deleted);if(!parent)m=undefined;else if(kind==='gallery')parentId=parent.parentId||parent.id;else{let depth=1,p=parent;while(p.parentId){p=comments.find(c=>c.id===p.parentId);if(!p||++depth>=4){m=undefined;break;}}}}
     if(m&&comments.some(c=>c.personaId===viewer.id&&c.text.trim()===m.text.trim()))m=undefined;
@@ -107,6 +108,7 @@ export class CommunityActivity {
         data.reviews=[...data.reviews,{sessionId:id,viewerId:viewer.id,at:s.now()}].slice(-1000);
       });
     }
+    if(m?.meme)s.culture.recordUse(m.personaId);
     s.publish();
   }
 }

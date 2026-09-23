@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { domainOrigin } from './culture/source.js';
+import { CultureAnalysis } from './culture/learning.js';
 import {VIDEO_MAX_FRAMES,VIDEO_FRAME_CHARS,VIDEO_WINDOW_MS} from '../shared/temporal-policy.js';
 const short = (n) => z.string().trim().min(1).max(n);
 export const Persona = z.object({ id: short(40).regex(/^[a-zA-Z0-9_-]+$/), name: short(30), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), role: z.enum(['viewer','manager']), personality: short(1200), enabled: z.boolean(), system:z.boolean().default(false), sociability:z.number().min(0).max(1).default(0.6), expertise:z.number().min(0).max(1).default(0.5), values:z.string().max(1000).default('즐거운 공동 시청과 스트리머 존중') });
@@ -10,6 +12,8 @@ export const Settings = z.object({
   showStreamerMessages:z.boolean().default(true),
   overlayMode:z.enum(['private','public']).default('private'),
   communityActivityEnabled:z.boolean().default(true),
+  memesEnabled:z.boolean().default(true),
+  cultureDomains:z.array(z.string().max(300).transform((v,ctx)=>{try{return domainOrigin(v);}catch{ctx.addIssue({code:'custom',message:'공개 HTTPS 커뮤니티 도메인을 입력하세요.'});return z.NEVER;}})).max(5).default([]).refine(v=>new Set(v).size===v.length,'도메인이 중복됩니다.'),
   speechDevice:z.enum(['gpu','cpu']).default('gpu'),
   contextualTranscription:z.boolean().default(true),
   streamerStyle: z.string().max(2000).default('친근한 채팅, 요청할 때만 훈수'), adviceMode: z.enum(['on-request','always','never']).default('on-request'),
@@ -31,6 +35,7 @@ export const Settings = z.object({
   if (!s.personas.some(p=>p.id===s.managerId && p.enabled)) ctx.addIssue({code:'custom',message:'활성 관객 중 매니저를 선택하세요.'});
 });
 export const Observation = z.object({
+  cultureAnalysis:CultureAnalysis.nullable().default(null),
   communityVotes:z.array(z.object({personaId:short(40),recommended:z.boolean()})).max(3).default([]),
   transcriptCorrections:z.array(z.object({messageId:z.string().uuid(),text:short(3000),confidence:z.number().min(0).max(1),reason:short(240)})).max(4).default([]),
   arrival:z.object({name:short(30),personality:short(1200),values:short(1000),sociability:z.number().min(0).max(1),expertise:z.number().min(0).max(1)}).nullable().default(null),
@@ -39,7 +44,7 @@ export const Observation = z.object({
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8),donations:z.array(z.object({personaId:short(40),message:z.string().trim().max(200),anonymous:z.boolean()})).max(2).default([])}).default({positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}),
-  messages: z.array(z.object({ personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional(),advice:z.boolean().default(false) })).max(8)
+  messages: z.array(z.object({ meme:z.boolean().default(false), personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional(),advice:z.boolean().default(false) })).max(8)
 });
 const imageData=(max)=>z.string().max(max).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/);
 export const Frame = z.object({obsSourceId:z.string().uuid().optional(),image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),

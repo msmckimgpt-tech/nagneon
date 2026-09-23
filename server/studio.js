@@ -20,6 +20,7 @@ import { admitTranscriptCorrection, transcriptAnomaly } from './transcript-corre
 import { revisesLiveSituation } from './streamer-expression.js';
 import { Community } from './community.js';
 import { CommunityActivity } from './community-activity.js';
+import { CultureLearning } from './culture/learning.js';
 import { ClipPerception } from './clip-perception.js';
 import { ViewingContinuity, SCREEN_REACTION_TTL_MS } from './viewing-continuity.js';
 import { donationMessage } from './chat-attention.js';
@@ -42,6 +43,7 @@ export class Studio extends EventEmitter {
     economy,
     clips,
     clipPerception,
+    cultureLearning,
     storageStatus = () => ({ warnings: [], recovered: [] }),
   } = {}) {
     super();
@@ -80,6 +82,7 @@ export class Studio extends EventEmitter {
       this.autonomy = new AudienceAutonomy(this, world);
     }
     this.communityActivity = new CommunityActivity(this);
+    this.culture = new CultureLearning(this, cultureLearning);
     this.clipPerception = clipPerception || new ClipPerception();
   }
   resetCounters() {
@@ -155,6 +158,7 @@ export class Studio extends EventEmitter {
       tokens: this.tokens,
       busy: this.busy && !this.communityActivity?.active,
       communityActivity: this.communityActivity?.snapshot(),
+      culture: this.culture?.snapshot(),
       lastError: this.lastError,
       provider: this.provider.status(),
       queued: this.queue.length,
@@ -271,9 +275,12 @@ export class Studio extends EventEmitter {
     this.economy.ensureWallets(next.personas);
     this.persist(next);
     this.settings = next;
+    this.culture.interrupt();
+    this.culture.sync();
     this.publish();
   }
   start() {
+    this.culture.interrupt();
     if (this.autonomy?.firstTutorialPending && this.settings.mode === 'live')
       throw Error(
         '첫 관객을 준비하고 있어요. 완료 후 실제 방송을 시작하세요. 리허설은 지금 할 수 있어요.',
@@ -310,6 +317,7 @@ export class Studio extends EventEmitter {
     this.publish();
   }
   stop() {
+    this.culture.interrupt();
     this.communityActivity?.interrupt();
     this.sound.stop();
     this.running = false;
@@ -345,6 +353,7 @@ export class Studio extends EventEmitter {
     this.publish();
   }
   close() {
+    void this.culture.close();
     this.communityActivity.close();
     void this.clipPerception.close();
     this.stop();
@@ -382,6 +391,7 @@ export class Studio extends EventEmitter {
         this.log(`관객 기억 저장 실패: ${error.message}`);
         this.lastError = error.message;
       }
+    if (msg.meme) this.culture.recordUse(msg.personaId);
     this.messages = this.messages.slice(-500);
     this.publish();
     return msg;
@@ -568,6 +578,7 @@ export class Studio extends EventEmitter {
     }
   }
   pump() {
+    this.culture?.tick();
     this.externalChat?.prune();
     if (!this.running) {
       this.communityActivity?.tick();
@@ -603,10 +614,15 @@ export class Studio extends EventEmitter {
       this.reactions.drop(m.diagnosticId, 'disabled');
       return;
     }
+    if (m.meme && !this.culture.canUse(m.personaId)) {
+      this.reactions.drop(m.diagnosticId, 'expired');
+      return;
+    }
     this.lastSpeaker.set(m.personaId, now);
     try {
       this.publishMessage({
         ...this.prepareMessage(m.personaId, m.text, m.kind),
+        ...(m.meme ? { meme: true } : {}),
         ...(m.advice
           ? { advice: true, ...(m.adviceRequestId ? { adviceRequestId: m.adviceRequestId } : {}) }
           : {}),

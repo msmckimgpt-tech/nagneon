@@ -37,6 +37,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
   onGuide:()=>void;
 }){
   const [draft,setDraft]=useState<Settings>(()=>structuredClone(initial));
+  const [domainText,setDomainText]=useState(()=>initial.cultureDomains?.join('\n')||'');
   const [active,setActive]=useState<TabId>('broadcast');
   const [pending,setPending]=useState(false);
   const [error,setError]=useState('');
@@ -80,7 +81,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
     try{
       // The private server owns the persona roster, so strip personas before
       // saving; every other field is round-tripped back to the service.
-      const payload:Record<string,unknown>={...draft};
+      const payload:Record<string,unknown>={...draft,cultureDomains:domainText.split(/\s+/).map(v=>v.trim()).filter(Boolean)};
       delete payload.personas;
       await api('settings',payload,'PUT');
       onSaved();
@@ -184,6 +185,16 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide}:{
             <textarea value={draft.communityCulture} maxLength={2000}
               onChange={e=>update('communityCulture',e.target.value)}/>
           </label>
+          <label className="set-check"><input type="checkbox" checked={draft.memesEnabled??true} onChange={e=>update('memesEnabled',e.target.checked)}/><span>상황에 맞는 밈 사용</span></label>
+          <p className="field-note">글로벌·한국·게임 문화를 드물게 참고합니다. 관객마다 취향이 다르며 방송 반응과 게시판 공지로 분위기를 조율할 수 있습니다.</p>
+          <label className="set-field">참고할 커뮤니티 도메인 (최대 5개, 한 줄에 하나)
+            <textarea value={domainText} maxLength={1500} placeholder="community.example.org" onChange={e=>setDomainText(e.target.value)}/>
+          </label>
+          <p className="field-note">공개 문서를 사이트당 12시간 이상 간격으로 최대 3개 읽습니다. 방송이 쉬는 동안 바뀐 자료만 연결된 AI에 전달하므로 해당 연결의 사용량이 발생합니다. 로그인·수집 제한이 있는 사이트는 건너뜁니다. 저장된 요약은 모델 재학습이 아니며 최신 유행을 보장하지 않습니다. 도메인을 지우면 해당 참고자료를 사용하지 않습니다.</p>
+          {state.culture?.active&&<p role="status">문화 자료 확인 중: {state.culture.active}</p>}
+          {state.culture?.error&&<p role="alert">{state.culture.error}</p>}
+          {state.culture?.sources.map(source=><p key={source.origin}>{source.origin} · {source.error||(source.analyzedAt?`분석: ${new Date(source.analyzedAt).toLocaleString('ko-KR')}`:'분석 대기')} · 다음 확인: {new Date(source.nextAt).toLocaleString('ko-KR')}</p>)}
+
           <label className="set-field">스트리머 성향
             <textarea value={draft.streamerStyle} maxLength={2000}
               onChange={e=>update('streamerStyle',e.target.value)}/>

@@ -21,6 +21,11 @@ import { ClipInspector } from './clip-inspector.js';
 import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
+import {
+  CultureLearningData,
+  emptyCultureLearning,
+  withCultureContext,
+} from './culture/learning.js';
 import { Settings, Frame } from './schema.js';
 import { z } from 'zod';
 import { defaults } from '../shared/defaults.js';
@@ -179,6 +184,7 @@ export async function startServer({
       fresh: !hasPreviousSettings,
     }),
   );
+  const cultureStore = useStore('culture-learning', CultureLearningData, emptyCultureLearning);
   const clipsStore = useStore('clips', ClipsData, () => []);
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
@@ -208,7 +214,10 @@ export async function startServer({
     warnings: stores.flatMap((s) => s.warnings).slice(-6),
     recovered: stores.filter((s) => s.recoveredFrom).map((s) => s.recoveredFrom),
   });
-  const studio = new Studio({
+  let studio;
+  provider = withCultureContext(provider, () => studio);
+  studio = new Studio({
+    cultureLearning: { data: cultureStore.data, save: cultureStore.save },
     provider,
     settings: world.data.settings,
     persist: (value) => world.part('settings', value),
@@ -935,6 +944,7 @@ export async function startServer({
         invoke(() => tutorial.operation),
         invoke(() => probe.cancel()),
         invoke(() => studio.close()),
+        invoke(() => studio.culture.close()),
         invoke(() => clipInspector.close()),
         invoke(() => speech.close()),
         invoke(() => studio.communityActivity.yield()),
