@@ -167,6 +167,7 @@ async function startServerImpl(
   const clipInspector = new ClipInspector(runtime.clips);
   const runtimeComponents = runtime.components ? new RuntimeComponents(runtime.components) : null;
   if (runtimeComponents) {
+    onResource(() => runtimeComponents.close());
     runtime.speech.prepare = (signal, device) =>
       runtimeComponents.prepare('microphone', signal, device);
     runtime.sound.prepare = (signal) => runtimeComponents.prepare('sound', signal);
@@ -992,6 +993,8 @@ async function startServerImpl(
   );
   const server = await listenBrowserLoopback(createServer(app), { port });
   expectedHost = `127.0.0.1:${server.address().port}`;
+  // 기존 설치는 앱 시작을 막지 않고 확인한다. 다운로드나 음성 장치는 시작하지 않는다.
+  void runtimeComponents?.inspectInstalled();
   // Start the local worker only when the renderer requests audio preparation.
   const health = setInterval(() => studio.publish(), 5000);
   health.unref();

@@ -113,6 +113,7 @@ export type State = BroadcastSessionState & {
   } | null;
   ai?: import('./ai-types').AiState;
   runtimeComponents?: {
+    preparing?: boolean;
     components: Array<{
       id: string;
       label: string;
