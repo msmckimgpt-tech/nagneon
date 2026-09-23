@@ -9,6 +9,8 @@ import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutor
 import { SpeechCapture } from './speech-screen.js';
 import { DebugConfig, initialDebug, withDebugPrompt, debugRoutes } from './debug-mode.js';
 import express from 'express';
+import { decodeFrameWire } from './frame-wire.js';
+import { FRAME_WIRE_TYPE, FRAME_JSON_LIMIT } from '../shared/frame-wire.js';
 import { createServer } from 'node:http';
 import { listenBrowserLoopback, validateBrowserListenPort } from './browser-loopback.js';
 import { resolve, dirname } from 'node:path';
@@ -853,24 +855,28 @@ async function startServerImpl(
       ),
     ),
   );
-  app.post('/api/react', async (req, res) => {
-    const input = Frame.parse(req.body);
-    if (input.obsSourceId) {
-      const sessionId = studio.sessionId;
-      if (!studio.running || studio.settings.mode !== 'live')
-        throw Error('실제 AI 방송을 시작한 뒤 OBS 화면을 전달할 수 있습니다.');
-      const frame = await obsInput.frame(input.obsSourceId);
-      if (sessionId !== studio.sessionId || !studio.running)
-        throw Error('OBS 화면을 받은 방송이 끝났습니다.');
-      input.video = {
-        sessionId,
-        sourceId: frame.sourceId,
-        frames: [{ image: frame.image, at: frame.at }],
-      };
-      delete input.obsSourceId;
-    }
-    res.json(await studio.react(input));
-  });
+  app.post(
+    '/api/react',
+    express.raw({ type: FRAME_WIRE_TYPE, limit: FRAME_JSON_LIMIT }),
+    async (req, res) => {
+      const input = Frame.parse(req.is(FRAME_WIRE_TYPE) ? decodeFrameWire(req.body) : req.body);
+      if (input.obsSourceId) {
+        const sessionId = studio.sessionId;
+        if (!studio.running || studio.settings.mode !== 'live')
+          throw Error('실제 AI 방송을 시작한 뒤 OBS 화면을 전달할 수 있습니다.');
+        const frame = await obsInput.frame(input.obsSourceId);
+        if (sessionId !== studio.sessionId || !studio.running)
+          throw Error('OBS 화면을 받은 방송이 끝났습니다.');
+        input.video = {
+          sessionId,
+          sourceId: frame.sourceId,
+          frames: [{ image: frame.image, at: frame.at }],
+        };
+        delete input.obsSourceId;
+      }
+      res.json(await studio.react(input));
+    },
+  );
   app.post('/api/viewing-end', (req, res) =>
     res.json(
       studio.endVideo(
