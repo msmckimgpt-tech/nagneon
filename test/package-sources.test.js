@@ -8,6 +8,7 @@ async function fixture(){
   await mkdir('artifacts',{recursive:true});const root=await mkdtemp(resolve('artifacts/package-source-')),source=join(root,'source'),stage=join(root,'stage'),folder=join(root,'output');
   const files={'LICENSE':'MIT fixture','scripts/clip_perception.py':'perception','desktop/main.cjs':'main','server/temporal-new.js':'sequence','shared/config.json':'{}','dist/index.html':'<html/>','dist/assets/app.js':'screen code','package.json':JSON.stringify({name:'test',version:'1.0.0',scripts:{start:'node private'}}),'package-lock.json':'{}','scripts/speech_worker.py':'microphone','scripts/sound_worker.py':'sound','scripts/clip_inspector.py':'clips'};
   files['shared/temporal-policy.d.ts']='export declare const VIDEO_SAMPLE_MS:number;';
+  files['server/speech-listening-controller.d.ts']='export declare class SpeechListeningController {}';
   files['server/youtube-chat.proto']='syntax = "proto2";';
   files['server/legacy-season-versions.json']='{"legacy":true}';
   for(const [file,text] of Object.entries(files)){await mkdir(dirname(join(source,file)),{recursive:true});await writeFile(join(source,file),text);}
@@ -22,7 +23,7 @@ test('complete delivered source comparison includes new modules, frontend assets
   assert.ok(f.snapshot.files.some(file=>file.source==='server/legacy-season-versions.json'));
   assert.ok(f.snapshot.files.some(file=>file.source==='server/youtube-chat.proto'));
   assert.ok(f.snapshot.files.some(file=>file.source==='server/temporal-new.js'));assert.ok(f.snapshot.files.some(file=>file.source==='dist/assets/app.js'));
-  assert.deepEqual(f.snapshot.buildInputs.map(file=>file.source),['package-lock.json','package.json','shared/temporal-policy.d.ts']);assert.ok(!f.snapshot.files.some(file=>file.source.endsWith('.d.ts')||file.source==='package-lock.json'));
+  assert.deepEqual(f.snapshot.buildInputs.map(file=>file.source),['package-lock.json','package.json','server/speech-listening-controller.d.ts','shared/temporal-policy.d.ts']);assert.ok(!f.snapshot.files.some(file=>file.source.endsWith('.d.ts')||file.source==='package-lock.json'));
 });
 test('build-only lockfile and package development settings remain tracked after packaging removes them',async()=>{
   for(const source of ['package-lock.json','package.json']){
