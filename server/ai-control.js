@@ -42,6 +42,22 @@ const policySchema = z
     rates: z.array(rateSchema).max(40),
   })
   .strict();
+const communityKinds = [
+  'social-birth',
+  'social-daily',
+  'social-mention',
+  'social-read',
+  'clip-comment',
+  'gallery-comment',
+  'community-review',
+];
+const communityResults = [
+  'resident-created',
+  'post-created',
+  'comment-created',
+  'read-only',
+  'no-post',
+];
 const attemptSchema = z.object({
   id: z.string().uuid(),
   operationId: z.string().uuid(),
@@ -57,6 +73,8 @@ const attemptSchema = z.object({
   usage: usageSchema.nullable(),
   estimatedUsd: finite.nullable(),
   application: z.enum(['unconfirmed', 'accepted']),
+  activityKind: z.enum(communityKinds).optional(),
+  activityResult: z.enum(communityResults).optional(),
 });
 export const AiControlData = z
   .object({
@@ -189,7 +207,11 @@ export class AiControl {
     if (!p.features[id]) return '이 AI 기능의 실행 허용이 꺼져 있습니다.';
     if (f.scope === 'background' && !p.background)
       return '방송 밖 자동 AI 호출이 차단되어 있습니다.';
-    if (id === 'community' && ctx.settings?.communityActivityEnabled === false && !ctx.social?.enabled)
+    if (
+      id === 'community' &&
+      ctx.settings?.communityActivityEnabled === false &&
+      !ctx.social?.enabled
+    )
       return '기존 설정에서 커뮤니티 자동 활동을 껐습니다.';
     if (id === 'culture' && ctx.settings?.memesEnabled === false)
       return '기존 설정에서 문화·밈 사용을 껐습니다.';
@@ -258,6 +280,8 @@ export class AiControl {
         estimatedUsd: null,
         application: 'unconfirmed',
       };
+    if (op.featureId === 'community' && communityKinds.includes(op.args.special?.kind))
+      row.activityKind = op.args.special.kind;
     if (op.featureId === 'remote-stt') {
       row.model = String(backend.transcriptionModel || 'unknown').slice(0, 200);
       row.provider = 'openai';
@@ -387,7 +411,7 @@ export class AiControl {
     )
       throw cancelled();
   }
-  accepted(result) {
+  accepted(result, activityResult) {
     this.assertCurrent(result);
     const ids = result?.aiReceipt?.attempts;
     if (!ids?.length) return;
@@ -395,7 +419,10 @@ export class AiControl {
     try {
       this.mutate((d) => {
         for (const r of d.recent)
-          if (ids.includes(r.id) && r.status === 'completed') r.application = 'accepted';
+          if (ids.includes(r.id) && r.status === 'completed') {
+            r.application = 'accepted';
+            if (r.featureId === 'community' && activityResult) r.activityResult = activityResult;
+          }
       });
     } catch {
       /* storageError is published by mutate */

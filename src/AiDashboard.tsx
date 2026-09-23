@@ -26,6 +26,28 @@ const outcomes: Record<string, string> = {
   cancelled: '취소',
   interrupted: '종료 시 확인 불가',
 };
+const activityNames: Record<string, string> = {
+  'social-birth': '바깥 커뮤니티 · 주민 준비',
+  'social-daily': '바깥 커뮤니티 · 일상 글',
+  'social-mention': '바깥 커뮤니티 · 방송 이야기',
+  'social-read': '바깥 커뮤니티 · 글 읽기',
+  'clip-comment': '핫클립 · 읽기와 댓글',
+  'gallery-comment': '방송 커뮤니티 · 읽기와 댓글',
+  'community-review': '방송 커뮤니티 · 후기',
+};
+const activityResults: Record<string, string> = {
+  'resident-created': '주민 준비 완료 · 새 게시글 없음',
+  'post-created': '게시글 저장 완료',
+  'comment-created': '댓글 저장 완료 · 새 게시글 없음',
+  'read-only': '글 읽기·추천 판단 완료 · 새 게시글 없음',
+  'no-post': '새 게시글 없음',
+};
+const activityDestination = (kind: string) =>
+  kind.startsWith('social-')
+    ? 'community:outside'
+    : kind === 'clip-comment'
+      ? 'clips'
+      : 'community:broadcast';
 const empty: AiUsage = {
   calls: 0,
   failed: 0,
@@ -306,14 +328,35 @@ export function AiDashboard({
                       />
                     </td>
                     <td>
-                      <button
-                        className="secondary"
-                        aria-label={`${f.name} 화면으로 이동`}
-                        onClick={() => navigate(f.destination)}
-                      >
-                        <ArrowUpRight size={16} />
-                        <span>열기</span>
-                      </button>
+                      {f.id !== 'community' && (
+                        <button
+                          className="secondary"
+                          aria-label={`${f.name} 화면으로 이동`}
+                          onClick={() => navigate(f.destination)}
+                        >
+                          <ArrowUpRight size={16} />
+                          <span>열기</span>
+                        </button>
+                      )}
+                      {f.id === 'community' && (
+                        <div className="ai-community-links">
+                          <button
+                            className="secondary"
+                            onClick={() => navigate('community:broadcast')}
+                          >
+                            방송 커뮤니티
+                          </button>
+                          <button
+                            className="secondary"
+                            onClick={() => navigate('community:outside')}
+                          >
+                            바깥 커뮤니티 · 글 {state.social?.threads ?? 0}개
+                          </button>
+                          <button className="secondary" onClick={() => navigate('clips')}>
+                            핫클립
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -334,6 +377,10 @@ export function AiDashboard({
           </h2>
           <small>최근 40건 · 실패·취소 포함</small>
         </div>
+        <p className="ai-note">
+          자동 활동에는 글 작성·댓글·읽기·주민 준비가 포함됩니다. 새 글이 생겼는지는 각 요청의 반영
+          결과에서 확인하세요.
+        </p>
         {ai.recent.length ? (
           <div className="ai-table-scroll">
             <table>
@@ -352,7 +399,9 @@ export function AiDashboard({
                     <td>
                       {stamp(r.at)}
                       <small>
-                        {ai.features.find((f) => f.id === r.featureId)?.name || r.featureId}
+                        {r.activityKind
+                          ? activityNames[r.activityKind] || r.activityKind
+                          : ai.features.find((f) => f.id === r.featureId)?.name || r.featureId}
                       </small>
                     </td>
                     <td>
@@ -365,8 +414,23 @@ export function AiDashboard({
                     <td>
                       {outcomes[r.status] || r.status}
                       <small>
-                        {r.application === 'accepted' ? '결과 반영 확인' : '결과 반영 미확인'}
+                        {r.activityResult
+                          ? activityResults[r.activityResult] || r.activityResult
+                          : r.application === 'accepted'
+                            ? r.featureId === 'community'
+                              ? '반영 확인 · 세부 결과 미기록'
+                              : '결과 반영 확인'
+                            : '결과 반영 미확인'}
                       </small>
+                      {r.activityKind && (
+                        <button
+                          className="secondary"
+                          aria-label={`${activityNames[r.activityKind]} 결과 위치 열기`}
+                          onClick={() => navigate(activityDestination(r.activityKind!))}
+                        >
+                          결과 위치 열기
+                        </button>
+                      )}
                     </td>
                     <td>
                       {number(r.usage?.input)} / {number(r.usage?.cached)} /{' '}

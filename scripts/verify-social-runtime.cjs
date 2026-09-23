@@ -149,7 +149,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     };
     const click = async (label) =>
       js(
-        `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b)throw Error('button missing');b.click();})()`,
+        `(()=>{const b=[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(label)}||b.getAttribute('aria-label')===${JSON.stringify(label)}));if(!b)throw Error('button missing');b.click();})()`,
       );
     await win.loadURL(service.url);
     await until("!!document.querySelector('.app-shell')");
@@ -166,7 +166,51 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     report.checks.push(
       'existing tab contains both sections; real server runtime-generated fixture posts rendered',
     );
+    const beforeNavigation = JSON.stringify(s.world.data);
+    await click('AI 대시보드');
+    await until(
+      "document.querySelector('.ai-dashboard')?.textContent.includes('게시글 저장 완료')",
+    );
+    assert.equal(
+      await js(
+        "document.querySelector('.ai-dashboard').textContent.includes('바깥 커뮤니티 · 방송 이야기')",
+      ),
+      true,
+    );
+    await js(
+      "[...document.querySelectorAll('.ai-dashboard table')].at(-1)?.scrollIntoView({block:'end'})",
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    writeFileSync(join(out, 'dashboard.png'), (await win.webContents.capturePage()).toPNG());
+    report.screenshots.push('dashboard.png');
+    await click('바깥 커뮤니티 · 방송 이야기 결과 위치 열기');
+    await until(
+      "document.querySelector('[aria-label=\"바깥 커뮤니티\"]')?.getAttribute('aria-pressed')==='true'",
+    );
+    await until("document.querySelectorAll('.social-post').length===2");
+    assert.equal(JSON.stringify(s.world.data), beforeNavigation);
+    await click('AI 대시보드');
+    await until("!!document.querySelector('.ai-dashboard')");
+    await click('방송 커뮤니티');
+    await until(
+      "document.querySelector('[aria-label=\"방송 커뮤니티\"]')?.getAttribute('aria-pressed')==='true'",
+    );
+    await click('AI 대시보드');
+    await until("!!document.querySelector('.ai-dashboard')");
+    await click('바깥 커뮤니티 · 글 2개');
+    await until("document.querySelectorAll('.social-post').length===2");
+    report.checks.push(
+      'dashboard distinguishes saved posts and opens the correct community section without AI calls',
+    );
     const before = JSON.stringify(s.world.data);
+    await js("document.querySelector('.social-search input[type=checkbox]').click()");
+    await until("document.querySelector('.social-empty')?.textContent.includes('현재 검색·필터')");
+    await click('전체 이야기 보기');
+    await until("document.querySelectorAll('.social-post').length===2");
+    assert.equal(JSON.stringify(s.world.data), before);
+    report.checks.push(
+      'empty filtered list explains the filter and restores all posts without mutation',
+    );
     await click('내 이야기 찾기');
     await until("document.querySelectorAll('.social-post').length===1");
     assert.equal(JSON.stringify(s.world.data), before);

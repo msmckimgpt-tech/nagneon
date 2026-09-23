@@ -97,6 +97,7 @@ export class CommunityActivity {
     if(m&&comments.some(c=>c.personaId===viewer.id&&c.text.trim()===m.text.trim()))m=undefined;
     const vote=result.observation.communityVotes?.find(v=>v.personaId===viewer.id);
     const read={viewerId:viewer.id,revision,at:s.now()};
+    let postCreated=false;
     if(kind==='clip'){
       this.s.clips.commentBatch(id,m?[{text:m.text,name:current.name,personaId:viewer.id,parentId,kind:'ai'}]:[],{reading,readers:[viewer.id],activityRead:read,votes:vote?[vote]:[],mediaReading:media?{version:1,signature:media.signature,readAt:s.now(),frameTimes:media.context.frameTimes,audio:media.context.audio,scene:result.observation.confidence>=.5?result.observation.scene:''}:undefined});
     }else if(kind==='gallery'){
@@ -106,12 +107,12 @@ export class CommunityActivity {
       if(raw.some(e=>!entries.has(e.id)||hash(entries.get(e.id))!==hash(e)))return;
       this.change((data,next)=>{
         if(data.reviews.some(r=>r.sessionId===id&&r.viewerId===viewer.id))return;
-        if(m){if(next.posts.length>=200)throw Error('갤러리 보관 공간이 부족합니다.');next.posts.push({id:randomUUID(),title:m.text.split('\n')[0].slice(0,70),text:m.text.trim(),name:current.name,personaId:viewer.id,time:s.now(),kind:'ai',category:'후기',comments:[],votes:[]});}
+        if(m){postCreated=true;if(next.posts.length>=200)throw Error('갤러리 보관 공간이 부족합니다.');next.posts.push({id:randomUUID(),title:m.text.split('\n')[0].slice(0,70),text:m.text.trim(),name:current.name,personaId:viewer.id,time:s.now(),kind:'ai',category:'후기',comments:[],votes:[]});}
         data.reviews=[...data.reviews,{sessionId:id,viewerId:viewer.id,at:s.now()}].slice(-1000);
       });
     }
     if(m?.meme)s.culture.recordUse(m.personaId);
-    s.ai.accepted(result);
+    s.ai.accepted(result,kind==='review'?(postCreated?'post-created':'no-post'):m?'comment-created':'read-only');
     s.publish();
   }
 }

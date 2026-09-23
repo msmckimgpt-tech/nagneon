@@ -108,3 +108,11 @@ test('policy and usage survive actual server/profile restart without changing sa
  service=await startServer(options);assert.equal('dailyLimit' in service.studio.ai.data.policy,false);assert.equal(JSON.stringify(service.studio.world.data),world);assert.equal(service.studio.ai.data.policy.background,true);assert.equal(service.studio.ai.data.policy.paused,true);await assert.rejects(service.studio.provider.react(request()));assert.equal(calls,1);
  service.studio.ai.update({paused:false});await service.studio.provider.react(request());assert.equal(calls,2);assert.equal(service.studio.ai.data.days[0].features.probe.calls,2);assert.equal('dailyLimit' in JSON.parse(await readFile(resolve(dir,'ai-control.json'),'utf8')).policy,false);
 });
+
+test('community request kind and committed outcome persist separately from provider completion',async()=>{
+ const {ai}=fixture();ai.update({background:true});const provider=ai.wrap(fake());
+ const result=await provider.react({...request('community'),special:{kind:'social-daily'}},new AbortController().signal);
+ let row=ai.snapshot().recent[0];assert.equal(row.status,'completed');assert.equal(row.activityKind,'social-daily');assert.equal(row.application,'unconfirmed');assert.equal(row.activityResult,undefined);
+ ai.accepted(result,'post-created');row=ai.snapshot().recent[0];assert.equal(row.activityResult,'post-created');const restored=new AiControl({data:structuredClone(ai.data)});assert.equal(restored.snapshot().recent[0].activityResult,'post-created');
+ const legacy=structuredClone(ai.data);delete legacy.recent[0].activityKind;delete legacy.recent[0].activityResult;const old=new AiControl({data:legacy});assert.equal(old.snapshot().recent[0].activityKind,undefined);assert.equal(old.snapshot().recent[0].activityResult,undefined);
+});

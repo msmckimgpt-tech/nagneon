@@ -206,3 +206,10 @@
 .outside-community .panel-heading > button {
   flex-shrink: 0;
 }
+
+.social-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #ffffff1a;
+}
