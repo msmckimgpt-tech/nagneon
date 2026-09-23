@@ -35,6 +35,7 @@ export class ContinuousListening {
   stoppingCapture = false;
   closed = false;
   backlogExceeded = false;
+  storageError = false;
   disposeCapture: (() => void) | null = null;
   retryTimer: ReturnType<typeof setInterval> | null = null;
   finishTimer: ReturnType<typeof setInterval> | null = null;
@@ -198,10 +199,12 @@ export class ContinuousListening {
     this.rawQueue.push(entry);
     this.queuedBytes += samples.byteLength;
     void this.uploadRaw();
-    if (this.queuedBytes > MAX_BACKLOG_BYTES && !this.backlogExceeded) {
+    // Recognition lag never stops capture. This bound applies only after raw
+    // storage itself has failed; those unsaved bytes would be lost on exit.
+    if (this.storageError && this.queuedBytes > MAX_BACKLOG_BYTES && !this.backlogExceeded) {
       this.backlogExceeded = true;
       this.options.onError(
-        '원음 저장이 오래 실패해 메모리 한도에 도달했습니다. 마이크를 중지했습니다. 앱을 종료하면 미저장 원음은 복구할 수 없습니다.',
+        '원음 저장 장치가 오래 실패해 미저장 음성이 메모리 한도에 도달했습니다. 마이크를 중지했습니다. 앱을 종료하면 미저장 원음은 복구할 수 없습니다.',
       );
       this.options.onStorageFailure?.();
     }
@@ -214,28 +217,50 @@ export class ContinuousListening {
       while (this.rawQueue.length && !this.closed) {
         const entry = this.rawQueue[0];
         try {
-          const response = await fetch('/api/audio/raw', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'X-Backseat-Client': 'studio',
-              'X-Speech-Session': this.options.sessionId,
-              'X-Speech-Epoch': this.inputEpoch,
-              'X-Speech-Sequence': String(entry.sequence),
-              'X-Speech-Frame': String(entry.startFrame),
-              'X-Speech-Count': String(entry.samples.length),
-            },
-            body: entry.samples.buffer.slice(0) as ArrayBuffer,
-          });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error || '마이크 원음 저장 실패');
+          const append =
+            typeof window === 'undefined' ? undefined : window.backseat?.appendSpeechRaw;
+          let result: { durableThrough: number };
+          if (append) {
+            const bytes = new Uint8Array(
+              entry.samples.buffer,
+              entry.samples.byteOffset,
+              entry.samples.byteLength,
+            );
+            result = await append({
+              sessionId: this.options.sessionId,
+              inputEpoch: this.inputEpoch,
+              sequence: entry.sequence,
+              startFrame: entry.startFrame,
+              frameCount: entry.samples.length,
+              data: bytes,
+            });
+          } else {
+            const response = await fetch('/api/audio/raw', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                'X-Backseat-Client': 'studio',
+                'X-Speech-Session': this.options.sessionId,
+                'X-Speech-Epoch': this.inputEpoch,
+                'X-Speech-Sequence': String(entry.sequence),
+                'X-Speech-Frame': String(entry.startFrame),
+                'X-Speech-Count': String(entry.samples.length),
+              },
+              body: entry.samples.buffer.slice(0) as ArrayBuffer,
+            });
+            result = await response.json();
+            if (!response.ok)
+              throw new Error((result as { error?: string }).error || '마이크 원음 저장 실패');
+          }
           this.durableThrough = result.durableThrough;
           this.continuity.advanceDurable(this.durableThrough);
           this.rawQueue.shift();
           this.queuedBytes -= entry.samples.byteLength;
+          this.storageError = false;
           this.releaseSegments();
           delay = 1000;
         } catch (error) {
+          this.storageError = true;
           this.report(
             (error instanceof Error ? error.message : '마이크 원음 저장 실패') +
               ' 원음을 메모리에 유지하며 다시 시도합니다.',

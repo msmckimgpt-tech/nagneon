@@ -273,6 +273,14 @@ declare global {
     backseat?: {
       storageStatus: () => Promise<{ profile: string; defaultProfile: string; isolated: boolean }>;
       changeStorage: (useDefault: boolean) => Promise<boolean>;
+      appendSpeechRaw: (entry: {
+        sessionId: string;
+        inputEpoch: string;
+        sequence: number;
+        startFrame: number;
+        frameCount: number;
+        data: Uint8Array;
+      }) => Promise<{ duplicate: boolean; durableThrough: number }>;
       sources: () => Promise<Source[]>;
       sourcePreviews?: (type: 'screen' | 'window') => Promise<Source[]>;
       selectSource: (id: string, systemAudio?: boolean) => Promise<void>;

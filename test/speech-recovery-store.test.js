@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SpeechRecoveryStore, SPEECH_RAW_RETENTION_MS } from '../server/speech-recovery-store.js';
@@ -41,8 +41,12 @@ test('raw PCM is durable, idempotent, ordered and reconstructable after store re
   assert.ok(wave.subarray(44, 44 + 800 * 2).every((byte) => byte === 1));
   assert.ok(wave.subarray(44 + 800 * 2).every((byte) => byte === 2));
   assert.equal((await store.list())[0].chunkCount, 2);
+  const interrupted = join(store.folder(sessionId, inputEpoch),
+    '00000003-000000003200-00001600.pcm.33333333-3333-4333-8333-333333333333.tmp');
+  await writeFile(interrupted, pcm(3));
   now = Date.now() + SPEECH_RAW_RETENTION_MS + 1;
-  assert.equal((await store.sweep()).length, 2);
+  assert.equal((await store.sweep()).length, 3);
+  await assert.rejects(stat(interrupted), {code: 'ENOENT'});
   await assert.rejects(store.readRange(sessionId, inputEpoch, 0, 1600), /아직 보존되지|만료/);
   store = new SpeechRecoveryStore(root, { now: () => now });
   assert.equal(

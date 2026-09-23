@@ -1053,6 +1053,10 @@ async function startServerImpl(
   return {
     server,
     studio,
+    appendSpeechRaw: (entry) => {
+      if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+      return speechRecovery.append(entry);
+    },
     obsInput,
     url: `http://${expectedHost}`,
     accessToken: access.token,

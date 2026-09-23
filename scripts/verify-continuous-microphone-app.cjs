@@ -1,7 +1,7 @@
 // Actual app hook and physical microphone in an isolated profile. The test
 // removes its own captured audio after checking file counts; reports contain
 // only metadata, never samples or transcripts.
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain } = require('electron');
 const { resolve, join, relative } = require('node:path');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { rm } = require('node:fs/promises');
@@ -22,7 +22,7 @@ const report = {
   providerCall: false,
   recordingRetained: false,
 };
-let service, window, list;
+let service, window, list, rawIpcWrites = 0;
 const timeout = setTimeout(() => app.exit(2), durationMs + 60000);
 timeout.unref();
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +52,13 @@ app.whenReady().then(async () => {
       },
     });
     list = () => new SpeechRecoveryStore(join(base, 'data', 'speech-recovery')).list();
+    ipcMain.handle('speech:raw', (event, entry) => {
+      assert.equal(event.sender, window.webContents);
+      assert.ok(event.senderFrame.url.startsWith(service.url + '/'));
+      assert.ok(entry.data instanceof Uint8Array);
+      rawIpcWrites++;
+      return service.appendSpeechRaw({ ...entry, data: Buffer.from(entry.data) });
+    });
     const studioSession = createStudioSession(session, service);
     studioSession.setPermissionRequestHandler((_contents, permission, callback) =>
       callback(permission === 'media'),
@@ -67,6 +74,18 @@ app.whenReady().then(async () => {
       },
     });
     await window.loadURL(service.url);
+    await window.webContents.executeJavaScript(`(()=>{
+      if (!window.backseat?.appendSpeechRaw) throw Error('speech raw IPC bridge is missing');
+      const original = window.fetch.bind(window);
+      window.__rawHttpAttempts = 0;
+      window.fetch = (input, options) => {
+        if (String(input) === '/api/audio/raw' && options?.method === 'POST') {
+          window.__rawHttpAttempts++;
+          throw Error('raw HTTP writes are disabled in this acceptance run');
+        }
+        return original(input, options);
+      };
+    })()`);
     const onboardingDeadline = Date.now() + 10000;
     let skipped = false;
     while (Date.now() < onboardingDeadline) {
@@ -129,6 +148,10 @@ app.whenReady().then(async () => {
     assert.ok(entries[0].chunkCount >= (durationMs / 1000) * 0.75);
     report.hookConnected = active;
     report.savedSeconds = entries[0].bytes / 32000;
+    report.rawIpcWrites = rawIpcWrites;
+    report.rawHttpAttempts = await window.webContents.executeJavaScript('window.__rawHttpAttempts');
+    assert.ok(rawIpcWrites >= (durationMs / 1000) * 0.75);
+    assert.equal(report.rawHttpAttempts, 0);
     service.studio.stop();
     await pause(1500);
     const stoppedCount = (await list())[0].chunkCount;
@@ -140,6 +163,7 @@ app.whenReady().then(async () => {
     report.error = error.stack || String(error);
   } finally {
     if (window && !window.isDestroyed()) window.destroy();
+    ipcMain.removeHandler('speech:raw');
     await service?.close().catch((error) => {
       report.closeError = error.message;
       report.passed = false;
