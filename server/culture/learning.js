@@ -26,7 +26,7 @@ export function withCultureContext(provider, studio) {
         culture.interrupt();
         if (culture.active?.promise) await culture.active.promise;
         signal?.throwIfAborted();
-        args = { ...args, culture: culture.context(args.settings.personas, args.offStream ? 'community' : 'live') };
+        args = { ...args, culture: args.special?.kind?.startsWith('social-') ? {enabled:false} : culture.context(args.settings.personas, args.offStream ? 'community' : 'live') };
       }
       const result = await target.react(args, signal);
       if (!args.cultureSource && culture && Array.isArray(result.observation?.messages)) {

@@ -30,6 +30,15 @@ try {
     }
     Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
     }
+    if ($inAppRecovery) {
+        $savedProfile = Join-Path $env:APPDATA 'backseat-studio'
+        $currentStorageFile = Join-Path $env:APPDATA 'Nagneon/storage.json'
+        if (Test-Path -LiteralPath $currentStorageFile -PathType Leaf) {
+            $savedProfile = (Get-Content -LiteralPath $currentStorageFile -Raw -Encoding UTF8 | ConvertFrom-Json).profile
+            if (-not $savedProfile -or -not [IO.Path]::IsPathRooted($savedProfile)) { throw 'The selected storage profile is invalid. Preserve storage.json and recover the profile before launch.' }
+        }
+    }
+    if ($inAppRecovery -and $savedProfile -and (Test-Path -LiteralPath (Join-Path $savedProfile 'data/profile-format.json'))) { Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion $productVersion }
     # CMD can inherit a PowerShell 7 PSModulePath that hides the Windows
     # PowerShell Get-FileHash module. Use the runtime directly at this boundary.
     $stream = [IO.File]::OpenRead($exe)

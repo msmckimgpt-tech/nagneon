@@ -29,7 +29,7 @@ export class CommunityActivity {
   interrupt(){this.lastInput=this.s.now();this.active?.controller.abort();}
   async yield(){this.interrupt();await this.active?.promise;}
   close(){this.closed=true;this.interrupt();}
-  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&s.settings.communityActivityEnabled&&s.ai.allowed('community')&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
+  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&(s.settings.communityActivityEnabled||s.social?.enabled())&&!s.culture?.active&&s.ai.allowed('community')&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
   candidates(now){
     const s=this.s,data=this.data(),people=s.settings.personas.filter(p=>p.enabled&&!p.system&&p.id!==s.settings.managerId&&s.audience.data.members[p.id]?.sessions>0),candidates=[];
     const revisions=new Map(),recentSessions=new Set(s.journal.data.entries.filter(e=>!e.fictional&&e.at<=now&&now-e.at<=604800000).slice().reverse().map(e=>e.sessionId));
@@ -61,10 +61,10 @@ export class CommunityActivity {
     const s=this.s,now=s.now(),data=this.data();
     if(!this.available()||now<Math.max(this.wakeAt,data.nextAt,data.clock)||data.attempts.filter(a=>now-a.at<COMMUNITY_HOUR).length>=COMMUNITY_HOURLY_LIMIT)return;
     this.wakeAt=now+30000;
-    const candidates=this.candidates(now);if(!candidates.length)return;
+    const candidates=[...(s.settings.communityActivityEnabled?this.candidates(now):[]),...(s.social?.candidates(now)||[])];if(!candidates.length)return;
     let pick=s.random()*candidates.reduce((n,c)=>n+c.weight,0),target=candidates.at(-1);
     for(const c of candidates){pick-=c.weight;if(pick<0){target=c;break;}}
-    const operation={controller:new AbortController(),epoch:s.epoch,promise:null};this.active=operation;
+    const operation={controller:new AbortController(),epoch:s.epoch,promise:null,social:target.kind.startsWith('social-')};this.active=operation;
     operation.promise=this.run(target,operation).catch(error=>{if(!operation.controller.signal.aborted){this.lastError=error.message;s.log('관객의 커뮤니티 방문을 미뤘습니다. '+error.message);}}).finally(()=>{if(this.active===operation){this.active=null;if(s.epoch===operation.epoch)s.busy=false;s.publish();}});
   }
   async run(target,operation){
@@ -73,6 +73,7 @@ export class CommunityActivity {
     // Save before spending; interruption consumes the attempt but creates no read.
     this.change(data=>{data.clock=Math.max(data.clock,now);data.nextAt=now+240000+s.random()*240000;data.attempts=data.attempts.filter(a=>now-a.at<604800000).slice(-299);data.attempts.push({kind,id,viewerId:viewer.id,revision,at:now});});
     s.busy=true;this.lastError='';s.publish();
+    if(operation.social)return s.social.run(target,operation);
     const raw=structuredClone(target.raw),post=kind==='gallery'?publicPost(raw):null,reading=kind==='clip'?clipTextSnapshot(raw):null;
     const media=kind==='clip'&&(raw.video||raw.audio)?await s.clipPerception.read(s.clips,raw,signal):null;
     if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;
