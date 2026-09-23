@@ -45,24 +45,25 @@ M1의 의견·질문/답변·리뷰·RFC/ADR·결정·계약 사본·participant
 계약 revision/hash↔제품 commit 대응은 M1 로컬 원장에 남긴다.
 M1 도구 소스도 별도 명시적 범위 없이 제품 branch와 함께 원격 게시하지 않는다.
 
-## 4. Git·A/B 역할
+## 4. Git·A/B 실행 역할
 
 제품 변경은 작업별 branch+별도 worktree에서 수행하고 공유 main을 직접 수정하지 않는다.
 시작 시 Git root·HEAD·status·worktree·git-common-dir·소유권을 확인한다.
 타인 dirty/index/stash/profile/build를 보존하고 reset --hard·clean·강제 checkout·자동 stash로 정리하지 않는다.
 node_modules·data·dist·port·profile·artifacts도 worktree별로 격리한다.
 
-A는 일반 GPT Chat/Personal Commander다.
-A는 조사→M1 정합 확인→worktree/branch→수정→로컬 검증/빌드/문서→local commit→전체 SHA/Git 상태→단일 Markdown 인계까지 수행한다.
-A는 push·PR 생성/수정·merge·통합 main pull·릴리즈·배포·실사용 앱 교체/재시작·운영 데이터 변경을 하지 않는다.
-시험 push·dry-run·hook·CI·다른 AI로 간접 수행하지 않는다.
-PARALLEL-DEVELOPMENT.md의 일반 “항상 push” 규칙은 A에는 적용하지 않는다.
+A/B는 AI의 고정 신원이 아니라 현재 과제의 실행 역할이다. 일반 GPT Chat/Personal Commander는 기본 A로 시작한다.
+A는 조사→M1 정합 확인→worktree/branch→수정→로컬 검증/빌드/문서→local commit→전체 SHA/Git 상태 확인까지 수행한다.
+현재 사용자 범위에 B 단계가 명시되지 않았다면 A는 push·PR 생성/수정·merge·통합 main 최신화·릴리즈·배포·실사용 앱 교체/재시작·운영 데이터 변경을 하지 않는다.
+시험 push·dry-run·hook·CI·다른 AI로 간접 수행하지 않는다. PARALLEL-DEVELOPMENT.md의 일반 “항상 push” 규칙은 A에는 적용하지 않는다.
 
-B는 사용자가 인계문을 직접 전달한 실무 AI다.
-승인된 제품 변경만 보완→push→허용된 PR/squash→main 최신화→정본 빌드·필요 설치/릴리즈→실제 버전·기능·사용자 경로 검증을 수행한다.
-B도 M1 기록·M1 도구 commit을 제품 원격 이력에 섞지 않는다.
-직접 main push·force-push·보호 우회·타인 dirty 삭제를 하지 않는다.
-
+사용자가 현재 과제에 push·PR·merge/main 통합·릴리즈·설치·배포·실제 반영 중 해당 단계를 명시적으로 위임하면 같은 Chat도 그 범위에서 B를 직접 인수할 수 있다. 앞선 대화에서 해당 단계가 포함된 end-to-end 완료 범위를 합의하고 사용자가 그 계약을 명시적으로 수용한 경우도 같다.
+단순 `계속`·`완수`·`가능한 만큼`만으로 B 전환이나 범위 확대를 만들지 않는다. A-only/commit-only/비게시 제한이 있으면 우선한다.
+B 인수 전 사용자 범위, 최신 M1 revision/read set/쟁점, remote/HEAD/worktree/dirty/소유권, 통합 잠금, 보호 브랜치/PR 경로, required checks, 미게시 이력의 M1·비밀 혼입, 릴리즈 필요성과 복구 조건을 다시 확인한다.
+B는 보완/검증→작업 branch 일반 push→허용된 PR/통합→필수 검사→main 안전한 최신화→통합 SHA 재검증→필요한 경우에만 패키징·설치/릴리즈→실제 사용자 경로 검증 순서로 수행한다.
+직접 main push·force-push·보호 우회·타인 dirty 삭제는 금지한다. M1 기록·M1 도구 commit/export를 제품 원격 이력에 섞지 않는다.
+B 역할은 새 비용·공개 범위 확대·파괴적 데이터 변경·권한 상승·비밀 접근의 포괄 승인이 아니다. 안전·권한·데이터·릴리즈 게이트는 그대로 적용한다.
+문서·정책·테스트·M1 내부 변경만이면 새 앱 버전/패키지/설치를 강제하지 않는다.
 ## 5. 제품 불변 조건
 
 UI·오류 안내는 한국어를 우선하고 Nagneon/나그네온 표기를 사용한다.
@@ -95,7 +96,7 @@ SERVICE-RELEASE-POLICY와 STABLE-INSTALLATION을 따른다.
 제품 변경은 통합 SHA의 필수 검사, 관련 실제 회귀, 패키지 설치/업데이트·시작/중지/종료/재시작·데이터 보존/복귀를 구분해 검증한다.
 
 최종 답변은 완료 내용·검증 결과·실제로 남은 항목을 간결하게 보고한다.
-다른 AI에게 이어서 수행할 구체적인 작업을 실제로 인계할 때만 짧은 요약 뒤 하나의 Markdown 코드 블록으로 복사·붙여넣기용 인계 전문을 제공한다. A의 로컬 commit을 B에게 게시·통합하도록 넘기는 경우가 이에 해당한다.
+다른 AI에게 이어서 수행할 구체적인 작업을 실제로 인계할 때만 짧은 요약 뒤 하나의 Markdown 코드 블록으로 복사·붙여넣기용 인계 전문을 제공한다. 현재 Chat이 B까지 직접 위임받아 통합·반영을 완료한 경우 별도 AI 인계는 만들지 않는다. A에서 종료하고 다른 B가 필요한 경우에만 로컬 commit과 재개 지점을 인계한다.
 실제 인계할 작업이 없으면 완료 보고만 제공하고 인계문·빈 양식·복사·붙여넣기용 문서를 덧붙이지 않는다. 참고용 미해결 항목이나 사용자 설정 안내만으로 인계문을 만들지 않는다.
 사용자가 인계문이나 재사용 문서를 명시적으로 요청하면 요청한 형식으로 제공한다.
 실제 인계문에는 제품/M1 구분, 목표·범위·금지, 실제 실행 환경·도구·작업 경로 (일반 GPT Chat에서 사용한 경우에만 Personal Commander workspace), M1 revision/read set, branch/worktree·기반/최종 SHA·commit,
