@@ -41,7 +41,9 @@ export class Economy {
   }));}
   reward({observation,settings,audience,hasInput,paid=false}){
     const m=observation.positiveMoment;
-    if(!settings.pointsEnabled||!hasInput||paid||!m?.positive||m.impact<.8||observation.confidence<.75||observation.excitement<.8||!m.signature?.trim()||!m.reason?.trim())return [];
+    // Personal significance can be high during a quiet conversation. Scene
+    // excitement controls reactions, not eligibility for voluntary support.
+    if(!settings.pointsEnabled||!hasInput||paid||!m?.positive||observation.confidence<.75||!m.signature?.trim()||!m.reason?.trim())return [];
     const now=this.now(),d=this.data;
     if(now<d.rewardBlockedUntil||now-d.lastRewardAt<rules.momentCooldownSeconds*1000)return [];
     const fingerprint=digest(normalize(m.signature));
