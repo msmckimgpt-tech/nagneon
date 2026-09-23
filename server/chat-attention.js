@@ -12,9 +12,9 @@ export function donationMessage(entry){
     donation:{amount:d.amount,anonymous:d.anonymous}};
 }
 
-export function chatAttention(history,persona,{now=Date.now()}={}){
+export function chatAttention(history,persona,{now=Date.now(),addressViewers}={}){
   const candidates=history.filter(m=>!m.fictional&&m.time<=now&&now-m.time<60000&&m.personaId!==persona.id);
-  const scored=candidates.map(m=>({m,priority:m.kind==='streamer'?4:m.kind==='donation'?3:m.kind==='chat'&&m.text.includes(persona.name)?2:1}));
+  const scored=candidates.map(m=>({m,priority:m.kind==='streamer'?4:m.kind==='donation'?3:m.kind==='chat'&&(addressViewers?addressViewers(m.text).has(persona.id):m.text.includes(persona.name))?2:1}));
   // Highlight at most two gifts; retain the streamer and ordinary chat around
   // them so a gift cannot replace the subject of the broadcast.
   const chosen=[],counts={};

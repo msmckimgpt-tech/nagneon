@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {normalizeLore,relevantLore,LEGACY_NO_EXPIRY} from './community-lore.js';
 import profiles from '../shared/discovery.json' with {type:'json'};
+import {createViewerAddressResolver} from './viewer-addressing.js';
 
 /** Research-inspired simulation. Probabilities are product choices, not measured conversion rates. */
 export class Audience {
@@ -76,11 +77,12 @@ export class Audience {
     }
     return events;
   }
-  context(settings,speech='',excitement=0,{hearers=null,company=false,reactive=false}={}){
-    const candidates=[],lurkers=[];
+  addressing(settings,now=Date.now()){return createViewerAddressResolver(settings.personas,this.data.members,now);}
+  context(settings,speech='',excitement=0,{hearers=null,company=false,reactive=false,addressViewers=this.addressing(settings)}={}){
+    const candidates=[],lurkers=[],addressed=addressViewers(speech);
     for(const p of settings.personas.filter(p=>p.enabled)){
       if(hearers&&!hearers.includes(p.id))continue;
-      const member=this.data.members[p.id];const named=speech.includes(p.name)&&['active','lurking'].includes(this.presence[p.id])&&member?.joinedAt>=this.lastStart;
+      const member=this.data.members[p.id];const named=addressed.has(p.id)&&['active','lurking'].includes(this.presence[p.id])&&member?.joinedAt>=this.lastStart;
       if(named){this.presence[p.id]='active';member.recognized++;member.affinity=Math.min(1,member.affinity+0.025);}
       const interest=profiles[member?.origin?.key];
       const active=this.presence[p.id]==='active';
@@ -98,7 +100,7 @@ export class Audience {
   }
   message(personaId,text,settings){const m=this.data.members[personaId];if(!m)return;
     m.memories.push(text);m.memories=m.memories.slice(-8);
-    for(const p of settings.personas)if(p.id!==personaId&&text.includes(p.name))m.peers[p.id]=Math.min(20,(m.peers[p.id]||0)+1);
+    for(const id of this.addressing(settings)(text))if(id!==personaId)m.peers[id]=Math.min(20,(m.peers[id]||0)+1);
   }
   post(post){if(this.data.posts.length>=200)throw Error('게시판 글은 200개까지 보관합니다. 이전 글을 정리해주세요.');const next=structuredClone(this.data);next.posts.push(post);this.save(next);this.data=next;}
   lore(text){const next=structuredClone(this.data),entry={id:randomUUID(),text,createdAt:Date.now(),expiresAt:LEGACY_NO_EXPIRY};next.lore.push(entry);this.save(next);this.data=next;return entry;}

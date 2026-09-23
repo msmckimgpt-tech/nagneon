@@ -12,6 +12,7 @@ import {conversationRhythm} from './conversation-rhythm.js';
 import {chatAttention} from './chat-attention.js';
 import {streamerExpression} from './streamer-expression.js';
 import {transcriptAnomaly} from './transcript-correction.js';
+import {createViewerAddressResolver} from './viewer-addressing.js';
 
 const clamp=(v)=>Math.min(1,Math.max(0,v));
 const round=(v)=>Math.round(v*100)/100;
@@ -56,8 +57,8 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Public context excludes everyone's personal memories. Each speaking persona
 // receives its own memory and only chat/previous frames after its latest entry.
 // Packets still share one model call; this is provenance, not secret isolation.
-export function liveViewerContext(audience,personas,history,previous,{journal,clips,social,speech='',sound,now=Date.now(),viewing,externalChat}={}){
-  const packets={};
+export function liveViewerContext(audience,personas,history,previous,{journal,clips,social,speech='',sound,now=Date.now(),viewing,externalChat,addressViewers=createViewerAddressResolver(personas,audience.members,now)}={}){
+  const packets={},addressed=addressViewers(speech);
   // Recognition may finish after somebody returns. Its chat timestamp alone
   // does not mean they heard that microphone segment while they were away.
   const microphoneWitnesses=journal?new Map(journal.data.entries.filter(e=>e.transcription?.source==='microphone').map(e=>[e.id,new Set(e.witnesses)])):null;
@@ -75,8 +76,8 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
       chatHistory:witnessed.slice(-35),
       ...(externalChat?{externalChat:externalChat.context(joinedAt)}:{}),
       streamerExpression:streamerExpression(witnessed,{now}),
-      chatAttention:chatAttention(witnessed,p,{now}),
-      conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name}),
+      chatAttention:chatAttention(witnessed,p,{now,addressViewers}),
+      conversationRhythm:conversationRhythm(witnessed,p.id,{now,speech,previousScene:previous?.at>=joinedAt?previous.scene:'',name:p.name,addressed:addressed.has(p.id)}),
       watchTiming:{receivedAt:now,...(viewing?.timing[p.id]||{}),previousAnalysisAgeSeconds:Number.isFinite(joinedAt)&&previous?.at>=joinedAt&&previous.at<=now?Math.floor((now-previous.at)/1000):null},
       previous:Number.isFinite(joinedAt)&&previous?.at>=joinedAt?structuredClone(previous):null
     };

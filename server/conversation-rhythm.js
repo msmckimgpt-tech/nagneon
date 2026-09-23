@@ -17,7 +17,7 @@ export function isChatQuestion(text){
 const tokens=text=>new Set(text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu)||[]);
 const similarity=(a,b)=>{let score=0;for(const x of a)for(const y of b)if(x===y||x.length>=3&&y.length>=3&&(x.includes(y)||y.includes(x)))score++;return Math.min(3,score);};
 
-export function conversationRhythm(history,personaId,{now=Date.now(),speech='',previousScene='',name=''}={}){
+export function conversationRhythm(history,personaId,{now=Date.now(),speech='',previousScene='',name='',addressed}={}){
   const seen=history.filter(m=>Number.isFinite(m.time)&&m.time<=now).slice(-500);
   const own=seen.filter(m=>m.personaId===personaId&&m.kind==='chat').slice(-8);
   const recent=seen.filter(m=>m.kind==='chat'&&now-m.time<120000).slice(-20);
@@ -40,7 +40,7 @@ export function conversationRhythm(history,personaId,{now=Date.now(),speech='',p
   const reactions=seen.filter(m=>m.kind==='chat'&&!m.fictional&&!isChatQuestion(m.text));
   const recentReactions=[...reactions.filter(m=>m.personaId===personaId).slice(-3),...reactions.filter(m=>m.personaId!==personaId).slice(-3)]
     .sort((a,b)=>a.time-b.time).map(m=>({id:m.id,personaId:m.personaId,text:m.text.slice(0,120),ageSeconds:Math.max(0,Math.floor((now-m.time)/1000)),source:'retained-public-chat'}));
-  return {turn:fragment?'possibly-continuing':normalized?'spoken':'watching',addressed:!!name&&normalized.includes(name),
+  return {turn:fragment?'possibly-continuing':normalized?'spoken':'watching',addressed:addressed??(!!name&&normalized.includes(name)),
     ownRecent:{messages:own.length,laughter:own.filter(m=>/[ㅋㅎ]{2,}/.test(m.text)).length,questions:own.filter(m=>isChatQuestion(m.text)).length,reflectiveEndings:own.filter(m=>/군요|겠네요|겠어요/.test(m.text)).length},
     recentRoom:{messages:recent.length,ownMessages:recent.filter(m=>m.personaId===personaId).length},
     questionThreads:threads,styleFeedback,recentReactions,
