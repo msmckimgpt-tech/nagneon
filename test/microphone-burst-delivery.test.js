@@ -29,7 +29,7 @@ function harness({fetch,reactApi}){
     './clip-uploads':{ClipUploads},
     './api':{api:reactApi},
     './speech-flow':speechFlow,
-    './microphone-recorder.ts':{startMicrophoneRecorder:()=>()=>{}},
+    './continuous-listening.ts':{ContinuousListening:class{}},
     './temporal-frames':{TemporalFrames},
     './temporal-capture':{startTemporalCapture:()=>()=>{}},
     './capture-preparation':{prepareCapture:async()=>{throw new Error('not used');},releaseCapture:()=>{}}
