@@ -96,6 +96,19 @@ app.whenReady().then(async () => {
       await nativeCommand(main, command);
       await expectTab(tab);
     };
+    const domClick = async (button, win = main) => {
+      if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+          type,
+          x: 800,
+          y: 100,
+          button,
+          clickCount: 1,
+          buttons: type === 'mouseReleased' ? 0 : button === 'back' ? 8 : 16,
+        });
+      }
+    };
     await main.loadURL(service.url + '/');
     await until(`!!document.querySelector('.welcome-shell')`);
     await js(
@@ -123,10 +136,24 @@ app.whenReady().then(async () => {
     await move(1, 'audience');
     await move(2, 'ai');
     report.checks.push('AI status entry shares tab history');
+    await domClick('back');
+    await expectTab('audience');
+    await domClick('forward');
+    await expectTab('ai');
+    await domClick('back');
+    main.emit('app-command', {}, 'browser-backward');
+    await expectTab('audience');
+    await domClick('forward');
+    await expectTab('ai');
+    report.checks.push(
+      'Chromium side-button input navigates and paired native event does not double-step',
+    );
     overlay = new BrowserWindow(options);
     await overlay.loadURL(service.url + '/overlay');
     await nativeCommand(overlay, 1);
     await nativeCommand(overlay, 2);
+    await domClick('back', overlay);
+    await domClick('forward', overlay);
     // Even a misdirected IPC event must not subscribe in the overlay renderer.
     overlay.webContents.send('navigation:history', 'back');
     await expectTab('ai');
