@@ -29,3 +29,5 @@ jobs:
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-ai-dashboard.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
       - name: Isolated browser-compatible loopback startup
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-browser-loopback.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
+      - name: Synthetic binary frame transport acceptance
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-frame-wire.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
