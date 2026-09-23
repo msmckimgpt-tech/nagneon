@@ -5,6 +5,7 @@ const { resolve, join } = require('node:path');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const assert = require('node:assert/strict');
+const { build } = require('esbuild');
 
 const durationMs = Number(
   process.argv.find((arg) => arg.startsWith('--duration-ms='))?.split('=')[1] || 10000,
@@ -60,12 +61,20 @@ app.whenReady().then(async () => {
       },
     });
     await window.loadURL(service.url);
+    const bundle = await build({
+      entryPoints: [resolve('src/clip-source.ts')], bundle: true, platform: 'browser',
+      format: 'iife', globalName: 'NagneonClipSource', write: false, logLevel: 'silent',
+    });
+    await window.webContents.executeJavaScript(bundle.outputFiles[0].text +
+      '\nwindow.__clipSource=NagneonClipSource.createSeparatedClipSources; true;');
     report.start = await window.webContents.executeJavaScript(
       `(async()=>{
       const stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
       const audio=stream.getAudioTracks()[0],stats={frames:0,packets:0,nonzeroPackets:0,format:null,sampleRate:0,error:null};
-      const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')?'video/webm;codecs=vp8,opus':'video/webm';
-      const recorder=new MediaRecorder(stream,{mimeType:mime}),pieces=[];recorder.ondataavailable=event=>{if(event.data.size)pieces.push(event.data);};recorder.start(1000);
+      const clips=window.__clipSource(stream,null,null);
+      if(!clips?.base?.hasAudio||clips.base.kind!=='video')throw Error('product clip source omitted system audio');
+      const mime=clips.base.mimeType;
+      const recorder=new MediaRecorder(clips.base.stream,clips.base.recorderOptions),pieces=[];recorder.ondataavailable=event=>{if(event.data.size)pieces.push(event.data);};recorder.start(1000);
       let clone=null,reader=null;
       if(audio){clone=audio.clone();reader=new MediaStreamTrackProcessor({track:clone}).readable.getReader();
         void(async()=>{try{while(true){const {value,done}=await reader.read();if(done)break;
@@ -74,15 +83,15 @@ app.whenReady().then(async () => {
             stats.frames+=value.numberOfFrames;stats.packets++;
           }finally{value.close();}
         }}catch(error){stats.error=String(error);}})();}
-      window.__loopback={stream,clone,reader,stats,recorder,pieces,mime};
-      return {audioTracks:stream.getAudioTracks().map(track=>({label:track.label,readyState:track.readyState})),videoTracks:stream.getVideoTracks().length};
+      window.__loopback={stream,clone,reader,stats,recorder,pieces,mime,clips};
+      return {audioTracks:stream.getAudioTracks().map(track=>({label:track.label,readyState:track.readyState})),videoTracks:stream.getVideoTracks().length,clipSourceKind:clips.base.kind,clipHasAudio:clips.base.hasAudio};
     })()`,
       true,
     );
     await new Promise((resolve) => setTimeout(resolve, durationMs));
     report.end = await window.webContents.executeJavaScript(
       `(async()=>{
-      const {stream,clone,reader,stats,recorder,pieces,mime}=window.__loopback;
+      const {stream,clone,reader,stats,recorder,pieces,mime,clips}=window.__loopback;
       const ended=new Promise(resolve=>{recorder.onstop=resolve;});recorder.stop();await ended;
       const blob=new Blob(pieces,{type:mime}),url=URL.createObjectURL(blob);
       const video=document.createElement('video');video.src=url;video.playsInline=true;
@@ -93,13 +102,15 @@ app.whenReady().then(async () => {
       for(let i=0;i<30;i++){await new Promise(resolve=>setTimeout(resolve,50));analyser.getFloatTimeDomainData(samples);
         for(const sample of samples)decodedPeak=Math.max(decodedPeak,Math.abs(sample));}
       video.pause();source.disconnect();analyser.disconnect();mute.disconnect();await context.close();URL.revokeObjectURL(url);
-      clone?.stop();await reader?.cancel();stream.getTracks().forEach(track=>track.stop());
+      clips.close();clone?.stop();await reader?.cancel();stream.getTracks().forEach(track=>track.stop());
       return {...stats,clip:{bytes:blob.size,mime,decodedPeak},tracksEnded:stream.getTracks().every(track=>track.readyState==='ended')};
     })()`,
       true,
     );
     assert.equal(report.start.videoTracks, 1);
     assert.equal(report.start.audioTracks.length, 1);
+    assert.equal(report.start.clipSourceKind, 'video');
+    assert.equal(report.start.clipHasAudio, true);
     assert.equal(report.end.error, null);
     assert.equal(report.end.tracksEnded, true);
     assert.ok(report.end.frames > 0);
