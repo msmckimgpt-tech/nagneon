@@ -241,3 +241,7 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
+.community-reading-space, .community-reading-content { overflow-anchor: none; }
+.community-reading-space { min-height: 100dvh; }
+.community-reading-content { min-height: calc(100dvh - 32px); outline: none; }

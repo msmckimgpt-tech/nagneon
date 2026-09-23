@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useReadingPosition } from './useReadingPosition';
 import { api } from './api';
 import type { State } from './types';
 import './social-community.css';
@@ -53,20 +54,21 @@ export function CommunitySpace({
   section: 'broadcast' | 'outside';
   setSection: (section: 'broadcast' | 'outside') => void;
 }) {
+  const navigation = useReadingPosition(section);
   return (
-    <>
+    <div ref={navigation.ref} className="community-reading-space">
       <nav className="community-sections" aria-label="방송 밖 이야기 구획">
         <button
           aria-label="방송 커뮤니티"
           aria-pressed={section === 'broadcast'}
-          onClick={() => setSection('broadcast')}
+          onClick={() => navigation.move(() => setSection('broadcast'), true)}
         >
           방송 커뮤니티
         </button>
         <button
           aria-label="바깥 커뮤니티"
           aria-pressed={section === 'outside'}
-          onClick={() => setSection('outside')}
+          onClick={() => navigation.move(() => setSection('outside'), true)}
         >
           바깥 커뮤니티{' '}
           <span className="social-count" aria-label="저장된 게시글 수">
@@ -78,7 +80,7 @@ export function CommunitySpace({
       <div hidden={section !== 'outside'}>
         <OutsideCommunity state={state} active={section === 'outside'} onError={onError} />
       </div>
-    </>
+    </div>
   );
 }
 function OutsideCommunity({
@@ -100,6 +102,13 @@ function OutsideCommunity({
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
     [loading, setLoading] = useState(false);
+  const [loadedKey, setLoadedKey] = useState('');
+  const listKey = JSON.stringify([community, submitted, offset, bookmarked]);
+  const reading = useReadingPosition(
+    selected ? 'post:' + selected.id : listKey,
+    loadedKey === listKey,
+    active,
+  );
   const generation = useRef(0),
     revision = state.social?.revision,
     audienceKey = state.settings.personas
@@ -122,7 +131,7 @@ function OutsideCommunity({
       .then((d) => {
         if (!cancelled && n === generation.current) {
           setData(d);
-          setSelected((p) => (p ? d.posts.find((t) => t.id === p.id) || null : null));
+          setLoadedKey(listKey);
         }
       })
       .catch((e) => {
@@ -135,7 +144,33 @@ function OutsideCommunity({
       cancelled = true;
     };
   }, [active, revision, audienceKey, community, submitted, offset, bookmarked, refresh]);
-  useEffect(() => setOffset(0), [revision]);
+  const selectedId = selected?.id;
+  useEffect(() => {
+    if (!active || !selectedId) return;
+    let cancelled = false;
+    // A new list item can push the open post onto another page. Its identity
+    // and lifetime come from the detail endpoint, not the current list page.
+    void (async () => {
+      try {
+        const response = await fetch('/api/social/threads/' + selectedId, {
+          headers: { 'X-Backseat-Client': 'studio' },
+        });
+        if (cancelled) return;
+        if (response.status === 404) {
+          reading.move(() => setSelected(null));
+          return;
+        }
+        const post = await response.json();
+        if (!response.ok) throw new Error(post.error || '글을 불러오지 못했습니다.');
+        if (!cancelled) setSelected((current) => (current?.id === selectedId ? post : current));
+      } catch (error) {
+        if (!cancelled) onError((error as Error).message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, selectedId, revision, audienceKey, refresh]);
   async function patch(value: Partial<Prefs>) {
     if (busy) return;
     setBusy(true);
@@ -250,11 +285,13 @@ function OutsideCommunity({
         <button
           className={!community ? 'selected' : ''}
           aria-pressed={!community}
-          onClick={() => {
-            setCommunity('');
-            setSelected(null);
-            setOffset(0);
-          }}
+          onClick={() =>
+            reading.move(() => {
+              setCommunity('');
+              setSelected(null);
+              setOffset(0);
+            }, true)
+          }
         >
           전체 이야기
         </button>
@@ -263,11 +300,13 @@ function OutsideCommunity({
             key={c.id}
             className={community === c.id ? 'selected' : ''}
             aria-pressed={community === c.id}
-            onClick={() => {
-              setCommunity(c.id);
-              setSelected(null);
-              setOffset(0);
-            }}
+            onClick={() =>
+              reading.move(() => {
+                setCommunity(c.id);
+                setSelected(null);
+                setOffset(0);
+              }, true)
+            }
           >
             <strong>{c.name}</strong>
             <span>{c.description}</span>
@@ -278,9 +317,11 @@ function OutsideCommunity({
         className="social-search"
         onSubmit={(e) => {
           e.preventDefault();
-          setSubmitted(query);
-          setSelected(null);
-          setOffset(0);
+          reading.move(() => {
+            setSubmitted(query);
+            setSelected(null);
+            setOffset(0);
+          }, true);
         }}
       >
         <input
@@ -296,12 +337,14 @@ function OutsideCommunity({
         <button
           className="secondary"
           type="button"
-          onClick={() => {
-            setQuery(state.settings.streamer);
-            setSubmitted(state.settings.streamer);
-            setSelected(null);
-            setOffset(0);
-          }}
+          onClick={() =>
+            reading.move(() => {
+              setQuery(state.settings.streamer);
+              setSubmitted(state.settings.streamer);
+              setSelected(null);
+              setOffset(0);
+            }, true)
+          }
         >
           내 이야기 찾기
         </button>
@@ -309,137 +352,146 @@ function OutsideCommunity({
           <input
             type="checkbox"
             checked={bookmarked}
-            onChange={(e) => {
-              setBookmarked(e.target.checked);
-              setOffset(0);
-              setSelected(null);
-            }}
+            onChange={(e) =>
+              reading.move(() => {
+                setBookmarked(e.target.checked);
+                setOffset(0);
+                setSelected(null);
+              }, true)
+            }
           />
           북마크
         </label>
       </form>
-      {selected ? (
-        <article className={`social-detail${selected.authorIsViewer ? ' social-viewer-post' : ''}`}>
-          <button className="text-button" onClick={() => setSelected(null)}>
-            ← 글 목록
-          </button>
-          <h3>{selected.title}</h3>
-          <small>
-            <span className="social-author">
-              {selected.author}
-              {selected.authorIsViewer && <span className="social-viewer-badge">나의 관객</span>}
-            </span>{' '}
-            · {new Date(selected.at).toLocaleString('ko-KR')} ·{' '}
-            {selected.kind === 'daily' ? '일상' : '방송 이야기'}
-          </small>
-          <p>{selected.text}</p>
-          {selected.sourceStatus === 'historical' && (
-            <p className="muted">당시 남긴 이야기입니다. 현재 방송 근거로는 사용하지 않아요.</p>
-          )}
-          <div className="social-actions">
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() => toggle('bookmarks', selected.id)}
-            >
-              {p.bookmarks.includes(selected.id) ? '북마크 해제' : '북마크'}
+      <div ref={reading.ref} className="community-reading-content" tabIndex={-1}>
+        {selected ? (
+          <article
+            className={`social-detail${selected.authorIsViewer ? ' social-viewer-post' : ''}`}
+          >
+            <button className="text-button" onClick={() => reading.move(() => setSelected(null))}>
+              ← 글 목록
             </button>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={() => {
-                toggle('hiddenThreads', selected.id);
-                setSelected(null);
-              }}
-            >
-              숨기기
-            </button>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await api('social/threads/' + selected.id, undefined, 'DELETE');
-                  setSelected(null);
-                  setRefresh((v) => v + 1);
-                } catch (e) {
-                  onError((e as Error).message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              글 잊기
-            </button>
-          </div>
-        </article>
-      ) : (
-        <div aria-live="polite">
-          {data.posts.length === 0 ? (
-            <div className="social-empty">
-              <p>
-                {submitted || community || bookmarked
-                  ? '현재 검색·필터에 맞는 이야기가 없어요.'
-                  : '아직 저장된 이야기가 없어요. 주민들은 각자의 속도로 이야기를 나눕니다.'}
-              </p>
-              {(submitted || community || bookmarked) && (
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setCommunity('');
-                    setQuery('');
-                    setSubmitted('');
-                    setBookmarked(false);
-                    setOffset(0);
-                  }}
-                >
-                  전체 이야기 보기
-                </button>
-              )}
-            </div>
-          ) : (
-            data.posts.map((post) => (
+            <h3>{selected.title}</h3>
+            <small>
+              <span className="social-author">
+                {selected.author}
+                {selected.authorIsViewer && <span className="social-viewer-badge">나의 관객</span>}
+              </span>{' '}
+              · {new Date(selected.at).toLocaleString('ko-KR')} ·{' '}
+              {selected.kind === 'daily' ? '일상' : '방송 이야기'}
+            </small>
+            <p>{selected.text}</p>
+            {selected.sourceStatus === 'historical' && (
+              <p className="muted">당시 남긴 이야기입니다. 현재 방송 근거로는 사용하지 않아요.</p>
+            )}
+            <div className="social-actions">
               <button
-                className={`social-post${post.authorIsViewer ? ' social-viewer-post' : ''}`}
-                key={post.id}
-                onClick={() => setSelected(post)}
+                className="secondary"
+                disabled={busy}
+                onClick={() => toggle('bookmarks', selected.id)}
               >
-                <span>
-                  {data.communities.find((c) => c.id === post.communityId)?.name} ·{' '}
-                  {post.kind === 'daily' ? '일상' : '방송 이야기'}
-                </span>
-                <strong>{post.title}</strong>
-                <small>
-                  <span className="social-author">
-                    {post.author}
-                    {post.authorIsViewer && <span className="social-viewer-badge">나의 관객</span>}
-                  </span>{' '}
-                  · {new Date(post.at).toLocaleString('ko-KR')}
-                  {post.bookmarked ? ' · 북마크' : ''}
-                </small>
+                {p.bookmarks.includes(selected.id) ? '북마크 해제' : '북마크'}
               </button>
-            ))
-          )}
-          <div className="social-pages">
-            <button
-              className="secondary"
-              disabled={offset === 0 || loading}
-              onClick={() => setOffset((v) => Math.max(0, v - 30))}
-            >
-              이전
-            </button>
-            <span>{data.total}개 이야기</span>
-            <button
-              className="secondary"
-              disabled={offset + 30 >= data.total || loading}
-              onClick={() => setOffset((v) => v + 30)}
-            >
-              다음
-            </button>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => {
+                  toggle('hiddenThreads', selected.id);
+                  setSelected(null);
+                }}
+              >
+                숨기기
+              </button>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api('social/threads/' + selected.id, undefined, 'DELETE');
+                    setSelected(null);
+                    setRefresh((v) => v + 1);
+                  } catch (e) {
+                    onError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                글 잊기
+              </button>
+            </div>
+          </article>
+        ) : (
+          <div aria-live="polite">
+            {data.posts.length === 0 ? (
+              <div className="social-empty">
+                <p>
+                  {submitted || community || bookmarked
+                    ? '현재 검색·필터에 맞는 이야기가 없어요.'
+                    : '아직 저장된 이야기가 없어요. 주민들은 각자의 속도로 이야기를 나눕니다.'}
+                </p>
+                {(submitted || community || bookmarked) && (
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setCommunity('');
+                      setQuery('');
+                      setSubmitted('');
+                      setBookmarked(false);
+                      setOffset(0);
+                    }}
+                  >
+                    전체 이야기 보기
+                  </button>
+                )}
+              </div>
+            ) : (
+              data.posts.map((post) => (
+                <button
+                  className={`social-post${post.authorIsViewer ? ' social-viewer-post' : ''}`}
+                  key={post.id}
+                  data-reading-id={post.id}
+                  onClick={() => reading.move(() => setSelected(post), false, true)}
+                >
+                  <span>
+                    {data.communities.find((c) => c.id === post.communityId)?.name} ·{' '}
+                    {post.kind === 'daily' ? '일상' : '방송 이야기'}
+                  </span>
+                  <strong>{post.title}</strong>
+                  <small>
+                    <span className="social-author">
+                      {post.author}
+                      {post.authorIsViewer && (
+                        <span className="social-viewer-badge">나의 관객</span>
+                      )}
+                    </span>{' '}
+                    · {new Date(post.at).toLocaleString('ko-KR')}
+                    {post.bookmarked ? ' · 북마크' : ''}
+                  </small>
+                </button>
+              ))
+            )}
+            <div className="social-pages">
+              <button
+                className="secondary"
+                disabled={offset === 0 || loading}
+                onClick={() => reading.move(() => setOffset((v) => Math.max(0, v - 30)))}
+              >
+                이전
+              </button>
+              <span>{data.total}개 이야기</span>
+              <button
+                className="secondary"
+                disabled={offset + 30 >= data.total || loading}
+                onClick={() => reading.move(() => setOffset((v) => v + 30))}
+              >
+                다음
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }
