@@ -813,7 +813,7 @@ export function App() {
                     <div className="panel-heading">
                       <div>
                         <MessageCircle size={17} />
-                        <b>실시간 채팅</b>
+                        <b>관객 채팅</b>
                         <span className="count">{present.filter((p) => !p.system).length}</span>
                       </div>
                       <ChatDisplayToggle shown={s.showStreamerMessages !== false} />
