@@ -10,15 +10,21 @@
 - 제품 루트는 `G:\dev\ai\00_game_backseat`, M1 루트는 `G:\dev\ai\00_game_backseat-coordination`이다.
 - 제품 작업은 `AGENTS.md` → `CLAUDE.md` → `CONTRIBUTING.md` → `README.md` → `SECURITY.md`와 작업 관련 `docs/`를 읽는다.
 - 병렬 개발은 `docs/PARALLEL-DEVELOPMENT.md`, 릴리즈는 `docs/SERVICE-RELEASE-POLICY.md`, 기능 승격은 `docs/FEATURE-PROMOTION.md`, 설치·복구는 `docs/STABLE-INSTALLATION.md`를 따른다.
-- ChatGPT/Personal Commander용 개발 시스템 프롬프트는 `docs/AI-DEVELOPMENT-SYSTEM-PROMPT.md`다.
+- 일반 GPT Chat·Codex·Work용 개발 시스템 프롬프트는 `docs/AI-DEVELOPMENT-SYSTEM-PROMPT.md`다.
 - 과거 문서의 SHA·버전·PID·테스트 개수·heartbeat를 현재 상태나 새 실행 승인으로 재사용하지 않는다.
 - 현재 사용자 요청·상위 지시·이 파일이 과거 일반 정책과 충돌하면 현재 범위의 더 구체적인 계약을 우선하고, 충돌을 숨기지 않는다.
 
-## 2. Personal Commander와 effort
+## 2. 실행 환경별 작업 수단과 effort
 
-### 2.1 PC 작업 수단
+### 2.1 실행 환경별 작업 수단
 
-- ChatGPT의 Windows 실무는 **Personal Commander**만 사용한다. RDC·WSL·다른 서버·임의 셸로 대체하지 않는다.
+- **Codex·Work 작업에서는 Personal Commander 플러그인 사용을 금지한다.** ChatGPT Work도 여기에 포함한다. 파일·명령·컴퓨터 조작은 해당 실행 환경의 기본 도구로 직접 수행한다. 상태 조회·workspace 확인 등 읽기 전용 호출과 작업 준비에도 Personal Commander를 사용하지 않는다.
+- Codex·Work의 M1 조회·작업도 기본 파일·명령 도구로 승인된 로컬 경로에서 수행한다. Personal Commander 서버를 셸·다른 플러그인으로 간접 호출하지 않는다.
+- **일반 GPT Chat의 Windows 실무에만 Personal Commander를 사용한다.** 이 경우 RDC·WSL·다른 서버·임의 셸로 대체하지 않는다. 아래 Personal Commander 절차는 일반 GPT Chat에만 적용한다.
+- 도구 선택은 모델명이 아니라 실제 실행 환경으로 구분한다. 플러그인이 노출되어 있어도 Codex·Work에서 사용하지 않으며, 도구 선택이 권한·A/B 역할·게시 범위를 바꾸지 않는다. 모든 환경에서 기존 경로·권한·안전 제한을 지킨다.
+
+일반 GPT Chat의 Personal Commander 절차:
+
 - 새 작업·재개 시 `get_status`, `list_workspaces`, 실제 함수 schema를 확인한다. 과거 다른 대화의 도구 개수·성공을 현재 가용성으로 추정하지 않는다.
 - 제품 루트·M1 루트·자기 worktree는 정확한 workspace binding과 권한을 확인한 뒤 사용한다. 일반 workspace의 `writable=true`를 다른 루트 권한으로 확대하지 않는다.
 - 파일 API에는 workspace-relative path만 사용한다. `..`·junction·symlink·WSL·절대경로 우회로 등록 루트 밖을 접근하지 않는다.
@@ -35,7 +41,7 @@ effort는 작업 단계의 추론·검토 깊이이며 권한·게시 범위·A/
 - **xhigh**: 실제 구현, 파일/schema 수정, 테스트 작성·실행, 실패 분석·수정, build·수용 검증.
 - 혼합 작업의 기본 흐름은 `Pro 계획/설계 → Pro 독립 검토 → xhigh 구현 → xhigh 테스트/수정 → Pro 최종 검토`다.
 - effort 선택 기능이 현재 실행 표면에 실제 노출될 때만 사용한다. 없는 파라미터를 만들거나 모델·제공자를 자동 전환하지 않는다.
-- Personal Commander 사용 조건을 특정 모델에 묶지 않는다. 사용자가 선택한 모델·기존 설정을 유지한다.
+- 실행 환경별 도구 규칙을 특정 모델에 묶지 않는다. 사용자가 선택한 모델·기존 설정을 유지한다.
 
 ## 3. M1 다중 세션 협의
 
@@ -73,7 +79,7 @@ M1 도구 소스도 현재 M1 범위에서는 자동 원격 게시하지 않는�
 - node_modules·data·dist·포트·프로필·artifacts도 worktree별로 격리한다.
 - 통합 잠금 `ai-integration.lock`은 실제 통합 담당만 사용한다. A는 선점하지 않는다.
 
-### 4.1 A — ChatGPT/Personal Commander
+### 4.1 A — 일반 GPT Chat/Personal Commander
 
 A는 조사 → M1 정합 확인 → 격리 worktree/branch → 수정 → 로컬 검증·빌드·문서 정합 → **로컬 commit** → 전체 SHA·Git 상태 → 단일 Markdown 인계까지 수행한다.
 
@@ -139,7 +145,7 @@ B도 M1 협의 기록·M1 도구 commit을 제품 게시 이력에 섞지 않는
 
 - 제품 작업 / M1 로컬 작업 구분
 - 목표·수용 기준·유지 결정·금지·A/B 역할
-- MCKIM, 사용한 Personal Commander workspace, 제품/M1 경로
+- MCKIM, 실제 실행 환경·도구·작업 경로, 제품/M1 경로 (일반 GPT Chat에서 사용한 경우에만 Personal Commander workspace 포함)
 - 관련 M1 task/topic·contract revision/hash·read set·미해결 쟁점
 - 제품 branch/worktree·기반/최종 전체 SHA·commit 목록·Git 상태
 - 변경 파일·심볼·데이터/설정 영향
