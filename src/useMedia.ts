@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {useSystemSound} from './useSystemSound';
+import {useSoundAnalysisSource} from './useSoundAnalysisSource';
 import {api} from './api';
 import type {State} from './types';
 import {useClipBuffer} from './useClipBuffer';
@@ -24,7 +25,10 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const clipUploads=useRef<ClipUploads|null>(null);
   const errorRef=useRef(onError);errorRef.current=onError;
   const [outputStream,setOutputStream]=useState<MediaStream|null>(null),[picture,setPicture]=useState(true);const pictureRef=useRef(true);
-  const sound=useSystemSound(outputStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>{stopSound();errorRef.current(message);});
+  const analysisStream=useSoundAnalysisSource(outputStream,message=>errorRef.current(message));
+  // Analysis owns audio-only clones. Model/decoder failures must not stop the
+  // original system tracks or the independent hotclip recorder.
+  const sound=useSystemSound(analysisStream,state?.running&&state.settings.mode==='live'?state.sessionId:null,message=>errorRef.current(message+' 소리 분석을 확인해주세요. 클립 녹음 연결은 별도로 유지합니다.'));
   const clipRuntimeReady=!state?.runtimeComponents||state.runtimeComponents.components.find(c=>c.id==='audio')?.status==='ready';
   const clips=useClipBuffer(picture?screenStream.current:null,micStream.current,!!state?.running&&!!state?.settings.clipBufferEnabled&&clipRuntimeReady,state?.sessionId || null,outputStream,message=>errorRef.current(message));
   // Settings can enable clipping after an existing screen connection. Prepare

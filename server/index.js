@@ -350,6 +350,15 @@ async function startServerImpl(
           .status(401)
           .json({ error: '앱 연결 인증이 필요합니다. Nagneon 창에서 다시 연결하세요.' }),
   );
+  // Studio users may read/moderate resident attachments, not upload into
+  // another resident's post. Reject before parsing bodies; internal resident
+  // generation/storage remains available through SocialRuntime.
+  app.post('/api/social/threads/:id/attachments', (_req, res) =>
+    res.status(403).json({
+      code: 'resident-attachments-only',
+      error: '이 게시글에는 스트리머가 파일을 추가할 수 없습니다. 주민의 첨부는 열람할 수 있어요.',
+    }),
+  );
   app.use(express.json({ limit: '3mb' }));
   app.use((req, res, next) =>
     probe.controller &&

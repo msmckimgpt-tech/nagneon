@@ -136,44 +136,6 @@ export function SocialDiscussion({
           </figure>
         ))}
       </div>
-      <label className="social-upload">
-        이미지·동영상 첨부
-        <input
-          aria-label="이미지·동영상 첨부"
-          type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"
-          disabled={busy || post.attachments.length >= 4}
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (!file) return;
-            if (file.size > (file.type.startsWith('image/') ? 8 : 24) * 1024 * 1024) {
-              onError('이미지는 8MB, 동영상은 24MB 이하로 선택하세요.');
-              return;
-            }
-            setBusy(true);
-            try {
-              const response = await fetch('/api/social/threads/' + post.id + '/attachments', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/octet-stream',
-                  'X-Backseat-Client': 'studio',
-                  'X-File-Name': encodeURIComponent(file.name),
-                },
-                body: file,
-              });
-              if (!response.ok)
-                throw Error((await response.json()).error || '첨부하지 못했습니다.');
-              onChanged();
-            } catch (e) {
-              onError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-      </label>
-      <p className="muted">글당 4개 · 이미지 8MB / 동영상 24MB · 자동 재생 없음</p>
       <h4>댓글</h4>
       {post.comments.length === 0 && <p className="muted">아직 댓글이 없어요.</p>}
       {post.comments
