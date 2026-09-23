@@ -61,6 +61,7 @@ import { useChatFollow } from './useChatFollow';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
 import { createNavigationHistory, type NavigationDirection } from '../shared/navigation-history.js';
+import { subscribeNavigationInputs } from '../shared/navigation-input.js';
 
 const time = (n: number) =>
   new Date(n).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -160,7 +161,7 @@ export function App() {
   useEffect(() => window.backseat?.onOverlayState(setThrough), []);
   useEffect(() => {
     if (overlay) return;
-    return window.backseat?.onNavigationHistory?.(moveTabHistory);
+    return subscribeNavigationInputs(window, window.backseat?.onNavigationHistory, moveTabHistory);
   }, [overlay, moveTabHistory]);
   const action = useCallback(async (path: string, body?: unknown, method?: string) => {
     try {

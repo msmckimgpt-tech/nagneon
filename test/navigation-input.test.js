@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import navigation from '../desktop/navigation.cjs';
 import { createNavigationHistory } from '../shared/navigation-history.js';
+import { subscribeNavigationInputs } from '../shared/navigation-input.js';
 
 test('internal navigation history supports back, forward, and forward-stack replacement', () => {
   const history = createNavigationHistory('studio');
@@ -105,4 +106,95 @@ test('reselecting current tab after back preserves forward history', () => {
   const snapshot = history.snapshot();
   snapshot.entries.length = 0;
   assert.equal(history.snapshot().current, 'community');
+});
+
+function inputHarness() {
+  const target = new EventTarget(),
+    seen = [];
+  let native,
+    time = 0,
+    unsubscribed = false;
+  const dispose = subscribeNavigationInputs(
+    target,
+    (listener) => {
+      native = listener;
+      return () => {
+        unsubscribed = true;
+      };
+    },
+    (direction) => seen.push(direction),
+    () => time,
+  );
+  const mouse = (type, button) => {
+    const event = new Event(type, { cancelable: true });
+    Object.defineProperty(event, 'button', { value: button });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  return {
+    target,
+    seen,
+    mouse,
+    native: (direction) => native(direction),
+    dispose,
+    advance: (ms) => {
+      time += ms;
+    },
+    unsubscribed: () => unsubscribed,
+  };
+}
+
+test('DOM side-button clicks navigate once and suppress browser defaults only for side buttons', () => {
+  const h = inputHarness();
+  for (const button of [3, 4, 3, 3]) {
+    assert.equal(h.mouse('mousedown', button), true);
+    assert.equal(h.mouse('mouseup', button), true);
+    assert.equal(h.mouse('auxclick', button), true);
+  }
+  assert.deepEqual(h.seen, ['back', 'forward', 'back', 'back']);
+  for (const button of [0, 1, 2]) assert.equal(h.mouse('mouseup', button), false);
+  h.dispose();
+  h.mouse('mouseup', 3);
+  assert.equal(h.seen.length, 4);
+  assert.equal(h.unsubscribed(), true);
+});
+
+test('DOM/native paired commands are coalesced in either order without losing rapid clicks', () => {
+  for (const nativeFirst of [true, false]) {
+    const h = inputHarness();
+    for (let click = 0; click < 3; click++) {
+      if (nativeFirst) h.native('back');
+      h.mouse('mousedown', 3);
+      h.mouse('mouseup', 3);
+      h.mouse('auxclick', 3);
+      if (!nativeFirst) h.native('back');
+      h.advance(10);
+    }
+    assert.deepEqual(h.seen, ['back', 'back', 'back']);
+  }
+});
+
+test('native command during a held button does not repeat at mouseup', () => {
+  const h = inputHarness();
+  h.mouse('mousedown', 4);
+  h.native('forward');
+  h.native('forward');
+  h.advance(1000);
+  h.mouse('mouseup', 4);
+  assert.deepEqual(h.seen, ['forward']);
+  h.native('forward');
+  h.native('forward');
+  assert.deepEqual(h.seen, ['forward', 'forward', 'forward']);
+});
+
+test('unmatched native command expires and blur clears pending gestures', () => {
+  const h = inputHarness();
+  h.native('back');
+  h.advance(251);
+  h.mouse('mousedown', 3);
+  h.mouse('mouseup', 3);
+  h.target.dispatchEvent(new Event('blur'));
+  h.native('back');
+  h.native('unexpected');
+  assert.deepEqual(h.seen, ['back', 'back', 'back']);
 });
