@@ -54,4 +54,3 @@ app.whenReady().then(async()=>{
  }catch(error){result.error=error.stack;console.error(error);process.exitCode=1;if(win&&!win.isDestroyed())try{fs.writeFileSync(join(out,'failure.png'),(await win.webContents.capturePage()).toPNG());}catch{}}
  finally{win?.destroy();try{await service?.close();}catch(error){result.passed=false;result.cleanupError=error.message;process.exitCode=1;}fs.writeFileSync(join(out,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({output:out,...result}));app.exit(process.exitCode||0);}
 });
-
