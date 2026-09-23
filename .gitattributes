@@ -7,3 +7,5 @@ server/index.js text eol=lf
 server/decision/*.js text eol=lf
 test/decision-service.test.js text eol=lf
 docs/DECISION-ASSIST.md text eol=lf
+test/typesafe-client.test.js text eol=lf
+scripts/verify-jev-live.mjs text eol=lf
