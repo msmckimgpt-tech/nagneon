@@ -7,18 +7,26 @@ import { createTypeSafeClient } from '../server/decision/typesafe-client.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = {
-  query: '지난 방송에서 다음에 하기로 약속한 게임은 무엇이었지?',
+  language: 'en',
+  queryEnglish: 'Which game did we agree during the previous stream to play in the next stream?',
   candidates: [
-    { id: 'm1', text: '합성 관객과 스트리머는 다음 방송에서 별빛 농장 게임을 하기로 약속했다.' },
-    { id: 'm2', text: '합성 관객은 매운 음식을 좋아한다고 말했다.' },
-    { id: 'm3', text: '합성 스트리머는 오늘 날씨가 맑다고 말했다.' },
+    {
+      id: 'm1',
+      textEnglish:
+        'The synthetic viewer and streamer agreed to play Starlight Farm in the next stream.',
+    },
+    { id: 'm2', textEnglish: 'The synthetic viewer said they like spicy food.' },
+    { id: 'm3', textEnglish: 'The synthetic streamer said the weather is clear today.' },
   ],
 };
 
 export async function runProbe({ apiKey, fetchImpl } = {}) {
   const client = createTypeSafeClient({ apiKey, fetchImpl });
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    inputLanguage: 'en',
+    outputFormat: 'candidate-ids-and-numbers',
+    fixtureVersion: 'memory-choice-en-v1',
     syntheticInput: true,
     liveProvider: fetchImpl === undefined,
     requestedModel: 'jev-latest',
@@ -49,7 +57,7 @@ export async function runProbe({ apiKey, fetchImpl } = {}) {
     });
     const start = performance.now();
     const result = await service.advise(DecisionTask.MEMORY_RERANK, fixture, {
-      questionVersion: 1,
+      questionVersion: 2,
     });
     report.durationMs = Math.round(performance.now() - start);
     if (result.kind !== 'observation') {
@@ -68,7 +76,7 @@ export async function runProbe({ apiKey, fetchImpl } = {}) {
     report.costBasis =
       'Published 2026-09-23: USD 0.042 / million input tokens; output free. Account invoice not verified.';
     report.qualityConclusion =
-      'Single synthetic example only; no general Korean-quality or latency conclusion.';
+      'Single English synthetic example only; no general language-quality or latency conclusion.';
     return report;
   } catch (error) {
     report.status = 'FAIL';

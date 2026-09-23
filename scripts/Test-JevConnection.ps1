@@ -1,8 +1,8 @@
 ﻿$ErrorActionPreference = 'Stop'
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 $scriptPath = Join-Path $PSScriptRoot 'verify-jev-live.mjs'
-Write-Host 'TypeSafe JEV: 모델 조회 1회 + 한국어 합성 판단 1회'
-Write-Host '시험 코드에 있는 합성 기억 3개만 전송합니다.'
+Write-Host 'TypeSafe JEV: 모델 조회 1회 + 영어 합성 판단 1회'
+Write-Host '시험 코드에 있는 영어 합성 기억 3개만 전송합니다.'
 Write-Host 'TypeSafe 크레딧을 사용합니다. 자동 재시도와 키 저장은 없습니다.'
 Write-Host '아래에 API 키를 붙여넣으세요. 입력은 숨겨집니다. 취소: Ctrl+C'
 $secureKey = Read-Host 'TypeSafe API 키' -AsSecureString
