@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ClipBuffer} from '../src/clip-buffer.ts';
 
+test('default clock never invokes browser timers with a foreign receiver',async t=>{
+  const originalSet=globalThis.setTimeout,originalClear=globalThis.clearTimeout;
+  t.mock.method(globalThis,'setTimeout',function(...args){
+    assert.ok(this===undefined||this===globalThis,'browser setTimeout rejects foreign receiver');return originalSet(...args);
+  });
+  t.mock.method(globalThis,'clearTimeout',function(...args){
+    assert.ok(this===undefined||this===globalThis,'browser clearTimeout rejects foreign receiver');return originalClear(...args);
+  });
+  const {ClipBuffer:BrowserBuffer}=await import('../src/clip-buffer.ts?browser-clock');
+  let failures=0;
+  const recorder={state:'inactive',start(){this.state='recording';},stop(){this.state='inactive';}};
+  const buffer=new BrowserBuffer({sessionId:'browser',hasAudio:true,create:()=>recorder,onFailure:()=>failures++});
+  try{buffer.start();assert.equal(recorder.state,'recording');assert.equal(failures,0);}
+  finally{buffer.dispose();}
+  assert.equal(recorder.state,'inactive');
+});
+
 function harness({bytes=120,delay=0,failStart=0}={}){
   let time=1_000_000,id=0,failures=0;const timers=new Map(),recorders=[];
   const clock={now:()=>time,set:(fn,ms)=>{timers.set(++id,{at:time+ms,fn});return id;},clear:id=>timers.delete(id)};

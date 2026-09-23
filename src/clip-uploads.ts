@@ -19,7 +19,7 @@ export class ClipUploads {
   private abort=new AbortController();
   private request:typeof fetch;
   private now:()=>number;
-  constructor(options:Options){this.options=options;this.request=options.request||fetch;this.now=options.now||Date.now;}
+  constructor(options:Options){this.options=options;this.request=options.request||((...args)=>fetch(...args));this.now=options.now||Date.now;}
   private allowed(){return !this.closed&&this.options.allowed();}
   add(clips:Candidate[]){
     if(!this.allowed())return;
@@ -84,7 +84,8 @@ export class ClipUploads {
           const recording=await this.options.takeAt(clip.observedAt??clip.createdAt);
           if(!this.allowed())return;
           if(!this.seen.has(clip.id))continue;
-          if(!recording||recording.sessionId!==this.options.sessionId)continue;
+          if(!recording)throw Error('선택한 순간의 영상·음성 버퍼가 없어 녹화를 저장하지 못했습니다.');
+          if(recording.sessionId!==this.options.sessionId)continue;
           if(recording.kind==='audio'&&!clip.audioEligible)continue;
           await this.upload(clip,recording);
           if(recording.voice){if(recording.voice.sessionId!==recording.sessionId)throw Error('마이크 클립의 방송이 다릅니다.');await this.upload(clip,recording.voice,true);}
