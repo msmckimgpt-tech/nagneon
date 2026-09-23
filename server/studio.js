@@ -1336,6 +1336,9 @@ export class Studio extends EventEmitter {
     personalContext,
     game,
   }) {
+    this.audience.observePresence(observation, witnesses, capturedAt, this.now(), {
+      visual: !!image,
+    });
     const donations = this.economy.reward({
       observation,
       settings: this.settings,

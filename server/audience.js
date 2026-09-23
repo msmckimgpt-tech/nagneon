@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {normalizeLore,relevantLore,LEGACY_NO_EXPIRY} from './community-lore.js';
 import profiles from '../shared/discovery.json' with {type:'json'};
 import {createViewerAddressResolver} from './viewer-addressing.js';
+import {resetPresenceRuntime,tickAutonomousPresence,observePresence} from './audience-presence.js';
 
 /** Research-inspired simulation. Probabilities are product choices, not measured conversion rates. */
 export class Audience {
@@ -13,7 +14,7 @@ export class Audience {
       // Returning within a broadcast starts a new observation interval, not a
       // second broadcast visit. Known viewers can also arrive after its opening.
       if(!(member.joinedAt>=this.lastStart))member.sessions++;
-      member.joinedAt=now;
+      member.joinedAt=Math.max(now,(before===undefined?-1:(member.joinedAt??-1))+1);
     }
     this.presence[id]=next;this.presenceRevision++;
   }
@@ -33,15 +34,15 @@ export class Audience {
   }
   start(settings,now){
     if(this.autonomous){
-      const before=structuredClone(this.data);this.presence={};this.lastTick=now;this.lastPresence=now;this.lastStart=now;const events=[];
+      const before=structuredClone(this.data);this.presence={};this.lastTick=now;this.lastPresence=now;this.lastStart=now;resetPresenceRuntime(this,now);const events=[];
       try{for(const p of settings.personas){
         const m=this.data.members[p.id];
         if(p.system){this.data.members[p.id] ||= {sessions:0,seconds:0,recognized:0,affinity:0,peers:{},memories:[]};events.push(this.join(p,settings,now));continue;}
         if(!p.enabled||!m?.sessions){this.presence[p.id]='away';continue;}
-        if(p.id===settings.managerId||this.random()<Math.min(.95,.5+m.affinity*.35+Math.min(.1,m.seconds/7200)))events.push(this.join(p,settings,now));
+        if(p.id===settings.managerId||(!(m.presenceMemory?.cooldownSeconds>0)&&this.random()<Math.min(.95,.5+m.affinity*.35+Math.min(.1,m.seconds/7200))))events.push(this.join(p,settings,now));
         else this.presence[p.id]='away';
       }this.save(this.data);return events;
-      }catch(error){this.data=before;this.presence={};throw error;}
+      }catch(error){this.data=before;this.presence={};this.presenceRuntime=null;throw error;}
     }
     this.presence={};this.lastTick=now;this.lastPresence=now;this.lastStart=now;this.nextArrival=now+settings.discovery.arrivalSeconds*1000;const events=[];let openingViewer=false;
     for(const p of settings.personas){
@@ -54,8 +55,10 @@ export class Audience {
     }
     this.save(this.data);return settings.discovery.enabled?events:[];
   }
-  stop(){this.presence={};this.save(this.data);}
+  stop(){this.presence={};this.presenceRuntime=null;this.save(this.data);}
+  observePresence(observation,witnesses,capturedAt,now,options){observePresence(this,observation,witnesses,capturedAt,now,options);}
   tick(settings,now,excitement=0){
+    if(this.autonomous)return this.presenceRuntime?tickAutonomousPresence(this,settings,now):[];
     if(now-this.lastTick<1000)return [];
     const dt=Math.min(60,Math.max(0,(now-this.lastTick)/1000));this.lastTick=now;const events=[];
     const changePresence=now-this.lastPresence>=10000;if(changePresence)this.lastPresence=now;
@@ -95,7 +98,7 @@ export class Audience {
     const volunteer=lurkers.sort((a,b)=>b.score-a.score)[0];if(volunteer)candidates.push(volunteer);
     const eligible=candidates.sort((a,b)=>b.score-a.score).slice(0,Math.min(settings.chatPace+1,settings.personas.length)).map(p=>p.id);
     return {eligible,members:settings.personas.filter(p=>p.enabled).map(p=>{
-      const m=this.data.members[p.id];return {id:p.id,presence:this.presence[p.id] || 'away',...m,relationship:(m?.sessions>=3&&m?.seconds>=600)?'단골':m?.sessions>1?'재방문':'첫 방문',arrivalInterest:profiles[m?.origin?.key]?.intent || '직접 초대한 관객. 개인 설정과 실제 기억을 따른다.'};
+      const {presenceMemory,...m}=this.data.members[p.id]||{};return {id:p.id,presence:this.presence[p.id] || 'away',...m,relationship:(m?.sessions>=3&&m?.seconds>=600)?'단골':m?.sessions>1?'재방문':'첫 방문',arrivalInterest:profiles[m?.origin?.key]?.intent || '직접 초대한 관객. 개인 설정과 실제 기억을 따른다.'};
     }),lore:relevantLore(this.data.lore,speech),offStreamPosts:this.data.posts.slice(-8),rhythm:excitement>0.75?'짧은 공동 반응 뒤 안정':'평소 대화. 침묵과 관망도 자연스럽다'};
   }
   message(personaId,text,settings){const m=this.data.members[personaId];if(!m)return;

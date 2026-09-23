@@ -35,8 +35,9 @@ test('natural return starts a new viewing interval without counting the same bro
 
 test('a known viewer arriving later in a new broadcast gains that visit and becomes a valid witness',()=>{
  const a=new Audience(undefined,()=>{},()=>.5),cfg=settings();a.start(cfg,100000);a.stop();a.autonomous=true;a.random=()=>.99;a.start(cfg,200000);
- assert.equal(a.presence.new,'away');randoms(a,[.5,0,.5,.5]);a.tick(cfg,210000);
- assert.equal(a.presence.new,'active');assert.equal(a.data.members.new.joinedAt,210000);assert.equal(a.data.members.new.sessions,2);
+ assert.equal(a.presence.new,'away');let arrivedAt;
+ for(let now=201000;now<=7400000;now+=1000){a.tick(cfg,now);if(a.presence.new==='active'){arrivedAt=now;break;}}
+ assert.ok(arrivedAt>200000);assert.equal(a.data.members.new.joinedAt,arrivedAt);assert.equal(a.data.members.new.sessions,2);
 });
 
 test('unban during a live broadcast does not restore the blocked viewing interval',t=>{
