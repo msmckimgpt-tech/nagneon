@@ -10,7 +10,7 @@ export function isChatQuestion(text){
   if(/(?:어때(?:요)?|어떰)$/.test(line))return true;
   // Embedded/reported questions and free-choice statements are not direct
   // questions. Keep ambiguous yes/no statements conservative without prosody.
-  if(/(?:는지|인지|을지|라고|라는|든|라도|봐도)/.test(line))return false;
+  if(/(?:는지|인지|을지|라고|라는|든|라도|봐도)/.test(line)||/[가-힣]+지\s*(?:아직\s*)?(?:모르|몰라|알|궁금|고민|생각|확인)/.test(line))return false;
   const interrogative=/(?:^|[\s,.!…])(?:뭐(?:가|를|랑|로)?|뭘|무슨|무엇(?:을|이)?|어떤|어느|누구(?:가|를|랑|와)?|누가|언제|어디(?:로|서|에)?|어떻게|왜|얼마나|몇(?:시|명|개|번|분)?)(?=\s|[,.!…]|$)/.test(line);
   return interrogative&&/(?:래|까|어|아|해|돼|지|야|요)$/.test(line);
 }

@@ -11,12 +11,12 @@
 ## 검증
 
 - 제품 수정 전, 유효한 합성 저널로 질문 분류·재시작 후 답변 검색·관객 질문 흐름의 세 실패를 재현했다. 최초 테스트의 잘못된 UUID는 테스트 작성 오류로 따로 보존했고, 이를 고친 뒤에도 실제 답변 누락이 재현됐다.
-- 수정 후 관련 17개 검사가 통과했다. 직접 질문 14개와 일반 문장 19개, 원문 보존·삭제·새 관객·듣지 못한 답변·다른 방송·가상 발언·기한·역전 시각·최근 문맥·다음 스트리머 발언 경계를 포함한다.
+- 수정 후 관련 17개 검사가 통과했다. 직접 질문 14개와 일반 문장 22개, 원문 보존·삭제·새 관객·듣지 못한 답변·다른 방송·가상 발언·기한·역전 시각·최근 문맥·다음 스트리머 발언 경계를 포함한다.
 - 공식 Codex CLI의 `gpt-6-astra`, `low`로 같은 합성 대화를 비교했다. 실제 파일 저널을 저장하고 다시 연 뒤 실제 Studio 요청과 채팅 전달을 확인했다. 수정 전 모델은 질문만 기억하고 답은 모른다고 응답했다. 수정 후 두 실행은 모두 모모가 떡볶이를 선택했다고 답했다. 모델 입력에도 원래 질문과 모모의 답변이 함께 있었고, 전체 답변의 화자와 내용도 확인했다.
 - 입력은 개발자가 작성한 합성 텍스트다. 물리 마이크의 전사 정확도, 일반적인 장기 대화 품질, 모든 질문의 의미 이해 또는 응답 속도 개선을 입증하는 결과는 아니다. 기본/후보/최종 모델 소요 시간은 각각 약 10.1/10.6/8.8초로, 이 표본만으로 성능 개선을 주장하지 않는다.
 
 재현: `node scripts/verify-spoken-question-memory.mjs --live --label=check`. 명시적 `--live`가 있어야 실제 계정 사용량을 소비한다. CI는 모델을 호출하지 않는다.
 
-작업 공간 `spoken-question-memory-20260923/artifacts/`에 `spoken-before.log`(초기 테스트 작성 오류 포함), `spoken-before-corrected-fixture.log`(제품 결함 재현), `spoken-after.log`(후보의 웃음 문자 정규화 실패), `spoken-boundaries.log`(최종 관련 검사)를 보존한다. 실제 모델 결과는 `spoken-question-baseline-gtwPDd`, `spoken-question-candidate-RYGBPD`, `spoken-question-final-NQy7dT`의 `input.json`·`result.json`에 있다. 최종 전체 검사는 `check.log`, 의존성 취약점 검사는 `audit.log`다. 사용자 대화·음성·프로필을 시험 입력으로 사용하지 않았다.
+작업 공간 `spoken-question-memory-20260923/artifacts/`에 `spoken-before.log`(초기 테스트 작성 오류 포함), `spoken-before-corrected-fixture.log`(제품 결함 재현), `spoken-after.log`(후보의 웃음 문자 정규화 실패), `spoken-boundaries.log`·`spoken-boundaries-final.log`(관련 검사와 추가 간접 질문 반례)를 보존한다. 실제 모델 결과는 `spoken-question-baseline-gtwPDd`, `spoken-question-candidate-RYGBPD`, `spoken-question-final-NQy7dT`의 `input.json`·`result.json`에 있다. 전체 검사는 `check.log`·`check-final.log`, 의존성 취약점 검사는 `audit.log`다. 사용자 대화·음성·프로필을 시험 입력으로 사용하지 않았다.
 
 소스 필수 검사: npm ci 이후 npm run check의 형식 검사·866개 테스트·TypeScript/Vite 빌드가 통과했고, npm audit --audit-level=high는 취약점 0건이었다. 설치본 교체나 새 릴리즈 검증은 별도다.

@@ -19,6 +19,7 @@ const statements=[
  '얼마나 걸렸는지 기억 안 나', '뭐야 대박이다', '아무거나 해도 좋아',
  '누가 봐도 잘했어', '누구나 할 수 있어', '언제나 응원할 거야',
  '어떤 메뉴라도 좋아', '어느 쪽이든 괜찮아', '왜냐하면 내가 먼저 했어',
+ '뭘 할지 모르겠어요', '언제 다시 올지 아직 몰라요', '누가 할지 알아',
 ];
 
 test('unpunctuated Korean questions remain questions without promoting reported or uncertain statements',()=>{
