@@ -37,13 +37,14 @@ test('bounded capture retains intermediate action while a model is busy, then ac
   assert.equal(ring.window(9999999),undefined);
 });
 
-test('sampler is independent of inference, ignores frozen playback and stops after source changes',()=>{
+test('sampler is independent of inference, ignores frozen playback and stops after source changes',async()=>{
   let at=100000,tick,disposed=false,serial=0;const ring=new TemporalFrames();ring.reset('session','source');
   const video={videoWidth:3840,videoHeight:2160,readyState:2,currentTime:1,paused:false,ended:false};
   const canvases=[];const canvas=()=>{const value={width:0,height:0,getContext:()=>({drawImage:()=>{},getImageData:()=>({data:new Uint8ClampedArray(32*18*4).fill(serial++)})}),toDataURL:()=>a};canvases.push(value);return value;};
-  const stop=startTemporalCapture(video,ring,e=>{throw e;},{now:()=>at,canvas,schedule:fn=>{tick=fn;return 1;},cancel:()=>disposed=true});
+  const stop=startTemporalCapture(video,ring,e=>{throw e;},{now:()=>at,canvas,encode:async()=>a,schedule:fn=>{tick=fn;return 1;},cancel:()=>disposed=true});
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(ring.samples.length,1);assert.equal(canvases[0].width,960);assert.equal(canvases[0].height,540);
-  for(let i=0;i<10;i++){at+=500;video.currentTime+=.5;tick();}assert.equal(ring.samples.length,11);
+  for(let i=0;i<10;i++){at+=500;video.currentTime+=.5;tick();await new Promise(resolve=>setImmediate(resolve));}assert.equal(ring.samples.length,11);
   at+=3000;tick();assert.equal(ring.window(at),undefined,'a stuck decoder must not receive fresh wall timestamps');
   ring.reset();video.currentTime+=1;tick();assert.equal(ring.samples.length,0);stop();assert.equal(disposed,true);assert.equal(canvases[0].width,0);
   assert.equal(pixelChange(new Uint8ClampedArray([0,0,0,255]),new Uint8ClampedArray([255,255,255,255])),1);
