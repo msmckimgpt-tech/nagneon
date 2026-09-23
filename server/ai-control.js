@@ -47,6 +47,7 @@ const communityKinds = [
   'social-daily',
   'social-mention',
   'social-read',
+  'social-discuss',
   'clip-comment',
   'gallery-comment',
   'community-review',

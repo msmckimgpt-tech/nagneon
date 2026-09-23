@@ -26,6 +26,7 @@ const ids = (max) => z.array(uuid).max(max).refine(unique, '중복된 기록 ID�
 export const SocialPreferences = z
   .object({
     enabled: z.boolean().default(true),
+    creativeImages: z.boolean().default(false),
     arrivalsEnabled: z.boolean().default(true),
     notifications: z.boolean().default(false),
     mutedCommunities: z.array(communityId).max(definitions.length).refine(unique).default([]),
@@ -42,6 +43,7 @@ export const SocialPreferences = z
 export const SocialPreferencePatch = z
   .object({
     enabled: z.boolean().optional(),
+    creativeImages: z.boolean().optional(),
     arrivalsEnabled: z.boolean().optional(),
     notifications: z.boolean().optional(),
     mutedCommunities: z.array(communityId).max(definitions.length).refine(unique).optional(),

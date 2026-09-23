@@ -364,7 +364,7 @@ async function startServerImpl(
       ? res.status(409).json({ error: 'AI 제공처 변경을 마친 뒤 다시 시도하세요.' })
       : next(),
   );
-  socialRoutes(app, studio);
+  socialRoutes(app, studio, persist ? resolve(dataDir, 'social-media') : undefined);
   app.get('/api/state', (_req, res) => res.json(studio.state()));
   app.get('/api/ai', (_req, res) => res.json(studio.ai.snapshot()));
   app.patch('/api/ai/policy', (req, res) => res.json(studio.ai.update(req.body)));

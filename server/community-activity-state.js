@@ -5,7 +5,7 @@ export const ActivityRead=z.object({viewerId:actor,revision:hash,at:time}).stric
 export const ActivityReads=z.array(ActivityRead).max(150).refine(rows=>new Set(rows.map(r=>r.viewerId)).size===rows.length);
 export const CommunityActivityData=z.object({
   clock:time,nextAt:time,
-  attempts:z.array(z.object({kind:z.enum(['clip','gallery','review','social-birth','social-daily','social-mention','social-read']),id:z.string().min(1).max(100),viewerId:actor,revision:hash,at:time}).strict()).max(300),
+  attempts:z.array(z.object({kind:z.enum(['clip','gallery','review','social-birth','social-daily','social-mention','social-read','social-discuss']),id:z.string().min(1).max(100),viewerId:actor,revision:hash,at:time}).strict()).max(300),
   reviews:z.array(z.object({sessionId:z.string().uuid(),viewerId:actor,at:time}).strict()).max(1000)
 }).strict();
 export const emptyCommunityActivity=()=>({clock:0,nextAt:0,attempts:[],reviews:[]});

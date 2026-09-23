@@ -30,6 +30,7 @@ const activityNames: Record<string, string> = {
   'social-birth': '바깥 커뮤니티 · 주민 준비',
   'social-daily': '바깥 커뮤니티 · 일상 글',
   'social-mention': '바깥 커뮤니티 · 방송 이야기',
+  'social-discuss': '바깥 커뮤니티 · 댓글과 추천',
   'social-read': '바깥 커뮤니티 · 글 읽기',
   'clip-comment': '핫클립 · 읽기와 댓글',
   'gallery-comment': '방송 커뮤니티 · 읽기와 댓글',
