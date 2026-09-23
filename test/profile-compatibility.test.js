@@ -99,6 +99,11 @@ test(
       assert.equal(invoke('0.1.4').status, 0);
       assert.equal(invoke('0.2.0').status, 0);
     }
+    const marker=join(profile,'data/profile-format.json');
+    await writeFile(marker,JSON.stringify({minReader:2,minAppVersion:'0.1.7'}));
+    const denied=invoke('0.1.6');assert.notEqual(denied.status,0);assert.match(denied.stderr,/0\.1\.7/);
+    assert.equal(invoke('0.1.7').status,0);
+    const {unlink}=await import('node:fs/promises');await unlink(marker);
     await writeFile(world, 'broken');
     assert.notEqual(invoke('0.1.3').status, 0);
     assert.equal(await readFile(world, 'utf8'), 'broken');
