@@ -9,7 +9,7 @@ import {pruneElectronLocales} from './lib/electron-locales.mjs';
 import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
-import {packageSources,verifyPackageSources,packageSourceRoots} from './lib/package-sources.mjs';
+import {packageSources,verifyPackageSources,packageSourceRoots,packageBuildInput} from './lib/package-sources.mjs';
 import {distributionComponents} from './lib/distribution-components.mjs';
 import {packageLayout,validatePackageCatalog,stageComponentRuntime} from './lib/package-layout.mjs';
 
@@ -41,7 +41,7 @@ async function run(bin,args,cwd=root){
 // development environments and credentials regardless of .gitignore contents.
 for(const [dir,extension] of Object.entries(packageSourceRoots)){
   for(const name of await files(join(root,dir))){
-    if(dir==='shared'&&name.endsWith('.d.ts'))continue; // Tracked build input, not runtime JavaScript.
+    if(packageBuildInput(dir+'/'+name))continue; // Tracked build input, not runtime JavaScript.
     if(!extension.test(dir+'/'+name))throw new Error('검토되지 않은 배포 소스 파일: '+dir+'/'+name);
     const target=join(stage,dir,name);await mkdir(dirname(target),{recursive:true});await cp(join(root,dir,name),target);
   }
