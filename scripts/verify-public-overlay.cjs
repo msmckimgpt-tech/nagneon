@@ -27,6 +27,14 @@ app.whenReady().then(async()=>{
     assert.equal(await win.webContents.executeJavaScript('document.querySelector(".overlay-public-disclosure").textContent.includes("가상 포인트")'),true);
     assert.equal(await win.webContents.executeJavaScript('document.querySelector(".overlay-public-disclosure").textContent.includes("이전 장면이나 대화에 늦게 도착")'),true);
     assert.equal(await win.webContents.executeJavaScript('getComputedStyle(document.querySelector(".overlay-public-disclosure")).opacity'),'1');
+    const {donationMessage}=await import(pathToFileURL(resolve('server/chat-attention.js')).href);
+    service.studio.publishMessage(donationMessage({id:'overlay-test',at:Date.now(),name:'합성 관객',personaId:'synthetic',amount:25,text:'가상 포인트 표시 검사',anonymous:false}));
+    for(let i=0;i<100;i++){
+      if(await win.webContents.executeJavaScript('!!document.querySelector(".donation-toast")'))break;
+      await new Promise(r=>setTimeout(r,40));
+    }
+    await new Promise(r=>setTimeout(r,400));
+    assert.equal(await win.webContents.executeJavaScript(`(()=>{const note=document.querySelector('.overlay-public-disclosure'),toast=document.querySelector('.donation-toast');return !!toast&&toast.getBoundingClientRect().top>=note.getBoundingClientRect().bottom&&toast.textContent.includes('실제 금전 후원이 아닙니다');})()`),true,'public donation does not obscure the disclosure');
     fs.writeFileSync(join(out,'public.png'),(await win.webContents.capturePage()).toPNG());
     service.studio.configure({...settings,overlayMode:'private'});
     applyOverlayPrivacy(win,service.studio.settings);assert.equal(win.isContentProtected(),true);

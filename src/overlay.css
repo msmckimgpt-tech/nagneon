@@ -11,3 +11,5 @@
 
 .overlay-public-disclosure{flex-shrink:0;padding:10px 14px;background:#181f2b;color:#edf4f6;font-size:12px;line-height:1.5;border-bottom:1px solid #303b4b}
 .overlay-public-disclosure small{font-size:11px;color:#c5ceda}
+.overlay-shell:has(.overlay-public-disclosure)>.donation-toasts{position:static;flex-shrink:0;max-width:none;margin:16px 10px 8px}
+.overlay-shell:has(.overlay-public-disclosure)>.donation-toasts:empty{display:none}
