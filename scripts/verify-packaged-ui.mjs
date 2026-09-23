@@ -4,10 +4,33 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
+import { get } from 'node:http';
 
 const option = (name) =>
   process.argv.find((value) => value.startsWith('--' + name + '='))?.slice(name.length + 3);
 const legacy = process.argv.includes('--legacy');
+const debugPort = Number(option('debug-port') || 0);
+assert.ok(Number.isInteger(debugPort) && debugPort >= 0 && debugPort <= 65535);
+// Chromium owns this isolated debugger listener and can assign a Fetch-blocked
+// port. Use HTTP only for debugger discovery; product renderer fetch stays intact.
+const debuggerPages = (port) => new Promise((done, fail) => {
+  const request = get({ hostname: '127.0.0.1', port, path: '/json/list' }, response => {
+    let body = '';
+    response.setEncoding('utf8');
+    response.on('data', chunk => { body += chunk; });
+    response.on('error', fail);
+    response.on('end', () => {
+      try {
+        assert.equal(response.statusCode, 200);
+        const pages = JSON.parse(body);
+        assert.ok(Array.isArray(pages));
+        done(pages);
+      } catch (error) { fail(error); }
+    });
+  });
+  request.setTimeout(5000, () => request.destroy(Error('Debugger discovery timed out')));
+  request.on('error', fail);
+});
 const folder = resolve(
   option('folder') || JSON.parse(await readFile('artifacts/latest-package.json', 'utf8')).folder,
 );
@@ -37,7 +60,7 @@ const logs = [];
 const spawnedAt = Date.now();
 const child = spawn(
   join(folder, 'Nagneon.exe'),
-  ['--backseat-profile=' + profile, '--remote-debugging-port=0'],
+  ['--backseat-profile=' + profile, '--remote-debugging-port=' + debugPort],
   { cwd: folder, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } },
 );
 report.pid = child.pid;
@@ -138,7 +161,7 @@ try {
   assert.ok(port, 'Fresh isolated debugger endpoint');
   let page;
   for (let i = 0; i < 150; i++) {
-    const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json();
+    const pages = await debuggerPages(port);
     page = pages.find((p) => p.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\//.test(p.url));
     if (page) break;
     await new Promise((r) => setTimeout(r, 100));
