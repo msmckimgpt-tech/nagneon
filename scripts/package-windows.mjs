@@ -60,7 +60,7 @@ if(installed.some(f=>/^(@openai\/|electron\/|@electron\/)/.test(f)))throw new Er
 // Desktop private binary or any auth/profile directory.
 const codex=join(root,'node_modules/@openai/codex-win32-x64');
 const codexPkg=await json(join(codex,'package.json'));
-if(codexPkg.version!=='0.154.0-win32-x64')throw new Error('검증된 Codex 런타임 버전과 다릅니다.');
+if(codexPkg.version!=='0.156.1-win32-x64')throw new Error('검증된 Codex 런타임 버전과 다릅니다.');
 const codexTarget=join(resources,'codex');
 await cp(join(codex,'vendor/x86_64-pc-windows-msvc'),codexTarget,{recursive:true});
 await cp(join(root,'third-party/codex'),join(codexTarget,'licenses'),{recursive:true});

@@ -1,6 +1,6 @@
 {
   "name": "nagneon",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
@@ -34,7 +34,7 @@
   "devDependencies": {
     "@electron/fuses": "2.1.3",
     "@electron/packager": "20.3.0",
-    "@openai/codex": "0.154.0",
+    "@openai/codex": "0.156.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.7.0",
