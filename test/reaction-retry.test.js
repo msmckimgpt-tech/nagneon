@@ -6,8 +6,8 @@ import {defaults} from '../shared/defaults.js';
 
 function setup(t) {
   let now=1_000_000,fail=false,requests=0;
-  // Keep the audience's independent RNG stable: a random departure changes
-  // viewing identity and is not an unchanged-input retry scenario.
+  // Input continuity includes viewer presence. Keep audience randomness fixed
+  // independently of Studio's RNG so a random departure cannot change the input.
   const audience=new Audience(undefined,undefined,()=>0.5);
   const studio=new Studio({audience,now:()=>now,random:()=>0.5,settings:{...defaults,mode:'live',lurkRatio:0,intervalSeconds:5},provider:{status:()=>({configured:true}),react:async()=>{
     requests++;if(fail)throw Error('synthetic unavailable');
@@ -39,7 +39,11 @@ test('three consecutive accepted responses restore the initial retry delay',asyn
 test('unchanged frames do not count as a recovered model response',async t=>{
   const f=setup(t);await f.failure();await f.request(false,{image:'synthetic fixed frame'});
   const requests=f.requests;
-  for(let i=0;i<3;i++)assert.deepEqual(await f.request(false,{image:'synthetic fixed frame'}),{skipped:'unchanged-input'});
+  const witnesses=f.studio.presentWitnesses();
+  for(let i=0;i<3;i++){
+    assert.deepEqual(await f.request(false,{image:'synthetic fixed frame'}),{skipped:'unchanged-input'});
+    assert.deepEqual(f.studio.presentWitnesses(),witnesses);
+  }
   assert.equal(f.requests,requests);
   assert.equal(await f.failure(),12000);
 });

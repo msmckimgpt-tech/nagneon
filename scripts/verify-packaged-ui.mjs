@@ -41,17 +41,24 @@ const child = spawn(
   { cwd: folder, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } },
 );
 report.pid = child.pid;
+report.lifecycle = { spawnedAt };
 child.stdout.on('data', (bytes) => logs.push(bytes));
 child.stderr.on('data', (bytes) => logs.push(bytes));
 let exited = false;
+child.once('exit', (code, signal) => {
+  report.lifecycle.processExit = { at: Date.now(), code, signal };
+});
 const closed = once(child, 'close').then(([code]) => {
   exited = true;
   report.exitCode = code;
+  report.lifecycle.pipesClosedAt = Date.now();
 });
 // Exercise the Windows title-bar close path. CDP Browser.close can time out
 // without acknowledging shutdown; it is not evidence of a normal user close.
 const psQuote = value => "'" + value.replaceAll("'", "''") + "'";
 async function closeNativeWindow() {
+  const attempt = { requestedAt: Date.now() };
+  (report.lifecycle.closeAttempts ||= []).push(attempt);
   const expectedExe = psQuote(join(folder, 'Nagneon.exe'));
   const expectedProfile = psQuote('--backseat-profile=' + profile);
   const script = [
@@ -70,6 +77,7 @@ async function closeNativeWindow() {
     closer.once('close', code => code === 0 ? done() : fail(Error('Normal window close failed: ' + error)));
   });
   report.closeMethod = 'owned Windows process CloseMainWindow';
+  attempt.acceptedAt = Date.now();
 }
 let socket,
   serial = 0;
@@ -104,7 +112,7 @@ const evaluate = async (expression) => {
 };
 async function until(expression) {
   for (let i = 0; i < 100; i++) {
-    if (await evaluate(`Boolean(${expression})`)) return;
+    if (await evaluate(`(async()=>Boolean(${expression}))()`)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw Error('UI did not become ready: ' + expression);
@@ -228,11 +236,14 @@ try {
     `(async()=>{const s=await (await fetch('/api/state')).json();const r=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({...s.settings,mode:'rehearsal'})});return r.status;})()`,
   );
   assert.equal(changed, 200);
-  await until("document.body.innerText.includes('리허설 시작')");
+  const enabledButton = (label) =>
+    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&b.textContent.trim()===${JSON.stringify(label)})`;
+  await until(enabledButton('리허설 시작'));
   await click('리허설 시작');
-  await until("document.body.innerText.includes('방송 종료')");
+  await until(enabledButton('방송 종료'));
   await click('방송 종료');
-  await until("document.body.innerText.includes('리허설 시작')");
+  await until(enabledButton('리허설 시작'));
+  await until("await fetch('/api/state').then(r=>r.json()).then(s=>s.running===false)");
   assert.equal(
     await evaluate(
       "(async()=>{const s=await (await fetch('/api/state')).json();return s.running;})()",
