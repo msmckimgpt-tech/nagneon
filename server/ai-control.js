@@ -39,7 +39,6 @@ const policySchema = z
     paused: z.boolean(),
     background: z.boolean(),
     features: z.record(z.string().max(80), z.boolean()),
-    dailyLimit: z.number().int().min(1).max(100000).nullable(),
     rates: z.array(rateSchema).max(40),
   })
   .strict();
@@ -63,7 +62,12 @@ export const AiControlData = z
   .object({
     version: z.literal(1),
     clock: finite,
-    policy: policySchema,
+    // Discard only the retired cap when reading older profiles; keep strict validation.
+    policy: z.preprocess((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      const { dailyLimit: _retiredLimit, ...policy } = value;
+      return policy;
+    }, policySchema),
     days: z.array(z.object({ day: z.string(), features: statsMap })).max(31),
     sessions: z.array(z.object({ id: z.string(), features: statsMap })).max(8),
     recent: z.array(attemptSchema).max(500),
@@ -79,7 +83,6 @@ export const emptyAiControl = () => ({
   policy: {
     paused: false,
     background: false,
-    dailyLimit: null,
     rates: [],
     features: Object.fromEntries(features.map((f) => [f.id, f.enabledByDefault])),
   },
@@ -190,12 +193,6 @@ export class AiControl {
       return '기존 설정에서 커뮤니티 자동 활동을 껐습니다.';
     if (id === 'culture' && ctx.settings?.memesEnabled === false)
       return '기존 설정에서 문화·밈 사용을 껐습니다.';
-    const today = this.data.days.find((d) => d.day === aiDay(this.time()));
-    if (
-      p.dailyLimit !== null &&
-      Object.values(today?.features || {}).reduce((n, s) => n + s.calls, 0) >= p.dailyLimit
-    )
-      return '오늘의 AI 호출 상한에 도달했습니다.';
     return '';
   }
   allowed(id) {
