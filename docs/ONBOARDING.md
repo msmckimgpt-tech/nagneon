@@ -8,7 +8,7 @@
 
 `desktop/account-login.cjs`는 공식 Codex CLI의 `login` 또는 `login --device-auth` 프로세스 하나만 소유한다. 기본은 브라우저 로그인이다. 기기 코드 방식은 OpenAI 문서상 베타이며 계정/조직에서 허용되어 있어야 한다. 실제 인증·자격 증명 저장/갱신은 CLI가 처리한다. 앱은 auth.json이나 로그인 토큰을 읽지 않는다. [공식 인증 설명](https://learn.chatgpt.com/docs/auth)
 
-CLI 0.154.0의 출력은 16KB로 제한하고, ANSI 표시를 제거한 후 공식 `https://auth.openai.com/oauth/authorize` (로컬 callback) 또는 정확한 `https://auth.openai.com/codex/device`만 처리한다. 앱의 링크 열기 IPC는 사용자가 임의 URL을 넘길 수 없다. 코드/URL은 메인 창 전용 임시 상태이며 Studio.state, HTTP/SSE, export, 저장 데이터, 모델 입력에 포함하지 않는다. 원시 CLI 출력도 앱 로그나 채팅으로 전달하지 않는다. CLI 자체의 로그인 진단 로그는 공식 CLI가 관리한다.
+CLI 0.156.1의 출력은 16KB로 제한하고, ANSI 표시를 제거한 후 공식 `https://auth.openai.com/oauth/authorize` (로컬 callback) 또는 정확한 `https://auth.openai.com/codex/device`만 처리한다. 앱의 링크 열기 IPC는 사용자가 임의 URL을 넘길 수 없다. 코드/URL은 메인 창 전용 임시 상태이며 Studio.state, HTTP/SSE, export, 저장 데이터, 모델 입력에 포함하지 않는다. 원시 CLI 출력도 앱 로그나 채팅으로 전달하지 않는다. CLI 자체의 로그인 진단 로그는 공식 CLI가 관리한다.
 
 중복 시작은 같은 작업을 반환한다. 취소/15분 만료는 소유한 자식만 종료하고 close 전까지 새 프로세스를 만들지 않는다. 완료는 종료 코드만 믿지 않고 `login status`의 ChatGPT 로그인을 재확인한다. 취소 후 늦게 끝난 확인은 로그인 성공 상태로 되돌리지 않는다. 앱 종료 시 진행 중 연결을 정리한다. 이미 ChatGPT 연결이 확인된 계정은 교체 로그인하지 않는다. 오버레이는 계정 관련 IPC에 접근할 수 없다.
 

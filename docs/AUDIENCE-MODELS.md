@@ -13,6 +13,14 @@
 
 ## GPT-6 Sol·Luna 구성 (2026-09-23)
 
+### 0.1.8 구독 경로 수정 (2026-09-24)
+
+0.1.7에 포함된 공식 Codex CLI 0.154.0은 이 계정의 실제 `gpt-6-sol`과 `gpt-6-luna` 요청을 모델 미지원으로 거절했다. 설정 저장과 합성 제공처 시험은 이 오류를 발견할 수 없었다. 실행 중인 0.1.7 앱의 **모델 응답 확인**에서 두 모델 모두 실패했고, 같은 앱에서 기존 GPT-5.6 Luna / low는 정상 응답했다.
+
+0.1.8은 동봉 Codex CLI를 공식 npm 0.156.1로 고정한다. 동일한 ChatGPT 구독 로그인과 합성 한국어 인사로 Sol/low와 Luna/low가 각각 실제 응답했다. 격리 Electron 설정 화면에서도 Sol·Luna의 none/max 선택·저장·재시작·실제 응답 확인이 통과했다. 사용자의 모델 선택값은 자동 전환하지 않으며, API 키나 추가 과금 경로를 도입하지 않는다. 모델 이용 가능 여부는 여전히 계정과 제공처에 따른다.
+
+재현 및 릴리즈 수용 검사는 `npm ci`, `npm run check` 후 격리 프로필에서 `node_modules/electron/dist/electron.exe --disable-gpu scripts/verify-audience-model-settings.cjs --live --gpt6`를 실행한다. 이 검사는 실제 구독 사용량을 소비하며, 결과 원본은 작업별 artifacts/model-settings-ui-*/result.json에 보존한다. 합성 시험만으로 새 모델의 실사용 합격을 선언하지 않는다.
+
 | 앱 분류 | 표시 이름 | 요청에 전달하는 모델 ID |
 |---|---|---|
 | 경량 | GPT-6 Sol | `gpt-6-sol` |
