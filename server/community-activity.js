@@ -29,7 +29,7 @@ export class CommunityActivity {
   interrupt(){this.lastInput=this.s.now();this.active?.controller.abort();}
   async yield(){this.interrupt();await this.active?.promise;}
   close(){this.closed=true;this.interrupt();}
-  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&s.settings.communityActivityEnabled&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
+  available(){const s=this.s;return !this.closed&&!this.active&&!s.busy&&!s.audioBusy&&!s.liveReaction&&!s.autonomy?.waiting&&!s.queue.length&&!s.speechInbox.pending.length&&s.settings.mode==='live'&&s.settings.communityActivityEnabled&&s.ai.allowed('community')&&s.provider.status().configured&&s.now()-Math.max(this.lastInput,s.lastRequest)>=30000;}
   candidates(now){
     const s=this.s,data=this.data(),people=s.settings.personas.filter(p=>p.enabled&&!p.system&&p.id!==s.settings.managerId&&s.audience.data.members[p.id]?.sessions>0),candidates=[];
     const revisions=new Map(),recentSessions=new Set(s.journal.data.entries.filter(e=>!e.fictional&&e.at<=now&&now-e.at<=604800000).slice().reverse().map(e=>e.sessionId));
@@ -83,10 +83,11 @@ export class CommunityActivity {
     const special={kind:kind==='clip'?'clip-comment':kind==='gallery'?'gallery-comment':'community-review',automatic:true,post,clip:reading,
       instruction:'관객이 스스로 들른 가상 커뮤니티다. 내용을 읽고 본인 취향에 따라 아무것도 쓰지 않거나 짧은 댓글 하나만 쓴다. 침묵도 정상이며 억지 칭찬이나 질문으로 끝내지 않는다. communityVotes는 글/클립 추천 여부이며 댓글과 독립적으로 판단한다. 답글이면 messages의 replyTo에 제공된 댓글 id를 지정하고 새 댓글/후기는 null이다. 읽지 않은 댓글이나 과거 방송을 안다고 지어내지 않는다. 후기는 history에 실제 목격한 대화만 있으며 분석 보고서 대신 한국어 갤러리의 편한 말투로 쓴다. 클립은 현재 제공된 캡션과 채팅 기록을 읽으며 영상이나 소리를 재생했다고 주장하지 않는다. 외부 웹사이트에 글을 썼다고 말하지 않는다.'};
     if(media){special.clipMedia=media.context;special.instruction=special.instruction.replace('클립은 현재 제공된 캡션과 채팅 기록을 읽으며 영상이나 소리를 재생했다고 주장하지 않는다.','클립은 clipMedia에 담긴 실제 시간순 장면과 소리 인식 결과를 참고해 감상한다.');}
-    const result=await s.provider.react({settings:{...s.settings,personas:[viewer],chatPace:1,webSearch:false},history:history.map(({at,...m})=>({...m,time:at})),previous:reading?{game:reading.game,scene:reading.scene}:null,frames:media?.frames||[],speech:'',offStream:true,special,audience:{members:[{...member,id:viewer.id,name:viewer.name,attended:kind==='review'||!!raw.participants?.some(p=>p.id===viewer.id)}]}},signal);
+    const result=await s.provider.react({aiFeature:'community',settings:{...s.settings,personas:[viewer],chatPace:1,webSearch:false},history:history.map(({at,...m})=>({...m,time:at})),previous:reading?{game:reading.game,scene:reading.scene}:null,frames:media?.frames||[],speech:'',offStream:true,special,audience:{members:[{...member,id:viewer.id,name:viewer.name,attended:kind==='review'||!!raw.participants?.some(p=>p.id===viewer.id)}]}},signal);
     if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;
     s.tokens+=Number(result.usage?.total_tokens)||0;
     if(media){await s.clipPerception.assertCurrent(s.clips,id,media,signal);if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;}
+    s.ai.assertCurrent(result);
     const current=s.settings.personas.find(p=>p.id===viewer.id&&p.enabled&&!p.system);if(!current||!s.audience.data.members[viewer.id]?.sessions)return;
     let m=result.observation.messages.find(m=>m.personaId===viewer.id&&validText(s,m));
     if(m?.meme&&!s.culture.canUse(m.personaId))m=undefined;
@@ -109,6 +110,7 @@ export class CommunityActivity {
       });
     }
     if(m?.meme)s.culture.recordUse(m.personaId);
+    s.ai.accepted(result);
     s.publish();
   }
 }

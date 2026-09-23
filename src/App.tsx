@@ -1,3 +1,4 @@
+import { AiDashboard } from './AiDashboard';
 import { CommunityLore } from './CommunityLore';
 import { RuntimeDownloads } from './RuntimeDownloads';
 import { GuidedTutorial, FirstViewerStatus } from './GuidedTutorial';
@@ -114,6 +115,7 @@ export function App() {
   const overlay = location.pathname === '/overlay';
   const { state, connected } = useStudioState();
   const [error, setError] = useState('');
+  const [settingsTab, setSettingsTab] = useState<'broadcast' | 'mood' | 'connection'>('broadcast');
   const composeInput = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState('studio'),
     [draft, setDraft] = useState<Settings | null>(null),
@@ -162,6 +164,7 @@ export function App() {
   }, []);
   function settings() {
     if (!state) return;
+    setSettingsTab('broadcast');
     setDraft(structuredClone(state.settings));
     setModal(true);
   }
@@ -306,6 +309,7 @@ export function App() {
           <nav>
             {[
               { id: 'studio', label: '방송실', icon: LayoutDashboard },
+              { id: 'ai', label: 'AI 대시보드', icon: Activity },
               { id: 'audience', label: '나의 관객', icon: Users },
               { id: 'knowledge', label: '게임 라이브러리', icon: BookOpen },
               { id: 'manager', label: '매니저', icon: Shield },
@@ -382,6 +386,7 @@ export function App() {
                 {
                   {
                     studio: '방송실',
+                    ai: 'AI 대시보드',
                     audience: '나의 관객',
                     knowledge: '게임 라이브러리',
                     manager: '매니저',
@@ -393,6 +398,17 @@ export function App() {
               </b>
             </div>
             <div className="top-status">
+              <button className="ai-status-link" onClick={() => setTab('ai')}>
+                {!connected
+                  ? 'AI 상태 확인 불가'
+                  : state.ai?.policy.paused
+                    ? 'AI 호출 차단'
+                    : state.ai?.active.length
+                      ? `AI ${state.ai.active.length}개 실행 중`
+                      : state.ai?.policy.background
+                        ? '방송 밖 AI 허용'
+                        : '방송 밖 AI 차단'}
+              </button>
               <span className={'dot ' + (connected ? 'green' : 'red')} />
               {connected ? '연결됨' : '연결 끊김'}
               <span className="divider" />
@@ -419,34 +435,38 @@ export function App() {
               <div>
                 <div className="eyebrow">NAGNE + ON AIR</div>
                 <h1>
-                  {tab === 'studio'
-                    ? '방송을 켜면, 이야기가 찾아옵니다.'
-                    : tab === 'audience'
-                      ? '오늘도 찾아온, 반가운 얼굴들.'
-                      : tab === 'knowledge'
-                        ? '같이 볼수록, 더 잘 알아요.'
-                        : tab === 'community'
-                          ? '방송이 끝나도, 이야기는 남아요.'
-                          : tab === 'special'
-                            ? '관객의 마음, 한 걸음 더 가까이.'
-                            : tab === 'clips'
-                              ? '명장면은, 계속 이야기되니까.'
-                              : '방송의 분위기를 지켜요.'}
+                  {tab === 'ai'
+                    ? 'AI가 언제, 어디서 작동하는지.'
+                    : tab === 'studio'
+                      ? '방송을 켜면, 이야기가 찾아옵니다.'
+                      : tab === 'audience'
+                        ? '오늘도 찾아온, 반가운 얼굴들.'
+                        : tab === 'knowledge'
+                          ? '같이 볼수록, 더 잘 알아요.'
+                          : tab === 'community'
+                            ? '방송이 끝나도, 이야기는 남아요.'
+                            : tab === 'special'
+                              ? '관객의 마음, 한 걸음 더 가까이.'
+                              : tab === 'clips'
+                                ? '명장면은, 계속 이야기되니까.'
+                                : '방송의 분위기를 지켜요.'}
                 </h1>
                 <p>
-                  {tab === 'studio'
-                    ? '함께 보고, 떠들고, 기억하는 우리들의 작은 방송실.'
-                    : tab === 'audience'
-                      ? '단골부터 뉴비까지. 각자의 성격으로 당신의 방송에 함께합니다.'
-                      : tab === 'knowledge'
-                        ? '게임의 인지도와 함께한 시간이 관객의 지식으로 쌓입니다.'
-                        : tab === 'community'
-                          ? '함께 본 장면, 다음 방송의 기대, 우리만의 농담을 모아두세요.'
-                          : tab === 'special'
-                            ? '서로의 취향을 알아보고, 관객들의 관계를 탐색하세요.'
-                            : tab === 'clips'
-                              ? '날짜와 게임, 함께한 관객별로 장면을 꺼내보고 댓글을 나누세요.'
-                              : '원하는 관객을 매니저로 지정하고, 방송 규칙을 정하세요.'}
+                  {tab === 'ai'
+                    ? '실행 조건과 사용량을 확인하고, 필요한 AI만 허용하세요.'
+                    : tab === 'studio'
+                      ? '함께 보고, 떠들고, 기억하는 우리들의 작은 방송실.'
+                      : tab === 'audience'
+                        ? '단골부터 뉴비까지. 각자의 성격으로 당신의 방송에 함께합니다.'
+                        : tab === 'knowledge'
+                          ? '게임의 인지도와 함께한 시간이 관객의 지식으로 쌓입니다.'
+                          : tab === 'community'
+                            ? '함께 본 장면, 다음 방송의 기대, 우리만의 농담을 모아두세요.'
+                            : tab === 'special'
+                              ? '서로의 취향을 알아보고, 관객들의 관계를 탐색하세요.'
+                              : tab === 'clips'
+                                ? '날짜와 게임, 함께한 관객별로 장면을 꺼내보고 댓글을 나누세요.'
+                                : '원하는 관객을 매니저로 지정하고, 방송 규칙을 정하세요.'}
                 </p>
               </div>
               <button className="secondary" onClick={() => setDonationsOpen(true)}>
@@ -483,6 +503,19 @@ export function App() {
                 state={state}
                 focusMessage={focusMessage}
                 onError={setError}
+              />
+            )}
+            {tab === 'ai' && (
+              <AiDashboard
+                state={state}
+                connected={connected}
+                navigate={(destination) => {
+                  if (destination.startsWith('settings:')) {
+                    setSettingsTab(destination === 'settings:mood' ? 'mood' : 'connection');
+                    setDraft(structuredClone(state.settings));
+                    setModal(true);
+                  } else setTab(destination);
+                }}
               />
             )}
             {tab === 'studio' && (
@@ -1100,6 +1133,11 @@ export function App() {
           <SettingsDialog
             state={state}
             initial={draft}
+            initialTab={settingsTab}
+            onDashboard={() => {
+              setModal(false);
+              setTab('ai');
+            }}
             onClose={() => setModal(false)}
             onSaved={() => setModal(false)}
             onGuide={() => {

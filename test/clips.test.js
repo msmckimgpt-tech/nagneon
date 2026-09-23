@@ -408,6 +408,7 @@ test('integration: real studio saves a dated clip and generates offstream AI com
   const clip=studio.clipFeatures.save({title:'하이라이트'});
   assert.equal(clip.day, dayOf(studio.startedAt));
   assert.ok(clip.participants.some(p=>p.id==='momo'));
+  studio.ai.update({features:{clip:true}}); // Legacy unit path; public HTTP trigger remains retired.
   const res=await studio.clipFeatures.comments({id:clip.id,targets:['momo']});
   assert.equal(res.count,1);
   assert.equal(captured.offStream,true);

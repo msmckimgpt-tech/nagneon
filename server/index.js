@@ -21,6 +21,7 @@ import { ClipInspector } from './clip-inspector.js';
 import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
+import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
 import {
   CultureLearningData,
   emptyCultureLearning,
@@ -185,6 +186,7 @@ export async function startServer({
     }),
   );
   const cultureStore = useStore('culture-learning', CultureLearningData, emptyCultureLearning);
+  const aiStore = useStore('ai-control', AiControlData, emptyAiControl);
   const clipsStore = useStore('clips', ClipsData, () => []);
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
@@ -216,7 +218,12 @@ export async function startServer({
   });
   let studio;
   provider = withCultureContext(provider, () => studio);
+  const aiControl = new AiControl(aiStore);
+  if (stores.some((s) => s.file?.endsWith('ai-control.json') && s.recoveredFrom))
+    aiControl.storageError =
+      'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 기록과 호출 상한을 확인해주세요.';
   studio = new Studio({
+    aiControl,
     cultureLearning: { data: cultureStore.data, save: cultureStore.save },
     provider,
     settings: world.data.settings,
@@ -230,6 +237,7 @@ export async function startServer({
     clipPerception: new ClipPerception(runtime),
     storageStatus,
   });
+  provider = studio.provider;
   const app = express();
   if (providerChoice) providerChoice.onFallback = () => studio.reserveCall();
   const tutorial = new Tutorial(studio, tutorialStore);
@@ -283,16 +291,20 @@ export async function startServer({
   app.use((req, res, next) =>
     probe.controller &&
     !['GET', 'HEAD'].includes(req.method) &&
-    !['/api/connection/probe/cancel', '/api/stop'].includes(req.path)
+    !['/api/connection/probe/cancel', '/api/stop', '/api/ai/policy'].includes(req.path)
       ? res.status(409).json({ error: '연결 응답 확인을 마친 뒤 다시 시도하세요.' })
       : next(),
   );
   app.use((req, res, next) =>
-    providerChoice?.changing && !['GET', 'HEAD'].includes(req.method) && req.path !== '/api/stop'
+    providerChoice?.changing &&
+    !['GET', 'HEAD'].includes(req.method) &&
+    !['/api/stop', '/api/ai/policy'].includes(req.path)
       ? res.status(409).json({ error: 'AI 제공처 변경을 마친 뒤 다시 시도하세요.' })
       : next(),
   );
   app.get('/api/state', (_req, res) => res.json(studio.state()));
+  app.get('/api/ai', (_req, res) => res.json(studio.ai.snapshot()));
+  app.patch('/api/ai/policy', (req, res) => res.json(studio.ai.update(req.body)));
   debug = debugRoutes(app, studio, debugStore, {
     idle: () =>
       !requests.pending.size &&
@@ -514,7 +526,7 @@ export async function startServer({
     studio.busy = true;
     studio.publish();
     try {
-      const target = ownProviderRequests(entry.backend, requests);
+      const target = studio.ai.wrap(ownProviderRequests(entry.backend, requests), id);
       res.json(await probe.run(target));
     } finally {
       studio.busy = false;

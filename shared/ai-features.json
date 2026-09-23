@@ -1,0 +1,131 @@
+[
+  {
+    "id": "reaction",
+    "name": "방송 반응",
+    "group": "방송 반응",
+    "scope": "live",
+    "trigger": "내 발언 · 화면 · 외부 채팅",
+    "destination": "studio",
+    "enabledByDefault": true
+  },
+  {
+    "id": "ambient",
+    "name": "관객의 자발적 대화",
+    "group": "관객 대화",
+    "scope": "live",
+    "trigger": "방송 중 조용한 구간",
+    "destination": "studio",
+    "enabledByDefault": true
+  },
+  {
+    "id": "invite",
+    "name": "관객 직접 초대",
+    "group": "새 관객 생성",
+    "scope": "manual",
+    "trigger": "첫 관객 초대 · 새로운 만남",
+    "destination": "audience",
+    "enabledByDefault": true
+  },
+  {
+    "id": "discovery",
+    "name": "관객 자연 유입",
+    "group": "새 관객 생성",
+    "scope": "live",
+    "trigger": "방송 중 자연 유입 조건",
+    "destination": "audience",
+    "enabledByDefault": true
+  },
+  {
+    "id": "community",
+    "name": "방송 밖 이야기 자동 활동",
+    "group": "커뮤니티",
+    "scope": "background",
+    "trigger": "유휴 · 새 글 · 클립 · 방송 후기",
+    "destination": "community",
+    "enabledByDefault": true
+  },
+  {
+    "id": "culture",
+    "name": "문화·밈 자료 AI 분석",
+    "group": "문화 자료",
+    "scope": "background",
+    "trigger": "등록 도메인의 공개 본문 변경",
+    "destination": "settings:mood",
+    "enabledByDefault": true
+  },
+  {
+    "id": "gallery",
+    "name": "게시글 AI 댓글 직접 요청",
+    "group": "댓글 요청",
+    "scope": "manual",
+    "trigger": "이전 버전의 직접 요청 경로",
+    "destination": "community",
+    "enabledByDefault": false,
+    "retired": true
+  },
+  {
+    "id": "clip",
+    "name": "클립 AI 댓글 직접 요청",
+    "group": "댓글 요청",
+    "scope": "manual",
+    "trigger": "이전 버전의 직접 요청 경로",
+    "destination": "clips",
+    "enabledByDefault": false,
+    "retired": true
+  },
+  {
+    "id": "thought",
+    "name": "채팅 뒤의 속마음",
+    "group": "마음과 포인트",
+    "scope": "manual",
+    "trigger": "속마음 보기 버튼",
+    "destination": "special",
+    "enabledByDefault": true
+  },
+  {
+    "id": "interview",
+    "name": "관객 취향 인터뷰",
+    "group": "마음과 포인트",
+    "scope": "manual",
+    "trigger": "인터뷰 실행 버튼",
+    "destination": "special",
+    "enabledByDefault": true
+  },
+  {
+    "id": "contract",
+    "name": "관객에게 부탁",
+    "group": "마음과 포인트",
+    "scope": "manual",
+    "trigger": "합의한 부탁 실행",
+    "destination": "special",
+    "enabledByDefault": true
+  },
+  {
+    "id": "summary",
+    "name": "방송 후기 직접 요청",
+    "group": "방송 후기",
+    "scope": "manual",
+    "trigger": "이전 버전의 직접 요청 경로",
+    "destination": "community",
+    "enabledByDefault": false,
+    "retired": true
+  },
+  {
+    "id": "probe",
+    "name": "모델 연결 시험",
+    "group": "연결 시험",
+    "scope": "manual",
+    "trigger": "모델 응답 확인 버튼",
+    "destination": "settings:connection",
+    "enabledByDefault": true
+  },
+  {
+    "id": "remote-stt",
+    "name": "원격 음성 전사",
+    "group": "음성 전사",
+    "scope": "live",
+    "trigger": "원격 전사 연결을 사용하는 발언",
+    "destination": "settings:connection",
+    "enabledByDefault": true
+  }
+]

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {runAiAttempt} from './ai-control.js';
 import audienceModels from '../shared/audience-models.json' with {type:'json'};
 import {ProviderRouter,RoutingSelection} from './provider-routing.js';
 
@@ -47,7 +48,10 @@ export class ProviderChoice {
   snapshot(){return {config:this.config.kind==='routing'?{...this.active.primary.provider}:structuredClone(this.config),routing:this.config.kind==='routing'?this.active.snapshot():null,changing:this.changing};}
   status(){return {...this.active.status(),kind:this.config.kind==='routing'?this.active.primary.provider.kind:this.config.kind};}
   async check(...args){return this.active.check?.(...args);}
-  async react(...args){if(this.changing)throw Error('AI 제공처 변경을 마친 뒤 다시 시도해주세요.');return this.active.react(...args);}
+  get managesAiAttempts(){return true;}
+  get transcriptionModel(){return this.active.transcriptionModel;}
+  get transcriptionConnection(){return this.active.transcriptionConnection || '';}
+  async react(args,signal){if(this.changing)throw Error('AI 제공처 변경을 마친 뒤 다시 시도해주세요.');return this.active.managesAiAttempts?this.active.react(args,signal):runAiAttempt(args,this.active,signal,(a,s)=>this.active.react(a,s));}
   async transcribe(...args){return this.active.transcribe(...args);}
   async select(value,{signal,canApply=()=>true}={}){
     if(this.changing)throw Error('이미 AI 제공처를 변경하고 있습니다.');const config=ProviderSelection.parse(value);this.changing=true;

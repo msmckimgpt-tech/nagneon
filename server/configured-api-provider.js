@@ -111,6 +111,7 @@ export class ConfiguredApiProvider extends OpenAIProvider {
       },
       signal,
     );
+    args.onAiUsage?.(result.usage);
     if (result.choices?.[0]?.finish_reason !== 'stop')
       throw Error('AI 응답이 완료되지 않았습니다.');
     try {

@@ -25,3 +25,5 @@ jobs:
         run: node scripts/test-installer-engine.mjs
       - name: Isolated Electron brand and portrait acceptance
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-nagneon.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
+      - name: Isolated AI dashboard controls and usage acceptance
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-ai-dashboard.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"

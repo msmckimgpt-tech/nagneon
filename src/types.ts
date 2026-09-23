@@ -98,6 +98,7 @@ export type SoundState = {
   };
 };
 export type State = {
+  ai?: import('./ai-types').AiState;
   runtimeComponents?: {
     components: Array<{
       id: string;

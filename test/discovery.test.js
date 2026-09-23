@@ -37,6 +37,6 @@ test('ban and unban preserve waiting status and non-attendees cannot publish a r
   const provider={status:()=>({configured:true}),react:async args=>{received=args;return {observation:{game:'Just Chatting',scene:'ended',confidence:1,excitement:0,messages:[{personaId:'gg',text:'내가 본 방송',kind:'chat',spoiler:false},{personaId:'momo',text:'다음에 또 봐요',kind:'chat',spoiler:false}]}};}};
   const studio=new Studio({settings:settings(),now:()=>now,audience:a,provider});t.after(()=>studio.close());studio.start();
   studio.moderate('ban','gg');studio.moderate('unban','gg');assert.equal(a.presence.gg,'waiting');assert.equal(a.data.members.gg.sessions,0);
-  studio.addMessage('streamer','안녕하세요','streamer');studio.stop();await studio.reflect();
+  studio.addMessage('streamer','안녕하세요','streamer');studio.stop();studio.ai.update({features:{summary:true}});await studio.reflect();
   assert.ok(!received.settings.personas.some(p=>p.id==='gg'));assert.deepEqual(a.data.posts.map(p=>p.personaId),['momo']);
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { runAiAttempt } from './ai-control.js';
 import routeLabels from '../shared/provider-routes.json' with { type: 'json' };
 
 const model = z
@@ -146,6 +147,9 @@ export class ProviderRouter {
     );
     this.primary = this.entries.get(this.config.routes.default.primary);
   }
+  get managesAiAttempts() { return true; }
+  get transcriptionModel() { return this.primary.backend.transcriptionModel; }
+  get transcriptionConnection() { return this.primary.id; }
   get model() {
     return this.primary.backend.model;
   }
@@ -221,7 +225,7 @@ export class ProviderRouter {
           throw failure('capability', '요청에 필요한 화면 또는 검색 기능을 지원하지 않습니다.');
         if (!args.connectionProbe && attempts.some((a) => a.called)) this.onFallback();
         attempts.push({ id, called: true });
-        const result = await b.react(args, attemptSignal);
+        const result = await runAiAttempt(args, b, attemptSignal, (a,s) => b.react(a,s), id);
         total.throwIfAborted();
         attemptSignal.throwIfAborted();
         return {
@@ -239,6 +243,7 @@ export class ProviderRouter {
           },
         };
       } catch (error) {
+        if (['ai_blocked','ai_cancelled'].includes(error.code)) throw error;
         total.throwIfAborted();
         const code = attemptSignal.aborted ? 'timeout' : error.code || 'invalid_response';
         if (attempts.at(-1)?.id === id) attempts.at(-1).code = code;
