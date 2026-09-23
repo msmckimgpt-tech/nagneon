@@ -118,6 +118,7 @@ export function App() {
   const [error, setError] = useState('');
   const [settingsTab, setSettingsTab] = useState<'broadcast' | 'mood' | 'connection'>('broadcast');
   const composeInput = useRef<HTMLInputElement>(null);
+  const [communitySection, setCommunitySection] = useState<'broadcast' | 'outside'>('broadcast');
   const [tab, setTab] = useState('studio'),
     [draft, setDraft] = useState<Settings | null>(null),
     [modal, setModal] = useState(false),
@@ -517,6 +518,11 @@ export function App() {
                     setSettingsTab(destination === 'settings:mood' ? 'mood' : 'connection');
                     setDraft(structuredClone(state.settings));
                     setModal(true);
+                  } else if (destination.startsWith('community:')) {
+                    setCommunitySection(
+                      destination === 'community:outside' ? 'outside' : 'broadcast',
+                    );
+                    setTab('community');
                   } else setTab(destination);
                 }}
               />
@@ -1094,7 +1100,12 @@ export function App() {
               </div>
             )}
             {tab === 'community' && (
-              <CommunitySpace state={state} onError={setError}>
+              <CommunitySpace
+                state={state}
+                onError={setError}
+                section={communitySection}
+                setSection={setCommunitySection}
+              >
                 <CommunityGallery state={state} onError={setError} />
                 <details className="panel teaching">
                   <summary>방송에서 나눈 대화 기억</summary>

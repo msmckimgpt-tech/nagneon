@@ -143,7 +143,7 @@ async function until(expression) {
 const click = async (text) =>
   assert.equal(
     await evaluate(
-      `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)return false;b.click();return true})()`,
+      `(()=>{const b=[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)}));if(!b||b.disabled)return false;b.click();return true})()`,
     ),
     true,
     text,
@@ -260,7 +260,7 @@ try {
   );
   assert.equal(changed, 200);
   const enabledButton = (label) =>
-    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&b.textContent.trim()===${JSON.stringify(label)})`;
+    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&(b.textContent.trim()===${JSON.stringify(label)}||b.getAttribute('aria-label')===${JSON.stringify(label)}))`;
   await until(enabledButton('리허설 시작'));
   await click('리허설 시작');
   await until(enabledButton('방송 종료'));

@@ -467,7 +467,16 @@ export class SocialRuntime {
       }
     });
     s.tokens += Number(result.usage?.total_tokens) || 0;
-    s.ai.accepted(result);
+    s.ai.accepted(
+      result,
+      birth
+        ? 'resident-created'
+        : target.kind === 'social-read'
+          ? 'read-only'
+          : message
+            ? 'post-created'
+            : 'no-post',
+    );
     s.publish();
   }
   memory(personaId) {

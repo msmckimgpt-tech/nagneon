@@ -27,7 +27,7 @@ async function fixture(t,{persist=false,dataDir,react}={}){let calls=[],now=Date
 const req=(f,path,body,method=body===undefined?'GET':'POST')=>fetch(f.url+'/api/'+path,{method,headers:{Authorization:'Bearer '+f.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
 test('community lifecycle: independent daily, witnessed mention, actual reading and one next-live persona/0P admission',async t=>{
  const f=await fixture(t),{s}=f,{author,reader}=f.add();
- await f.run(f.target('social-daily',author));const daily=f.calls.at(-1);assert.equal(daily.settings.streamer,'방송인');assert.deepEqual(daily.history,[]);assert.equal(daily.special.delivered,null);
+ await f.run(f.target('social-daily',author));assert.equal(s.ai.snapshot().recent[0].activityKind,'social-daily');assert.equal(s.ai.snapshot().recent[0].activityResult,'post-created');const daily=f.calls.at(-1);assert.equal(daily.settings.streamer,'방송인');assert.deepEqual(daily.history,[]);assert.equal(daily.special.delivered,null);
  const post=await f.mention(author);s.start();await f.read(reader,post);assert.equal(s.social.data().receipts.length,1);assert.equal(s.social.arrive(),false);const balance=s.economy.data.balance;
  s.stop();f.advance(1000);s.start();assert.equal(s.social.arrive(),true);assert.equal(s.economy.data.balance,balance);assert.equal(s.settings.personas.filter(p=>p.id===reader.persona.id).length,1);assert.deepEqual(s.settings.personas.find(p=>p.id===reader.persona.id),reader.persona);assert.equal(s.social.arrive(),false);assert.equal(s.social.data().receipts[0].eligibleFromLiveSequence,2);
  const context=liveViewerContext({members:[{id:'reader',joinedAt:f.s.now()}]},[reader.persona],[],null,{journal:s.journal,social:s.social,now:s.now()});assert.equal(context.viewerContext.reader.heardFromCommunity.length,1);assert.deepEqual(s.journal.recall('reader',''),[]);assert.deepEqual(context.viewerContext.reader.recollections,[]);
@@ -56,6 +56,7 @@ test('forget is durable before source delete; failed source deletion never reviv
 });
 test('save failure does not publish a post or receipt; attempts persist independently',async t=>{
  const f=await fixture(t),{author}=f.add();let writes=0;f.s.world.save=()=>{if(++writes===2)throw Error('commit failed');};await assert.rejects(f.run(f.target('social-daily',author)),/commit failed/);assert.equal(f.s.social.data().threads.length,0);assert.equal(f.s.communityActivity.data().attempts.length,1);
+ assert.equal(f.s.ai.snapshot().recent[0].application,'unconfirmed');assert.equal(f.s.ai.snapshot().recent[0].activityResult,undefined);
 });
 test('legacy reading migration never manufactures delivery proof',()=>{const old=emptySocialWorld(Date.now());const migrated=migrateSocial(old);assert.equal(migrated.version,2);assert.equal(migrated.receipts.length,0);assert.equal(migrated.residents.length,0);assert.deepEqual(migrated.legacy,old);});
 test('private, unwitnessed, fictional and anomalous inputs are not public broadcast sources',async t=>{const f=await fixture(t);f.add();const source=f.source();assert.equal(f.s.social.validSource(source),true);for(const patch of [{fictional:true},{personaId:'someone'},{kind:'notice'},{witnesses:[]}]){const original=structuredClone(f.s.journal.data.entries[0]);Object.assign(f.s.journal.data.entries[0],patch);assert.equal(f.s.social.validSource(f.s.social.source(f.s.journal.data.entries[0],'witness')),false);f.s.journal.data.entries[0]=original;}});
@@ -86,4 +87,12 @@ test('next-live receipt survives restart and admits the same resident only once 
  const dir=mkdtempSync(join(tmpdir(),'social-next-live-'));let f=await fixture(null,{persist:true,dataDir:dir});const {author,reader}=f.add();f.s.start();const post=await f.mention(author);await f.read(reader,post);assert.equal(f.s.social.arrive(),false);const balance=f.s.economy.data.balance;await f.close();
  f=await fixture(null,{persist:true,dataDir:dir});f.s.start();assert.equal(f.s.social.data().liveSequence,2);assert.equal(f.s.social.arrive(),true);assert.equal(f.s.settings.personas.filter(p=>p.id===reader.persona.id).length,1);assert.equal(f.s.economy.data.balance,balance);await f.close();
  f=await fixture(null,{persist:true,dataDir:dir});f.s.start();assert.equal(f.s.social.arrive(),false);assert.equal(f.s.settings.personas.filter(p=>p.id===reader.persona.id).length,1);assert.equal(f.s.economy.data.balance,balance);await f.close();
+});
+
+test('resident preparation and a silent daily response never claim a published post in AI history',async t=>{
+ const f=await fixture(t,{react:async a=>result(a.special.kind==='social-birth'?{arrival:birth}:{})});
+ const target=f.s.social.candidates(f.s.now()).find(t=>t.kind==='social-birth');await f.run(target);
+ assert.equal(f.s.ai.snapshot().recent[0].activityResult,'resident-created');assert.equal(f.s.social.list().total,0);
+ const resident=f.s.social.data().residents[0];await f.run(f.target('social-daily',resident));
+ assert.equal(f.s.ai.snapshot().recent[0].activityKind,'social-daily');assert.equal(f.s.ai.snapshot().recent[0].activityResult,'no-post');assert.equal(f.s.social.list().total,0);
 });

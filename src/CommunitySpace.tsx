@@ -43,20 +43,34 @@ export function CommunitySpace({
   state,
   onError,
   children,
+  section,
+  setSection,
 }: {
   state: State;
   onError: (s: string) => void;
   children: ReactNode;
+  section: 'broadcast' | 'outside';
+  setSection: (section: 'broadcast' | 'outside') => void;
 }) {
-  const [section, setSection] = useState('broadcast');
   return (
     <>
       <nav className="community-sections" aria-label="방송 밖 이야기 구획">
-        <button aria-pressed={section === 'broadcast'} onClick={() => setSection('broadcast')}>
+        <button
+          aria-label="방송 커뮤니티"
+          aria-pressed={section === 'broadcast'}
+          onClick={() => setSection('broadcast')}
+        >
           방송 커뮤니티
         </button>
-        <button aria-pressed={section === 'outside'} onClick={() => setSection('outside')}>
-          바깥 커뮤니티
+        <button
+          aria-label="바깥 커뮤니티"
+          aria-pressed={section === 'outside'}
+          onClick={() => setSection('outside')}
+        >
+          바깥 커뮤니티{' '}
+          <span className="social-count" aria-label="저장된 게시글 수">
+            {state.social?.threads ?? 0}
+          </span>
         </button>
       </nav>
       <div hidden={section !== 'broadcast'}>{children}</div>
@@ -353,11 +367,27 @@ function OutsideCommunity({
       ) : (
         <div aria-live="polite">
           {data.posts.length === 0 ? (
-            <p className="social-empty">
-              {submitted
-                ? '검색어가 담긴 이야기가 아직 없어요.'
-                : '아직 저장된 이야기가 없어요. 주민들은 각자의 속도로 이야기를 나눕니다.'}
-            </p>
+            <div className="social-empty">
+              <p>
+                {submitted || community || bookmarked
+                  ? '현재 검색·필터에 맞는 이야기가 없어요.'
+                  : '아직 저장된 이야기가 없어요. 주민들은 각자의 속도로 이야기를 나눕니다.'}
+              </p>
+              {(submitted || community || bookmarked) && (
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setCommunity('');
+                    setQuery('');
+                    setSubmitted('');
+                    setBookmarked(false);
+                    setOffset(0);
+                  }}
+                >
+                  전체 이야기 보기
+                </button>
+              )}
+            </div>
           ) : (
             data.posts.map((post) => (
               <button className="social-post" key={post.id} onClick={() => setSelected(post)}>

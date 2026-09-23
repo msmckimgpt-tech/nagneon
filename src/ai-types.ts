@@ -60,5 +60,7 @@ export type AiState = {
     } | null;
     estimatedUsd: number | null;
     application: string;
+    activityKind?: string;
+    activityResult?: string;
   }[];
 };
