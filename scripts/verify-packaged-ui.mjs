@@ -210,6 +210,20 @@ try {
     assert.equal(await evaluate(`fetch('/api/connection/provider',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({kind:'codex'})}).then(r=>r.status)`),200);
     report.checks.push('single provider restored before compatibility rollback');
   }
+  if (process.argv.includes('--social')) {
+    await click('방송 밖 이야기');await until("!!document.querySelector('.community-sections')");
+    await click('바깥 커뮤니티');await until("!!document.querySelector('.outside-community .social-settings')");
+    assert.equal(await evaluate("document.querySelectorAll('.social-community-list button').length"),5);
+    const prefs=await evaluate("fetch('/api/social/communities').then(r=>r.json()).then(d=>d.preferences)");
+    assert.equal(prefs.enabled,true);assert.equal(prefs.arrivalsEnabled,true);
+    const before=await readFile(join(profile,'data/world.json'),'utf8');
+    await click('내 이야기 찾기');await until("!document.querySelector('.social-search button').disabled");
+    assert.equal(await readFile(join(profile,'data/world.json'),'utf8'),before);
+    await writeFile(join(output,'social.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
+    report.checks.push('delivered four communities, default ON and pure ego search');
+    await click('방송 커뮤니티');await until("!!document.querySelector('.community-gallery')");
+    await click('방송실');
+  }
   const changed = await evaluate(
     `(async()=>{const s=await (await fetch('/api/state')).json();const r=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({...s.settings,mode:'rehearsal'})});return r.status;})()`,
   );

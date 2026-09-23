@@ -56,7 +56,7 @@ export function viewerKnowledgeByPersona(entry,personas=[],{popularity=0.5}={}){
 // Public context excludes everyone's personal memories. Each speaking persona
 // receives its own memory and only chat/previous frames after its latest entry.
 // Packets still share one model call; this is provenance, not secret isolation.
-export function liveViewerContext(audience,personas,history,previous,{journal,clips,speech='',sound,now=Date.now(),viewing,externalChat}={}){
+export function liveViewerContext(audience,personas,history,previous,{journal,clips,social,speech='',sound,now=Date.now(),viewing,externalChat}={}){
   const packets={};
   // Recognition may finish after somebody returns. Its chat timestamp alone
   // does not mean they heard that microphone segment while they were away.
@@ -65,6 +65,7 @@ export function liveViewerContext(audience,personas,history,previous,{journal,cl
     const member=audience.members.find(m=>m.id===p.id);const joinedAt=member?.joinedAt;
     const witnessed=Number.isFinite(joinedAt)?history.filter(m=>m.time>=joinedAt&&m.time<=now&&(m.transcription?.source!=='microphone'||(!transcriptAnomaly(m.text)&&(!microphoneWitnesses||microphoneWitnesses.get(m.id)?.has(p.id))))):[];
     packets[p.id]={
+      ...(social?{heardFromCommunity:social.memory(p.id)}:{}),
       joinedAt,preferences:structuredClone(member?.preferences||[]),heardSounds:sound?.context(p.id)||[],memories:journal?[]:structuredClone(member?.memories||[]),
       // recall already selects only this stable ID's witnesses. A new entry
       // time must not turn earlier shared conversations into secondhand reports.

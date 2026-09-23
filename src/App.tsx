@@ -1,3 +1,4 @@
+import { CommunitySpace } from './CommunitySpace';
 import { AiDashboard } from './AiDashboard';
 import { CommunityLore } from './CommunityLore';
 import { RuntimeDownloads } from './RuntimeDownloads';
@@ -1091,14 +1092,14 @@ export function App() {
               </div>
             )}
             {tab === 'community' && (
-              <>
+              <CommunitySpace state={state} onError={setError}>
                 <CommunityGallery state={state} onError={setError} />
                 <details className="panel teaching">
                   <summary>방송에서 나눈 대화 기억</summary>
                   <ConversationMemories state={state} onError={setError} />
                 </details>
                 <CommunityLore items={state.audience.lore} onError={setError} />
-              </>
+              </CommunitySpace>
             )}
             <footer>
               <span>

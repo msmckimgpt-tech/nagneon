@@ -1,3 +1,4 @@
+import { SocialRuntime } from './social-runtime.js';
 import { SpeechCapture, witnessedSpeech } from './speech-screen.js';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -84,6 +85,8 @@ export class Studio extends EventEmitter {
       world.bind(this);
       this.autonomy = new AudienceAutonomy(this, world);
     }
+    this.social = new SocialRuntime(this);
+    this.journal.beforeForget = (ids) => this.social.forget('journal', ids);
     this.communityActivity = new CommunityActivity(this);
     this.culture = new CultureLearning(this, cultureLearning);
     this.clipPerception = clipPerception || new ClipPerception();
@@ -93,6 +96,7 @@ export class Studio extends EventEmitter {
         sessionId: this.sessionId,
         localSpeech: this.provider.localSpeech,
         community: this.communityActivity.snapshot(),
+        social: { enabled: this.social.enabled() },
         culture: this.culture.snapshot(),
       }),
       onChange: () => this.publish(),
@@ -200,6 +204,7 @@ export class Studio extends EventEmitter {
       tokens: this.tokens,
       busy: this.busy && !this.communityActivity?.active,
       communityActivity: this.communityActivity?.snapshot(),
+      social: this.social?.summary(),
       culture: this.culture?.snapshot(),
       lastError: this.lastError,
       provider: this.provider.status(),
@@ -340,10 +345,11 @@ export class Studio extends EventEmitter {
     this.messages = [];
     this.events = [];
     this.resetCounters();
-    this.running = true;
-    this.sessionId = randomUUID();
-    this.startedAt = this.now();
     try {
+      if (this.settings.mode === 'live') this.social.startLive();
+      this.running = true;
+      this.sessionId = randomUUID();
+      this.startedAt = this.now();
       this.ai.startSession(this.sessionId);
       if (this.settings.mode === 'live') {
         this.audience.start(this.settings, this.now()).forEach((e) => this.log(e));
@@ -619,7 +625,7 @@ export class Studio extends EventEmitter {
     events.forEach((e) => this.log(e));
     if (events.length || before !== this.audience.presenceRevision) this.publish();
     try {
-      this.autonomy?.tick();
+      if (!this.social?.arrive()) this.autonomy?.tick();
     } catch (error) {
       this.lastError = error.message;
     }
@@ -1131,6 +1137,7 @@ export class Studio extends EventEmitter {
       screenTimeline?.sourceChanged ? null : this.observation,
       {
         journal: this.journal,
+        social: this.social,
         clips: this.clips,
         speech,
         sound: this.sound,

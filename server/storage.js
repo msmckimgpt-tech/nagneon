@@ -12,11 +12,12 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // - 복구가 불가능하면 절대 조용히 덮어쓰거나 초기화하지 않고 오류를 던진다.
 // - 백업은 store 이름에 정확히 종속된 경로만 다루며, 개수 상한을 지킨다.
 export class JsonStore {
-  constructor(file, { validate, initial = () => ({}), backupCount = 3, fs = {} } = {}) {
+  constructor(file, { validate, initial = () => ({}), backupCount = 3, fs = {}, forbidRecovery = false } = {}) {
     if (typeof file !== 'string' || !file.trim()) throw new Error('JsonStore: 저장 파일 경로가 필요합니다.');
     if (typeof validate !== 'function') throw new Error('JsonStore: validate 함수가 필요합니다.');
     if (typeof initial !== 'function') throw new Error('JsonStore: initial 은 함수여야 합니다.');
     if (!Number.isInteger(backupCount) || backupCount < 0) throw new Error('JsonStore: backupCount 는 0 이상의 정수여야 합니다.');
+    this.forbidRecovery = forbidRecovery;
     this.file = resolve(file);
     this.dir = dirname(this.file);
     this.backupCount = backupCount;
@@ -46,6 +47,7 @@ export class JsonStore {
       if (parsed.ok) { this._cache = parsed.value; return structuredClone(parsed.value); }
       primaryError = parsed.error;
     }
+    if (this.forbidRecovery) throw new Error('기본 저장 파일을 자동 복구할 수 없습니다. 삭제 기록 보존을 위해 원본과 백업을 확인하세요.');
     const backups = this._ownBackups(); // n=1 이 최신
     for (const b of backups) {
       let raw;

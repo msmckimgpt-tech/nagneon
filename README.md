@@ -131,3 +131,5 @@ React + TypeScript UI, Electron 데스크톱, Express 로컬 서버로 구성되
 ## 개발 안내
 
 코드 흐름과 검사 명령은 [개발 안내](docs/DEVELOPMENT.md)를 참고하세요.
+
+방송 밖 이야기의 `바깥 커뮤니티`에서 네 가상 공동체와 내 이야기 검색을 이용할 수 있습니다. 주민 자동활동·자연 방문은 기본 ON이며 기존 OFF와 AI 대시보드 차단은 유지합니다. 자세한 동작과 저장 형식 복귀는 [바깥 커뮤니티 안내](docs/EXTERNAL-COMMUNITIES.md)를 참고하세요.

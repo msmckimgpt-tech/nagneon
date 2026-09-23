@@ -1,0 +1,78 @@
+[
+  {
+    "id": "guide",
+    "name": "공략연구소",
+    "description": "빌드와 시행착오를 비교하는 곳",
+    "norms": "원본과 근거를 먼저 확인한다. 효율만 아니라 초보자의 학습 과정도 존중한다. 훈수를 강요하지 않는다.",
+    "discoveryKey": "guide",
+    "topics": [
+      {
+        "id": "practice",
+        "label": "연습과 시행착오",
+        "prompt": "실패 원인을 기록하거나 연습 루틴을 바꾼 경험"
+      },
+      {
+        "id": "builds",
+        "label": "빌드 이야기",
+        "prompt": "효율과 취향 사이에서 선택하는 기준"
+      }
+    ]
+  },
+  {
+    "id": "clips",
+    "name": "클립정류장",
+    "description": "짧은 장면과 반응을 이야기하는 곳",
+    "norms": "짧은 재미와 맥락을 모두 존중한다. 제공되지 않은 영상, 실제 유행이나 링크를 봤다고 주장하지 않는다.",
+    "discoveryKey": "clip",
+    "topics": [
+      {
+        "id": "moments",
+        "label": "기억나는 순간",
+        "prompt": "게임에서 웃긴 순간을 기억하거나 짧게 정리하는 습관"
+      },
+      {
+        "id": "humor",
+        "label": "웃음의 취향",
+        "prompt": "과한 편집과 담백한 반응 중 무엇을 좋아하는지"
+      }
+    ]
+  },
+  {
+    "id": "indie",
+    "name": "인디산책",
+    "description": "작은 게임과 탐험의 즐거움을 나누는 곳",
+    "norms": "흥행보다 개인의 발견과 몰입을 존중한다. 출시일, 패치나 개발자 발언을 지어내지 않는다.",
+    "discoveryKey": "browse",
+    "topics": [
+      {
+        "id": "explore",
+        "label": "탐험 이야기",
+        "prompt": "엔딩보다 구석을 살펴보는 탐험 방식"
+      },
+      {
+        "id": "atmosphere",
+        "label": "분위기와 연출",
+        "prompt": "설명 없이 느끼는 게임의 분위기와 개인 취향"
+      }
+    ]
+  },
+  {
+    "id": "lounge",
+    "name": "심야라운지",
+    "description": "조용한 시청과 일상 대화가 머무는 곳",
+    "norms": "말하지 않는 참여도 존중한다. 답변이나 친밀감을 강요하지 않고 편하게 의견을 주고받는다.",
+    "discoveryKey": "discussion",
+    "topics": [
+      {
+        "id": "routine",
+        "label": "플레이 루틴",
+        "prompt": "늦은 시간 게임을 시작하거나 마무리하는 습관"
+      },
+      {
+        "id": "company",
+        "label": "조용한 동행",
+        "prompt": "집중해서 보거나 편하게 틀어놓는 방송 취향"
+      }
+    ]
+  }
+]

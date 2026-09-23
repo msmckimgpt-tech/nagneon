@@ -46,6 +46,11 @@ function Assert-NagneonProfileCompatibility {
     Assert-NagneonNativeStorageView -Profile $Profile
     if ($AppVersion -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw 'Cannot identify the application version. Reapply a verified package.' }
     $targetVersion = [version]($Matches[1] + '.' + $Matches[2] + '.' + $Matches[3])
+    $formatFile = Join-Path $Profile 'data/profile-format.json'
+    if (Test-Path -LiteralPath $formatFile -PathType Leaf) {
+        $format = Get-Content -LiteralPath $formatFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($targetVersion -lt [version]$format.minAppVersion) { throw "This profile requires Nagneon $($format.minAppVersion) or later. Preserve it and use a separate pre-update backup for rollback." }
+    }
     if ($targetVersion -ge [version]'0.1.4') { return }
     $worldFile = Join-Path $Profile 'data/world.json'
     if (-not (Test-Path -LiteralPath $worldFile -PathType Leaf)) { return }
