@@ -221,7 +221,7 @@ export async function startServer({
   const aiControl = new AiControl(aiStore);
   if (stores.some((s) => s.file?.endsWith('ai-control.json') && s.recoveredFrom))
     aiControl.storageError =
-      'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 기록과 호출 상한을 확인해주세요.';
+      'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 사용 기록과 실행 허용 설정을 확인해주세요.';
   studio = new Studio({
     aiControl,
     cultureLearning: { data: cultureStore.data, save: cultureStore.save },
