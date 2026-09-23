@@ -7,8 +7,16 @@ import {presenceLabel} from './Discovery';
 function ViewerCard({person,state,onError}:{person:Persona;state:State;onError:(text:string)=>void}){
   const member=state.audience.members[person.id];
   const [note,setNote]=useState(member?.note||''),[dirty,setDirty]=useState(false),[pending,setPending]=useState(false),[saved,setSaved]=useState(false);
-  useEffect(()=>{if(!dirty)setNote(member?.note||'');},[member?.note,dirty]);
-  async function act(path:string,body?:unknown,method?:string){setPending(true);try{await api(path,body,method);return true;}catch(error){onError(error instanceof Error?error.message:'관객 정보 처리 실패');return false;}finally{setPending(false);}}
+  const editVersion=useRef(0),lastRemoteNote=useRef(member?.note||'');
+  useEffect(()=>{
+    const remote=member?.note||'';
+    // A save acknowledgement can precede SSE. Becoming clean must not reload
+    // the unchanged, older server snapshot over the acknowledged draft.
+    if(remote===lastRemoteNote.current)return;
+    lastRemoteNote.current=remote;
+    if(!dirty)setNote(remote);
+  },[member?.note,dirty]);
+  async function act(path:string,body?:unknown,method?:string){onError('');setPending(true);try{await api(path,body,method);return true;}catch(error){onError(error instanceof Error?error.message:'관객 정보 처리 실패');return false;}finally{setPending(false);}}
   return <section className="panel persona-card" aria-label={`${person.name} 관객`}>
     <span className="avatar large" style={{color:person.color,background:person.color+'19'}}>{person.name[0]}</span>
     <span className="status-pill">{person.id===state.settings.managerId?'매니저':presenceLabel(state.audience.presence[person.id])}</span><h2>{person.name}</h2>
@@ -17,8 +25,8 @@ function ViewerCard({person,state,onError}:{person:Persona;state:State;onError:(
     {person.profileUnlocked&&<><p>{person.values}</p><span className="status-pill">{member?.origin?.label}</span></>}
     <div className="tags"><span>함께한 방송 {member?.sessions||0}회</span><span>시청 {Math.floor((member?.seconds||0)/60)}분</span></div>
     {!person.profileUnlocked&&<button className="secondary" disabled={pending||!state.settings.pointsEnabled||state.settings.mode!=='live'} onClick={()=>void act('special/unlock',{kind:'profile',personaId:person.id,requestId:crypto.randomUUID()})}><Heart size={15}/> 관객 수첩 열기 · 30P</button>}
-    <label>나만의 메모<textarea aria-label={`${person.name} 메모`} maxLength={2000} value={note} onChange={e=>{setNote(e.target.value);setDirty(true);setSaved(false);}} placeholder="닉네임이 바뀌어도 이 관객에게 남는 메모"/></label>
-    <div className="feature-buttons"><button className="secondary" disabled={pending||!dirty} onClick={async()=>{if(await act(`audience/${person.id}/note`,{text:note},'PUT')){setDirty(false);setSaved(true);}}}>메모 저장</button><button className="text-button" disabled={pending||person.id===state.settings.managerId} onClick={()=>void act('audience/'+person.id,undefined,'DELETE')}><Trash2 size={14}/> 관객 제거</button></div>
+    <label>나만의 메모<textarea aria-label={`${person.name} 메모`} maxLength={2000} value={note} onChange={e=>{editVersion.current++;setNote(e.target.value);setDirty(true);setSaved(false);}} placeholder="닉네임이 바뀌어도 이 관객에게 남는 메모"/></label>
+    <div className="feature-buttons"><button className="secondary" disabled={pending||!dirty} onClick={async()=>{const version=editVersion.current;if(await act(`audience/${person.id}/note`,{text:note},'PUT')&&version===editVersion.current){setDirty(false);setSaved(true);}}}>메모 저장</button><button className="text-button" disabled={pending||person.id===state.settings.managerId} onClick={()=>void act('audience/'+person.id,undefined,'DELETE')}><Trash2 size={14}/> 관객 제거</button></div>
     {saved&&<small role="status">메모를 저장했습니다.</small>}
   </section>;
 }
