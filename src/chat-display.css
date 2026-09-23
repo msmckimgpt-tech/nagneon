@@ -1,6 +1,6 @@
 .chat-display-control{position:relative;flex-shrink:0;-webkit-app-region:no-drag}
 .chat-display-control label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:400;white-space:nowrap;cursor:pointer}
-.chat-display-control input{width:13px;height:13px;margin:0;accent-color:#b8e887}
+.chat-display-control input{width:13px;height:13px;margin:0;accent-color:var(--neon)}
 .chat-display-control small{position:absolute;right:0;top:22px;z-index:5;min-width:180px;max-width:260px;white-space:normal;padding:8px;background:#281b1e;color:#ffb9b9;border-radius:6px}
 .transcript-origin{margin-top:4px;color:#9eabbc;font-size:11px;white-space:normal;overflow-wrap:anywhere}
 .transcript-origin summary{cursor:pointer;color:#b8c6dc}

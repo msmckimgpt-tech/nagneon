@@ -31,11 +31,11 @@
 }
 .settings-tabs [role=tab] svg{flex-shrink:0;color:#828b99}
 .settings-tabs [role=tab][aria-selected=true]{
-  background:#272d23;
-  color:#c0ee89;
-  border-color:#3b4a2c;
+  background:var(--accent-soft);
+  color:var(--neon);
+  border-color:var(--accent-border);
 }
-.settings-tabs [role=tab][aria-selected=true] svg{color:#bce988}
+.settings-tabs [role=tab][aria-selected=true] svg{color:var(--neon)}
 
 /* Body holds every panel; only the visible one participates in layout and it
    scrolls internally (min-width:0 guards against horizontal overflow). */
@@ -95,7 +95,7 @@
   height:16px;
   flex-shrink:0;
   margin:1px 0 0;
-  accent-color:#b9e887;
+  accent-color:var(--neon);
 }
 .settings-panel .set-check small{
   display:block;
