@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
-import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,statSync} from 'node:fs';
+import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,statSync,openSync,fsyncSync,closeSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
 import {recallArrivalClip} from './arrival-clip-memory.js';
 import {recordActivityRead} from './community-activity-state.js';
 const MAX_STORAGE=500*1024*1024;
+const mediaFs={openSync,writeFileSync,fsyncSync,closeSync,renameSync,unlinkSync};
 export class Clips {
-  constructor({data=[],save=()=>{},dir,now=Date.now}={}){this.data=data;this.save=save;this.dir=dir;this.now=now;}
+  constructor({data=[],save=()=>{},dir,now=Date.now,fs={}}={}){this.data=data;this.save=save;this.dir=dir;this.now=now;this.mediaFs={...mediaFs,...fs};}
   change(fn){const next=structuredClone(this.data);const value=fn(next);this.save(next);reuseClipMemoryIndex(this.data,next);this.data=next;return value;}
   get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,activityReads,...publicClip}=clip;return structuredClone(publicClip);}
   list(){return this.data.map(({comments,messages,readings,activityReads,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
@@ -14,7 +15,23 @@ export class Clips {
   recallArrival(reading,now=this.now()){return recallArrivalClip(this.data,reading,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
   file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm','voice.webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
-  writeMedia(id,extension,buffer){if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');const file=this.file(id,extension);mkdirSync(this.dir,{recursive:true});writeFileSync(file+'.tmp',buffer);renameSync(file+'.tmp',file);return file;}
+  writeMedia(id,extension,buffer){
+    if(this.storageUsed()+buffer.length>MAX_STORAGE)throw new Error('핫클립 저장 공간 500MB에 도달했습니다. 이전 클립을 정리하세요.');
+    const file=this.file(id,extension),temporary=file+'.'+randomUUID()+'.tmp',fs=this.mediaFs;
+    mkdirSync(this.dir,{recursive:true});
+    let fd,owned=false;
+    try{
+      // Exclusively own this attempt's temporary file; never truncate or remove
+      // another attempt's file. Flush bytes before publishing media metadata.
+      fd=fs.openSync(temporary,'wx');owned=true;
+      fs.writeFileSync(fd,buffer);fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
+      fs.renameSync(temporary,file);return file;
+    }catch(error){
+      if(fd!==undefined)try{fs.closeSync(fd);}catch{}
+      if(owned)try{fs.unlinkSync(temporary);}catch(cleanup){if(cleanup.code!=='ENOENT')console.error('실패한 클립 임시 파일을 정리하지 못했습니다:',id);}
+      throw error;
+    }
+  }
   create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature,creator,audioEligible=false}){
     if(this.data.length>=100)throw new Error('핫클립 100개에 도달했습니다. 이전 클립을 정리하세요.');
     if(signature){const duplicate=this.data.find(c=>c.signature===signature&&this.now()-c.createdAt<3600000);if(duplicate)return duplicate;}
