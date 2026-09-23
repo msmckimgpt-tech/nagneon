@@ -64,6 +64,11 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     require('./navigation.cjs').attachNavigationHistory(main);
     const provider=service.studio.provider;
     ipcMain.handle('storage:status',event=>{trusted(event,true);return {profile:app.getPath('userData'),defaultProfile:storageDefaults.defaultProfile,isolated:!!profile};});
+    ipcMain.handle('speech:raw',async(event,entry)=>{
+      trusted(event,true);
+      if(!(entry?.data instanceof Uint8Array)||entry.data.byteLength>32000)throw Error('마이크 원음 크기가 올바르지 않습니다.');
+      return service.appendSpeechRaw({...entry,data:Buffer.from(entry.data)});
+    });
     ipcMain.handle('storage:change',async(event,useDefault)=>{
       trusted(event,true);
       if(profile)throw Error('검증용 별도 프로필에서는 전역 저장 위치를 변경할 수 없습니다.');

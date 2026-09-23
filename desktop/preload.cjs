@@ -15,6 +15,7 @@ if(location.pathname==='/overlay'){
 contextBridge.exposeInMainWorld('backseat',{
   storageStatus:()=>ipcRenderer.invoke('storage:status'),
   changeStorage:useDefault=>ipcRenderer.invoke('storage:change',useDefault),
+  appendSpeechRaw:entry=>ipcRenderer.invoke('speech:raw',entry),
   accountStatus:()=>ipcRenderer.invoke('account:status'),startAccountLogin:method=>ipcRenderer.invoke('account:start',method),cancelAccountLogin:()=>ipcRenderer.invoke('account:cancel'),openAccountLogin:()=>ipcRenderer.invoke('account:open'),
   onAccountState:fn=>{const listener=(_event,value)=>fn(value);ipcRenderer.on('account:state',listener);return()=>ipcRenderer.removeListener('account:state',listener);},
   sources:()=>ipcRenderer.invoke('capture:sources'),sourcePreviews:type=>ipcRenderer.invoke('capture:previews',type),selectSource:(id,systemAudio=false)=>ipcRenderer.invoke('capture:select',id,systemAudio),

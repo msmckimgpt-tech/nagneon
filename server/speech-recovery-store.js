@@ -140,7 +140,7 @@ export class SpeechRecoveryStore {
         await mkdir(folder, { recursive: true });
         const temporary = join(folder, `${file}.${randomUUID()}.tmp`);
         try {
-          await writeFile(temporary, data, { flag: 'wx' });
+          await writeFile(temporary, data, { flag: 'wx', flush: true });
           await rename(temporary, path);
         } catch (error) {
           await unlink(temporary).catch(() => {});
@@ -254,6 +254,18 @@ export class SpeechRecoveryStore {
       if (!session.isDirectory() || !uuid.test(session.name)) continue;
       for (const epoch of await readdir(join(this.root, session.name), { withFileTypes: true })) {
         if (!epoch.isDirectory() || !uuid.test(epoch.name)) continue;
+        const folder = this.folder(session.name, epoch.name);
+        for (const file of await readdir(folder)) {
+          if (!/^\d{8}-\d{12}-\d{8}\.pcm\.[0-9a-f-]{36}\.tmp$/i.test(file)) continue;
+          const path = join(folder, file), details = await stat(path).catch((error) => {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+          });
+          if (details?.isFile() && this.now() - details.mtimeMs >= SPEECH_RAW_RETENTION_MS) {
+            await unlink(path);
+            removed.push(path);
+          }
+        }
         for (const entry of await this.entries(session.name, epoch.name))
           if (this.now() - entry.createdAt >= SPEECH_RAW_RETENTION_MS) {
             await unlink(entry.path);
