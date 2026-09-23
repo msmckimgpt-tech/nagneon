@@ -75,6 +75,23 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       };
       w.socialWorld.residents.push(resident);
     });
+    const outsider = {
+      ...structuredClone(resident),
+      id: randomUUID(),
+      communityId: 'banter',
+      admitted: false,
+      persona: { ...resident.persona, id: 'fixture-resident', name: '구석뻘글러' },
+    };
+    s.world.change((w) => w.socialWorld.residents.push(outsider));
+    const ordinary = s.social
+      .candidates(s.now())
+      .find((t) => t.kind === 'social-daily' && t.id === outsider.id);
+    const ordinaryOp = { controller: new AbortController(), epoch: s.epoch, social: true };
+    s.communityActivity.active = ordinaryOp;
+    ordinaryOp.promise = s.communityActivity.run(ordinary, ordinaryOp);
+    await ordinaryOp.promise;
+    s.communityActivity.active = null;
+    s.busy = false;
     const sourceId = randomUUID();
     s.journal.record(
       {
@@ -162,7 +179,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       true,
     );
     await click('바깥 커뮤니티');
-    await until("document.querySelectorAll('.social-post').length===2");
+    await until("document.querySelectorAll('.social-post').length===3");
     report.checks.push(
       'existing tab contains both sections; real server runtime-generated fixture posts rendered',
     );
@@ -187,7 +204,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     await until(
       "document.querySelector('[aria-label=\"바깥 커뮤니티\"]')?.getAttribute('aria-pressed')==='true'",
     );
-    await until("document.querySelectorAll('.social-post').length===2");
+    await until("document.querySelectorAll('.social-post').length===3");
     assert.equal(JSON.stringify(s.world.data), beforeNavigation);
     await click('AI 대시보드');
     await until("!!document.querySelector('.ai-dashboard')");
@@ -197,16 +214,45 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     );
     await click('AI 대시보드');
     await until("!!document.querySelector('.ai-dashboard')");
-    await click('바깥 커뮤니티 · 글 2개');
-    await until("document.querySelectorAll('.social-post').length===2");
+    await click('바깥 커뮤니티 · 글 3개');
+    await until("document.querySelectorAll('.social-post').length===3");
     report.checks.push(
       'dashboard distinguishes saved posts and opens the correct community section without AI calls',
+    );
+
+    assert.equal(
+      await js("document.querySelectorAll('.social-post.social-viewer-post').length"),
+      2,
+    );
+    assert.equal(
+      await js("document.querySelectorAll('.social-post .social-viewer-badge').length"),
+      2,
+    );
+    assert.equal(await js("document.querySelectorAll('.social-community-list button').length"), 6);
+    assert.equal(
+      s.settings.personas.some((p) => p.id === outsider.persona.id),
+      false,
+    );
+    writeFileSync(join(out, 'residents.png'), (await win.webContents.capturePage()).toPNG());
+    report.screenshots.push('residents.png');
+    await js(
+      "[...document.querySelectorAll('.social-community-list button')].find(b=>b.textContent.includes('자유난장')).click()",
+    );
+    await until("document.querySelectorAll('.social-post').length===1");
+    assert.equal(
+      await js("document.querySelectorAll('.social-post .social-viewer-badge').length"),
+      0,
+    );
+    await click('전체 이야기');
+    await until("document.querySelectorAll('.social-post').length===3");
+    report.checks.push(
+      'five communities include unaffiliated resident posts; only real audience authors have badges',
     );
     const before = JSON.stringify(s.world.data);
     await js("document.querySelector('.social-search input[type=checkbox]').click()");
     await until("document.querySelector('.social-empty')?.textContent.includes('현재 검색·필터')");
     await click('전체 이야기 보기');
-    await until("document.querySelectorAll('.social-post').length===2");
+    await until("document.querySelectorAll('.social-post').length===3");
     assert.equal(JSON.stringify(s.world.data), before);
     report.checks.push(
       'empty filtered list explains the filter and restores all posts without mutation',
@@ -217,6 +263,24 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     report.checks.push('ego search is read-only');
     await js("document.querySelector('.social-post').click()");
     await until("!!document.querySelector('.social-detail')");
+    assert.equal(
+      await js("document.querySelectorAll('.social-detail .social-viewer-badge').length"),
+      1,
+    );
+    const originalRoster = [...s.settings.personas];
+    s.world.change((w) => {
+      w.settings.personas = w.settings.personas.filter((p) => p.id !== resident.persona.id);
+    });
+    s.publish();
+    await until(
+      "document.querySelector('.social-detail') && !document.querySelector('.social-detail .social-viewer-badge')",
+    );
+    s.world.change((w) => {
+      w.settings.personas = originalRoster;
+    });
+    s.publish();
+    await until("!!document.querySelector('.social-detail .social-viewer-badge')");
+    report.checks.push('author highlight follows roster changes without reopening the page');
     await click('북마크');
     await until(
       "!![...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='북마크 해제')",

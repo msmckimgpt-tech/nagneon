@@ -11,6 +11,7 @@ type Post = {
   text: string;
   at: number;
   author: string;
+  authorIsViewer: boolean;
   sourceStatus: string;
   bookmarked: boolean;
 };
@@ -100,7 +101,12 @@ function OutsideCommunity({
     [refresh, setRefresh] = useState(0),
     [loading, setLoading] = useState(false);
   const generation = useRef(0),
-    revision = state.social?.revision;
+    revision = state.social?.revision,
+    audienceKey = state.settings.personas
+      .filter((p) => !p.system && state.audience.members[p.id]?.sessions > 0)
+      .map((p) => p.id)
+      .sort()
+      .join('|');
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -128,7 +134,7 @@ function OutsideCommunity({
     return () => {
       cancelled = true;
     };
-  }, [active, revision, community, submitted, offset, bookmarked, refresh]);
+  }, [active, revision, audienceKey, community, submitted, offset, bookmarked, refresh]);
   useEffect(() => setOffset(0), [revision]);
   async function patch(value: Partial<Prefs>) {
     if (busy) return;
@@ -162,7 +168,7 @@ function OutsideCommunity({
       <div className="panel-heading">
         <div>
           <h2>바깥 커뮤니티</h2>
-          <p className="muted">각자의 관심사로 모인 이웃들의 이야기</p>
+          <p className="muted">관객과 일반 주민이 각자의 관심사로 나누는 이야기</p>
         </div>
         <button className="secondary" disabled={loading} onClick={() => setRefresh((v) => v + 1)}>
           새로고침
@@ -313,13 +319,17 @@ function OutsideCommunity({
         </label>
       </form>
       {selected ? (
-        <article className="social-detail">
+        <article className={`social-detail${selected.authorIsViewer ? ' social-viewer-post' : ''}`}>
           <button className="text-button" onClick={() => setSelected(null)}>
             ← 글 목록
           </button>
           <h3>{selected.title}</h3>
           <small>
-            {selected.author} · {new Date(selected.at).toLocaleString('ko-KR')} ·{' '}
+            <span className="social-author">
+              {selected.author}
+              {selected.authorIsViewer && <span className="social-viewer-badge">나의 관객</span>}
+            </span>{' '}
+            · {new Date(selected.at).toLocaleString('ko-KR')} ·{' '}
             {selected.kind === 'daily' ? '일상' : '방송 이야기'}
           </small>
           <p>{selected.text}</p>
@@ -390,14 +400,22 @@ function OutsideCommunity({
             </div>
           ) : (
             data.posts.map((post) => (
-              <button className="social-post" key={post.id} onClick={() => setSelected(post)}>
+              <button
+                className={`social-post${post.authorIsViewer ? ' social-viewer-post' : ''}`}
+                key={post.id}
+                onClick={() => setSelected(post)}
+              >
                 <span>
                   {data.communities.find((c) => c.id === post.communityId)?.name} ·{' '}
                   {post.kind === 'daily' ? '일상' : '방송 이야기'}
                 </span>
                 <strong>{post.title}</strong>
                 <small>
-                  {post.author} · {new Date(post.at).toLocaleString('ko-KR')}
+                  <span className="social-author">
+                    {post.author}
+                    {post.authorIsViewer && <span className="social-viewer-badge">나의 관객</span>}
+                  </span>{' '}
+                  · {new Date(post.at).toLocaleString('ko-KR')}
                   {post.bookmarked ? ' · 북마크' : ''}
                 </small>
               </button>

@@ -40,9 +40,9 @@ test('GET 100 times, detail and ego-search never mutate world or call provider; 
 test('new defaults ON and strict partial patch preserves saved OFF and other preferences',async t=>{
  const f=await fixture(t);assert.equal(f.s.social.enabled(),true);assert.equal(f.s.social.data().preferences.arrivalsEnabled,true);assert.equal((await req(f,'social/preferences',{enabled:false},'PATCH')).status,200);await req(f,'social/preferences',{arrivalsEnabled:false},'PATCH');assert.equal(f.s.social.enabled(),false);assert.equal((await req(f,'social/preferences',{unknown:true},'PATCH')).status,400);assert.equal(f.s.social.data().preferences.notifications,false);
 });
-test('birth uses the shared activity slot and attempts; all four community identities are reachable',async t=>{
+test('birth uses the shared activity slot and attempts; all five community identities are reachable',async t=>{
  const f=await fixture(t),s=f.s;s.settings.communityActivityEnabled=false;f.advance(61000);s.communityActivity.tick();await s.communityActivity.active?.promise;assert.equal(f.calls.length,1);assert.equal(s.social.data().residents.length,1);assert.equal(s.communityActivity.data().attempts.length,1);assert.equal(s.ai.reason('community'),'');
- assert.equal(new Set(s.social.candidates(s.now()).map(c=>c.raw.communityId)).size,4);
+ assert.equal(new Set(s.social.candidates(s.now()).map(c=>c.raw.communityId)).size,5);
  for(let i=0;i<7;i++){f.advance(300001);s.communityActivity.tick();await s.communityActivity.active?.promise;}assert.ok(f.calls.length<=6);
 });
 for(const action of ['off','mute','stop','forget','edit'])test('late '+action+' discards pending receipt and output',async t=>{
@@ -95,4 +95,20 @@ test('resident preparation and a silent daily response never claim a published p
  assert.equal(f.s.ai.snapshot().recent[0].activityResult,'resident-created');assert.equal(f.s.social.list().total,0);
  const resident=f.s.social.data().residents[0];await f.run(f.target('social-daily',resident));
  assert.equal(f.s.ai.snapshot().recent[0].activityKind,'social-daily');assert.equal(f.s.ai.snapshot().recent[0].activityResult,'no-post');assert.equal(f.s.social.list().total,0);
+});
+
+test('independent resident posts without a roster or broadcast, rotates topics and stays outside the audience',async t=>{
+ const f=await fixture(t),s=f.s;const target=s.social.candidates(s.now()).find(c=>c.kind==='social-birth'&&c.raw.communityId==='banter');await f.run(target);const resident=s.social.data().residents[0];assert.equal(s.settings.personas.some(p=>p.id===resident.persona.id),false);
+ let daily=s.social.candidates(s.now()).find(c=>c.kind==='social-daily'&&c.id===resident.id);assert.ok(daily);await f.run(daily);let post=s.social.list({communityId:'banter'}).posts[0];assert.equal(post.kind,'daily');assert.equal(post.authorIsViewer,false);assert.equal(s.social.data().threads[0].source,null);assert.equal(s.journal.data.entries.length,0);assert.match(f.calls.at(-1).special.community.norms,/반말/);assert.match(f.calls.at(-1).special.instruction,/관객이 되지 않아도/);
+ f.advance(2*3600000+1);daily=s.social.candidates(s.now()).find(c=>c.kind==='social-daily'&&c.id===resident.id);assert.notEqual(daily.raw.topicId,post.topicId);await f.run(daily);assert.equal(s.social.data().residents[0].admitted,false);assert.equal(s.settings.personas.some(p=>p.id===resident.persona.id),false);assert.equal(s.social.data().receipts.length,0);
+ s.social.preferences({mutedTopics:['rants']});f.advance(2*3600000+1);assert.equal(s.social.candidates(s.now()).find(c=>c.kind==='social-daily'&&c.id===resident.id).raw.topicId,'hot-takes');
+});
+test('uninterested reader never becomes an audience member just from reading or later broadcasts',async t=>{
+ const f=await fixture(t,{react:async a=>result(a.special.kind==='social-read'?{communityVotes:[{personaId:a.settings.personas[0].id,recommended:false}]}:{messages:[{personaId:a.settings.personas[0].id,text:'공동체의 이야기',kind:'chat',spoiler:false}]})}),{author,reader}=f.add();const post=await f.mention(author);await f.read(reader,post);assert.equal(f.s.social.data().receipts[0].interested,false);for(let i=0;i<3;i++){f.s.start();assert.equal(f.s.social.arrive(),false);f.s.stop();f.advance(300001);}assert.equal(f.s.settings.personas.some(p=>p.id===reader.persona.id),false);assert.equal(f.s.social.data().residents.find(r=>r.id===reader.id).admitted,false);
+});
+test('author badge follows current audience membership on list and detail, without rewriting posts',async t=>{
+ const f=await fixture(t),{author,reader}=f.add();await f.run(f.target('social-daily',reader));const thread=f.s.social.data().threads[0],before=JSON.stringify(thread);assert.equal(f.s.social.detail(thread.id).authorIsViewer,false);const post=await f.mention(author);await f.read(reader,post);f.s.start();assert.equal(f.s.social.arrive(),true);assert.equal(f.s.social.detail(thread.id).authorIsViewer,true);assert.equal(f.s.social.list().posts.find(p=>p.id===thread.id).authorIsViewer,true);f.s.settings.personas=f.s.settings.personas.filter(p=>p.id!==reader.persona.id);assert.equal(f.s.social.detail(thread.id).authorIsViewer,false);assert.equal(JSON.stringify(f.s.social.data().threads.find(t=>t.id===thread.id)),before);
+});
+test('all five communities and ten topics can be muted together and preserve an old four-community preference',async t=>{
+ const f=await fixture(t);const list=f.s.social.list().communities;assert.equal(list.length,5);assert.equal((await req(f,'social/preferences',{mutedCommunities:list.map(c=>c.id),mutedTopics:list.flatMap(c=>c.topics.map(t=>t.id))},'PATCH')).status,200);assert.deepEqual(f.s.social.candidates(f.s.now()),[]);assert.equal((await req(f,'social/preferences',{mutedCommunities:['guide','clips','indie','lounge'],mutedTopics:[]},'PATCH')).status,200);assert.ok(f.s.social.candidates(f.s.now()).every(c=>c.raw.communityId==='banter'));
 });
