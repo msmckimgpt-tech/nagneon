@@ -5,18 +5,19 @@ import {spawn} from 'node:child_process';
 import {dirname,resolve,join,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {packager} from '@electron/packager';
+import {pruneElectronLocales} from './lib/electron-locales.mjs';
 import {listPackage} from '@electron/asar';
 import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/fuses';
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
 import {packageSources,verifyPackageSources,packageSourceRoots} from './lib/package-sources.mjs';
-import {distributionComponents,componentForPath} from './lib/distribution-components.mjs';
+import {distributionComponents} from './lib/distribution-components.mjs';
+import {packageLayout,validatePackageCatalog,stageComponentRuntime} from './lib/package-layout.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const speech=process.argv.find(a=>a.startsWith('--speech='))?.slice(9);
-const modular=process.argv.includes('--components');
+const {speech,modular}=packageLayout(process.argv.slice(2));
 if(process.platform!=='win32'||process.arch!=='x64')throw new Error('Windows x64 빌드 환경이 필요합니다.');
-if(!speech)throw new Error('--speech=<검증된 음성 런타임 폴더>를 지정하세요.');
-const speechPath=resolve(speech);
+const speechPath=speech?resolve(speech):null;
+const catalog=modular?validatePackageCatalog(JSON.parse(await readFile(join(root,'shared/runtime-catalog.json'),'utf8'))):null;
 const sourceManifest=await packageSources(root);
 const id=new Date().toISOString().replace(/[:.]/g,'-');
 const build=join(root,'release',id),stage=join(build,'stage'),resources=join(build,'runtime');
@@ -65,9 +66,14 @@ await cp(join(codex,'vendor/x86_64-pc-windows-msvc'),codexTarget,{recursive:true
 await cp(join(root,'third-party/codex'),join(codexTarget,'licenses'),{recursive:true});
 await cp(join(codex,'package.json'),join(codexTarget,'npm-package.json'));
 
+const electronVersion=(await json(join(root,'node_modules/electron/package.json'))).version;
+let speechManifest,extraResources;
+if(modular){
+  extraResources=[codexTarget,...await stageComponentRuntime(root,resources,catalog)];
+}else{
 // The builder verifies the vendor archive before extraction. Recheck the
 // pinned model and allowlist only Python/model payloads (never build logs).
-const speechManifest=await json(join(speechPath,'manifest.json'));
+speechManifest=await json(join(speechPath,'manifest.json'));
 if(speechManifest.schema!=='backseat.speech-runtime/1'||speechManifest.python?.version!=='3.13.15'||!Array.isArray(speechManifest.model?.files))throw new Error('검토된 음성 런타임 매니페스트가 아닙니다.');
 const modelFiles=await files(join(speechPath,'model'));
 const listedModels=speechManifest.model.files.map(f=>f.name);
@@ -102,7 +108,6 @@ await cp(join(gpuSource,'manifest.json'),join(speechTarget,'gpu/manifest.json'))
 const payload=[];for(const file of await files(speechTarget))payload.push({path:file,sha256:await hash(join(speechTarget,file))});
 await writeFile(join(speechTarget,'payload-manifest.json'),JSON.stringify(payload,null,2));
 
-const electronVersion=(await json(join(root,'node_modules/electron/package.json'))).version;
 const soundTarget=join(resources,'sound');await mkdir(join(soundTarget,'model'),{recursive:true});
 const soundSpec=await json(join(root,'shared/sound-model.json'));
 for(const file of soundSpec.files){
@@ -116,21 +121,8 @@ for(const file of soundSpec.files){
 await cp(join(root,'shared/sound-model.json'),join(soundTarget,'provenance.json'));
 await cp(join(root,'scripts/sound_worker.py'),join(soundTarget,'sound_worker.py'));
 await cp(join(root,'third-party/sound/NOTICE.txt'),join(soundTarget,'NOTICE.txt'));
-let extraResources=[codexTarget,speechTarget,soundTarget];
-if(modular){
-  const catalog=await json(join(root,'shared/runtime-catalog.json'));
-  const runtimeInventory=[];
-  for(const [name,source] of [['speech',speechTarget],['sound',soundTarget]])for(const file of await files(source))runtimeInventory.push({path:`resources/${name}/${file}`,bytes:(await lstat(join(source,file))).size,sha256:await hash(join(source,file))});
-  for(const component of distributionComponents(runtimeInventory).filter(c=>c.id!=='app')){
-    if(catalog.components?.find(c=>c.id===component.id)?.contentId!==component.contentId)throw Error('분리 구성 목록과 런타임 파일이 다릅니다: '+component.id);
-  }
-  const core=join(build,'core-runtime');await mkdir(core);
-  for(const [name,source] of [['speech',speechTarget],['sound',soundTarget]])for(const file of await files(source)){
-    if(componentForPath(`resources/${name}/${file}`)!=='app')continue;
-    const target=join(core,name,file);await mkdir(dirname(target),{recursive:true});await cp(join(source,file),target);
-  }
-  const marker=join(core,'runtime-components.json');await writeFile(marker,JSON.stringify({schema:'nagneon-runtime-layout/1',mode:'components'}));
-  extraResources=[codexTarget,join(core,'speech'),join(core,'sound'),marker];
+
+  extraResources=[codexTarget,speechTarget,soundTarget];
 }
 const output=await packager({dir:stage,out:join(build,'app'),name:'Nagneon',executableName:'Nagneon',icon:join(root,'branding/nagneon.ico'),platform:'win32',arch:'x64',electronVersion,
   appVersion:pkg.version,buildVersion:pkg.version,asar:true,prune:false,overwrite:false,
@@ -138,6 +130,7 @@ const output=await packager({dir:stage,out:join(build,'app'),name:'Nagneon',exec
   win32metadata:{CompanyName:'Unspecified publisher (development build)',FileDescription:'Nagneon',ProductName:'Nagneon',InternalName:'Nagneon'}
 });
 const folder=output[0],exe=join(folder,'Nagneon.exe');
+const localePruning=await pruneElectronLocales(folder);
 await flipFuses(exe,{version:FuseVersion.V1,
   [FuseV1Options.RunAsNode]:false,[FuseV1Options.EnableNodeOptionsEnvironmentVariable]:false,
   [FuseV1Options.EnableNodeCliInspectArguments]:false,[FuseV1Options.EnableEmbeddedAsarIntegrityValidation]:true,
@@ -151,8 +144,8 @@ const inventory=[];
 const sourceCheck=await verifyPackageSources(root,folder,sourceManifest);
 if(!sourceCheck.passed)throw Error(sourceCheck.failures.join('\n'));
 for(const name of await files(folder))inventory.push({path:name,bytes:(await lstat(join(folder,name))).size,sha256:await hash(join(folder,name))});
-const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,layout:modular?'components':'bundled',acceptance:'not yet verified',electron:electronVersion,codex:codexPkg.version,
-  speech:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory,components:distributionComponents(inventory)};
+const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,layout:modular?'components':'bundled',acceptance:'not yet verified',localePruning,electron:electronVersion,codex:codexPkg.version,
+  speech:modular?{mode:'components',contentIds:catalog.components.map(({id,contentId})=>({id,contentId}))}:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory,components:distributionComponents(inventory)};
 await writeFile(join(build,'manifest.json'),JSON.stringify(report,null,2));
 await writeFile(join(build,'asar-files.json'),JSON.stringify(archiveFiles,null,2));
 await writeFile(join(root,'artifacts/latest-package.json'),JSON.stringify({folder,manifest:join(build,'manifest.json'),build},null,2));
