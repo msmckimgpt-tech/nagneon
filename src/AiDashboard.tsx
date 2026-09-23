@@ -54,7 +54,6 @@ export function AiDashboard({
   const [query, setQuery] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const [limit, setLimit] = useState('');
   const [rate, setRate] = useState({
     connection: '',
     model: '',
@@ -141,7 +140,7 @@ export function AiDashboard({
       <div className="ai-flow" aria-label="AI 동작 순서">
         <span>화면·음성·직접 요청</span>
         <b>→</b>
-        <span>실행 허용·호출 상한 확인</span>
+        <span>실행 허용·조건 확인</span>
         <b>→</b>
         <span className={ai.active.length ? 'ai-live' : ''}>
           모델 호출 <strong>{connected ? ai.active.length : '?'}</strong>
@@ -163,41 +162,13 @@ export function AiDashboard({
             <small>기본은 차단입니다. 켜면 아래에서 허용한 자동 활동이 동작합니다.</small>
           </span>
         </label>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (/^\d+$/.test(limit) && Number(limit) > 0)
-              void update({ dailyLimit: Number(limit) });
-            else setError('하루 호출 상한을 1 이상의 정수로 입력해주세요.');
-          }}
-        >
-          <label htmlFor="ai-call-limit">
-            하루 호출 상한{' '}
-            <b>{ai.policy.dailyLimit === null ? '미설정' : `${number(ai.policy.dailyLimit)}회`}</b>
-          </label>
-          <div className="ai-inline">
-            <input
-              id="ai-call-limit"
-              type="number"
-              min="1"
-              max="100000"
-              step="1"
-              placeholder="예: 100"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              disabled={disabled}
-            />
-            <button disabled={disabled}>적용</button>
-            <button
-              type="button"
-              disabled={disabled || ai.policy.dailyLimit === null}
-              onClick={() => void update({ dailyLimit: null })}
-            >
-              해제
-            </button>
-          </div>
-          <small>한국 시간 자정 기준 · 재시도·실패·연결 시험 포함 · 금액 상한이 아닙니다.</small>
-        </form>
+        <div>
+          <b>사용량을 확인하며 직접 관리하세요</b>
+          <small>
+            앱은 사용량 상한을 설정하지 않습니다. 필요할 때 전체 또는 기능별 AI 호출을 차단할 수
+            있습니다.
+          </small>
+        </div>
       </section>
       <section aria-label="AI 사용량">
         <div className="ai-section-heading">
@@ -352,8 +323,8 @@ export function AiDashboard({
         </div>
         {!visible.length && <p className="ai-empty">해당하는 AI 기능이 없습니다.</p>}
         <p className="ai-note">
-          허용 스위치를 켜도 즉시 호출하지 않습니다. 전체 차단·호출 상한·기능 설정을 함께
-          확인합니다. 재개 시 지난 요청을 몰아서 실행하지 않습니다.
+          허용 스위치를 켜도 즉시 호출하지 않습니다. 전체 차단·기능 설정을 함께 확인합니다. 재개 시
+          지난 요청을 몰아서 실행하지 않습니다.
         </p>
       </section>
       <section className="panel">
@@ -428,7 +399,7 @@ export function AiDashboard({
           <h3>사용 중인 모델과 연결</h3>
           <p>
             기능에 따라 지정한 모델과 대체 연결을 사용합니다. 실제 요청마다 위 기록에 남으며, 대체
-            요청도 호출 상한에 포함됩니다.
+            요청도 사용 기록에 별도로 남습니다.
           </p>
           <button className="secondary" onClick={() => navigate('settings:connection')}>
             AI 연결·모델 설정 <ArrowUpRight size={16} />

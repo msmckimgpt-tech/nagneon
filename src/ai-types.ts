@@ -20,7 +20,6 @@ export type AiRate = {
 export type AiPolicy = {
   paused: boolean;
   background: boolean;
-  dailyLimit: number | null;
   features: Record<string, boolean>;
   rates: AiRate[];
 };
