@@ -7,7 +7,7 @@ import {startServer} from '../server/index.js';
 import {Studio} from '../server/studio.js';
 import {defaults} from '../shared/defaults.js';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,readFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {ProviderChoice} from '../server/provider-choice.js';
 
@@ -87,6 +87,7 @@ test('authenticated policy API and connection probe use the same controller; das
  await req('ai/policy',{paused:false});await req('connection/probe',{},'POST');assert.equal(calls,1);const snapshot=await(await req('ai')).json();assert.equal(snapshot.usage.today.probe.calls,1);assert.equal(snapshot.recent[0].application,'accepted');
 });
 test('policy and usage survive actual server/profile restart without changing saved world or balance',async t=>{
+ await mkdir(resolve('artifacts'),{recursive:true});
  const dir=await mkdtemp(resolve('artifacts/ai-profile-'));let service;let calls=0;
  const options={port:0,dataDir:dir,localSpeech:false,provider:fake(async()=>{calls++;return response({total_tokens:5});})};
  t.after(async()=>service?.close());service=await startServer(options);const world=JSON.stringify(service.studio.world.data);
