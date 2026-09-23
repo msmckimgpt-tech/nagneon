@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  border-left: 3px solid #80e6cf !important;
+  border-left: 3px solid var(--neon) !important;
 }
 .ai-overview.ai-caution {
   border-left-color: #e9bb76 !important;
@@ -22,7 +22,7 @@
 .ai-kicker {
   letter-spacing: 0.15em;
   font-size: 11px;
-  color: #80e6cf;
+  color: var(--neon);
 }
 .ai-dashboard h2 {
   font-size: 19px;
@@ -62,7 +62,7 @@
   margin-left: 10px;
 }
 .ai-live {
-  color: #80e6cf !important;
+  color: var(--neon) !important;
 }
 .ai-policy {
   display: grid;
@@ -77,7 +77,7 @@
 .ai-dashboard input[role='switch'] {
   width: 36px;
   height: 20px;
-  accent-color: #80e6cf;
+  accent-color: var(--neon);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -126,9 +126,9 @@
   border: 1px solid transparent;
 }
 .ai-segments button[aria-pressed='true'] {
-  background: #1b3434;
-  color: #a4f6e2;
-  border-color: #335550;
+  background: var(--accent-soft);
+  color: var(--neon);
+  border-color: var(--accent-border);
 }
 .ai-metrics {
   display: grid;
@@ -240,12 +240,12 @@
 }
 .ai-status-link {
   font-size: 11px !important;
-  color: #a4f6e2 !important;
+  color: var(--neon) !important;
   padding: 5px 9px !important;
 }
 .ai-dashboard button:focus-visible,
 .ai-dashboard input:focus-visible {
-  outline: 2px solid #80e6cf;
+  outline: 2px solid var(--neon);
   outline-offset: 3px;
 }
 .ai-dashboard button:disabled,
