@@ -9,6 +9,8 @@ import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutor
 import { SpeechCapture } from './speech-screen.js';
 import { DebugConfig, initialDebug, withDebugPrompt, debugRoutes } from './debug-mode.js';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenBrowserLoopback, validateBrowserListenPort } from './browser-loopback.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
@@ -61,6 +63,9 @@ import { RuntimeComponents } from './runtime-components.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export async function startServer(options = {}) {
+  validateBrowserListenPort(
+    options.port === undefined ? Number(process.env.PORT) || 4318 : options.port,
+  );
   const release =
     options.persist === false
       ? () => {}
@@ -979,10 +984,7 @@ async function startServerImpl(
           : error.message || '요청 처리 실패',
     }),
   );
-  const server = await new Promise((resolve, reject) => {
-    const s = app.listen(port, '127.0.0.1', (error) => (error ? reject(error) : resolve(s)));
-    s.on('error', reject);
-  });
+  const server = await listenBrowserLoopback(createServer(app), { port });
   expectedHost = `127.0.0.1:${server.address().port}`;
   // Start the local worker only when the renderer requests audio preparation.
   const health = setInterval(() => studio.publish(), 5000);
