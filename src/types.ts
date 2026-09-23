@@ -54,6 +54,8 @@ export type Settings = {
   crowdStyle: 'cozy' | 'lively' | 'stadium';
   lurkRatio: number;
   communityCulture: string;
+  memesEnabled: boolean;
+  cultureDomains: string[];
   streamerStyle: string;
   adviceMode: 'on-request' | 'always' | 'never';
   webSearch: boolean;
@@ -155,6 +157,17 @@ export type State = {
   clips: ClipSummary[];
   economy: EconomyState;
   settings: Settings;
+  culture?: {
+    active: string | null;
+    error: string;
+    sources: {
+      origin: string;
+      nextAt: number;
+      checkedAt: number;
+      analyzedAt: number;
+      error: string;
+    }[];
+  };
   audience: {
     presence: Record<string, string>;
     members: Record<
