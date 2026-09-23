@@ -41,17 +41,24 @@ const child = spawn(
   { cwd: folder, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } },
 );
 report.pid = child.pid;
+report.lifecycle = { spawnedAt };
 child.stdout.on('data', (bytes) => logs.push(bytes));
 child.stderr.on('data', (bytes) => logs.push(bytes));
 let exited = false;
+child.once('exit', (code, signal) => {
+  report.lifecycle.processExit = { at: Date.now(), code, signal };
+});
 const closed = once(child, 'close').then(([code]) => {
   exited = true;
   report.exitCode = code;
+  report.lifecycle.pipesClosedAt = Date.now();
 });
 // Exercise the Windows title-bar close path. CDP Browser.close can time out
 // without acknowledging shutdown; it is not evidence of a normal user close.
 const psQuote = value => "'" + value.replaceAll("'", "''") + "'";
 async function closeNativeWindow() {
+  const attempt = { requestedAt: Date.now() };
+  (report.lifecycle.closeAttempts ||= []).push(attempt);
   const expectedExe = psQuote(join(folder, 'Nagneon.exe'));
   const expectedProfile = psQuote('--backseat-profile=' + profile);
   const script = [
@@ -70,6 +77,7 @@ async function closeNativeWindow() {
     closer.once('close', code => code === 0 ? done() : fail(Error('Normal window close failed: ' + error)));
   });
   report.closeMethod = 'owned Windows process CloseMainWindow';
+  attempt.acceptedAt = Date.now();
 }
 let socket,
   serial = 0;
