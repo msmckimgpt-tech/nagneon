@@ -3,7 +3,8 @@ import { useReadingPosition } from './useReadingPosition';
 import { api } from './api';
 import type { State } from './types';
 import './social-community.css';
-type Post = {
+import { SocialDiscussion, type Discussion } from './SocialDiscussion';
+type Post = Discussion & {
   id: string;
   communityId: string;
   topicId: string;
@@ -18,6 +19,7 @@ type Post = {
 };
 type Prefs = {
   enabled: boolean;
+  creativeImages: boolean;
   arrivalsEnabled: boolean;
   notifications: boolean;
   mutedCommunities: string[];
@@ -232,6 +234,19 @@ function OutsideCommunity({
         <p className="muted">
           앱이 열려 있는 동안 연결된 AI의 사용량을 소비합니다. 방송과 내 요청이 우선합니다.
         </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={p.creativeImages}
+            disabled={busy}
+            onChange={(e) => void patch({ creativeImages: e.target.checked })}
+          />{' '}
+          주민 창작 이미지 · 픽셀 그림
+        </label>
+        <p className="muted">
+          기본 OFF. 켜면 기존 AI가 일상 글과 함께 간단한 PNG 그림을 만들 수 있어요. 별도 유료 이미지
+          API는 사용하지 않습니다.
+        </p>
         {p.hiddenThreads.length > 0 && (
           <button
             className="text-button"
@@ -421,6 +436,12 @@ function OutsideCommunity({
                 글 잊기
               </button>
             </div>
+            <SocialDiscussion
+              key={selected.id}
+              post={selected}
+              onError={onError}
+              onChanged={() => setRefresh((v) => v + 1)}
+            />
           </article>
         ) : (
           <div aria-live="polite">
@@ -468,6 +489,11 @@ function OutsideCommunity({
                     </span>{' '}
                     · {new Date(post.at).toLocaleString('ko-KR')}
                     {post.bookmarked ? ' · 북마크' : ''}
+                    {' · 댓글 ' +
+                      post.comments.filter((c) => !c.deleted).length +
+                      ' · 추천 ' +
+                      post.recommendationCount}
+                    {post.attachments.length > 0 ? ' · 첨부 ' + post.attachments.length : ''}
                   </small>
                 </button>
               ))

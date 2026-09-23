@@ -255,6 +255,18 @@ try {
       await writeFile(join(output,'resident-authors.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
       report.checks.push('persisted independent author and current audience highlight survive packaged launch');
     }
+    if(process.argv.includes('--social-threads')) {
+      const post=await evaluate("fetch('/api/social/search').then(r=>r.json()).then(d=>d.posts.find(p=>p.attachments.length===2))");
+      assert.ok(post);assert.equal(post.comments.length,2);assert.equal(post.recommendationCount,1);assert.equal(prefs.creativeImages,false);
+      await evaluate(`[...document.querySelectorAll('.social-post')].find(p=>p.textContent.includes(${JSON.stringify(post.title)})).click()`);
+      await until("!!document.querySelector('.social-discussion')");await evaluate("document.querySelector('.social-discussion').scrollIntoView({block:'start'})");
+      await until("document.querySelector('.social-attachments img')?.naturalWidth===256 && document.querySelector('.social-attachments video')?.readyState>=2");
+      assert.equal(await evaluate("document.querySelectorAll('.social-comment').length"),2);
+      assert.equal(await evaluate("document.querySelectorAll('.social-replies .social-comment').length"),1);
+      await evaluate("document.querySelector('.social-attachments video').play()");await until("document.querySelector('.social-attachments video').currentTime>0.1");await evaluate("document.querySelector('.social-attachments video').pause()");
+      await writeFile(join(output,'threads.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
+      await click('← 글 목록');report.checks.push('persisted comments/reply/recommendation and actual PNG/WebM render and play in packaged app');
+    }
     const before=await readFile(join(profile,'data/world.json'),'utf8');
     await click('내 이야기 찾기');await until("!document.querySelector('.social-search button').disabled");
     assert.equal(await readFile(join(profile,'data/world.json'),'utf8'),before);

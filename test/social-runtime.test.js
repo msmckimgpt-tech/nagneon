@@ -112,3 +112,65 @@ test('author badge follows current audience membership on list and detail, witho
 test('all five communities and ten topics can be muted together and preserve an old four-community preference',async t=>{
  const f=await fixture(t);const list=f.s.social.list().communities;assert.equal(list.length,5);assert.equal((await req(f,'social/preferences',{mutedCommunities:list.map(c=>c.id),mutedTopics:list.flatMap(c=>c.topics.map(t=>t.id))},'PATCH')).status,200);assert.deepEqual(f.s.social.candidates(f.s.now()),[]);assert.equal((await req(f,'social/preferences',{mutedCommunities:['guide','clips','indie','lounge'],mutedTopics:[]},'PATCH')).status,200);assert.ok(f.s.social.candidates(f.s.now()).every(c=>c.raw.communityId==='banter'));
 });
+
+
+test('shared community spacing, topic spread and recent public daily context prevent same-topic bursts',async t=>{
+ const f=await fixture(t),{author,reader}=f.add();await f.run(f.target('social-daily',author));
+ assert.ok(!f.s.social.candidates(f.s.now()).some(c=>c.kind==='social-daily'&&c.raw.communityId==='guide'));
+ f.advance(20*60000+1);const candidate=f.s.social.candidates(f.s.now()).find(c=>c.kind==='social-daily'&&c.id===reader.id);assert.ok(candidate);assert.notEqual(candidate.raw.topicId,f.s.social.data().threads[0].topicId);
+ await f.run(candidate);assert.equal(f.s.social.data().threads.length,1);assert.equal(f.s.ai.snapshot().recent[0].activityResult,'no-post');assert.equal(f.calls.at(-1).special.recentPosts.length,1);
+});
+test('comments, replies and idempotent recommendations retain existing broadcast receipt across restart',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'social-discussion-'));let f=await fixture(null,{persist:true,dataDir:dir});const {author,reader}=f.add(),post=await f.mention(author);await f.read(reader,post);const receipt=f.s.social.data().receipts[0];
+ let response=await req(f,'social/threads/'+post.id+'/comments',{text:'흥미로운 방법이네'});assert.equal(response.status,200);let dto=await response.json();const parent=dto.comments[0];
+ response=await req(f,'social/threads/'+post.id+'/comments',{text:'다른 방법도 있을까',parentId:parent.id});assert.equal(response.status,200);
+ await req(f,'social/threads/'+post.id+'/recommendation',{recommended:true},'PUT');await req(f,'social/threads/'+post.id+'/recommendation',{recommended:true},'PUT');
+ assert.equal(f.s.social.detail(post.id).recommendationCount,1);assert.equal(f.s.social.validReceipt(receipt),true);
+ await f.close();f=await fixture(null,{persist:true,dataDir:dir});try{dto=f.s.social.detail(post.id);assert.equal(dto.comments.length,2);assert.equal(dto.comments[1].parentId,parent.id);assert.equal(dto.recommendationCount,1);assert.equal(f.s.social.validReceipt(receipt),true);}finally{await f.close();}
+});
+test('resident replies to delivered comments and votes once; own response does not cause another visit',async t=>{
+ const f=await fixture(t,{react:async a=>result({messages:[{personaId:a.settings.personas[0].id,text:a.special.kind==='social-discuss'?'그 길은 조작을 바꾸면 더 편하더라':'새로운 경로를 찾아봤어',kind:'chat',spoiler:false,replyTo:a.special.delivered?.comments?.[0]?.id||null}],communityVotes:[{personaId:a.settings.personas[0].id,recommended:true}]})}),{author,reader}=f.add();
+ await f.run(f.target('social-daily',author));const post=f.s.social.data().threads[0];f.s.social.comment(post.id,{text:'키보드로 해도 되나요'});
+ const target=f.s.social.candidates(f.s.now()).find(c=>c.kind==='social-discuss'&&c.viewer.id===reader.persona.id);assert.ok(target);await f.run(target);
+ const dto=f.s.social.detail(post.id);assert.equal(dto.comments.length,2);assert.equal(dto.comments[1].parentId,dto.comments[0].id);assert.equal(dto.recommendationCount,1);assert.equal(dto.comments[1].authorIsViewer,false);assert.equal(f.s.social.data().receipts.length,0);
+ f.advance(31*60000);assert.ok(!f.s.social.candidates(f.s.now()).some(c=>c.kind==='social-discuss'&&c.viewer.id===reader.persona.id));
+});
+test('forged parent, deleted parent and failed saves reject atomically',async t=>{
+ const f=await fixture(t),{author}=f.add();await f.run(f.target('social-daily',author));const post=f.s.social.data().threads[0];
+ assert.throws(()=>f.s.social.comment(post.id,{text:'답글',parentId:randomUUID()}),/답글/);assert.equal(f.s.social.detail(post.id).comments.length,0);
+ const dto=f.s.social.comment(post.id,{text:'원문'});f.s.social.removeComment(post.id,dto.comments[0].id);assert.throws(()=>f.s.social.comment(post.id,{text:'답글',parentId:dto.comments[0].id}),/답글/);
+ const before=JSON.stringify(f.s.world.data);f.s.world.save=()=>{throw Error('disk full');};assert.throws(()=>f.s.social.recommend(post.id,{recommended:true}),/disk full/);assert.equal(JSON.stringify(f.s.world.data),before);
+});
+test('late discussion result is rejected after original comment deletion',async t=>{
+ let finish;const f=await fixture(t,{react:async a=>a.special.kind==='social-discuss'?new Promise(r=>finish=r):result({messages:[{personaId:a.settings.personas[0].id,text:'다양한 조작 설정을 비교했다',kind:'chat',spoiler:false}]})}),{author,reader}=f.add();await f.run(f.target('social-daily',author));const post=f.s.social.data().threads[0],dto=f.s.social.comment(post.id,{text:'나중에 지울 내용'});
+ const target=f.s.social.candidates(f.s.now()).find(c=>c.kind==='social-discuss'&&c.viewer.id===reader.persona.id),running=f.run(target);f.s.social.removeComment(post.id,dto.comments[0].id);finish(result({messages:[{personaId:reader.persona.id,text:'늦은 답',kind:'chat',spoiler:false}]}));await assert.rejects(running,/abort/i);assert.equal(f.s.social.detail(post.id).comments.length,1);
+});
+test('real PNG upload is authenticated, bounded, persistent and inaccessible after forgetting',async t=>{
+ const {pixelPng}=await import('../server/social-media.js');const png=pixelPng(JSON.stringify({palette:['#112233','#aabbcc'],pixels:Array(16).fill('0101010101010101')}));const dir=mkdtempSync(join(tmpdir(),'social-media-'));let f=await fixture(t,{persist:true,dataDir:dir});const {author}=f.add();await f.run(f.target('social-daily',author));const id=f.s.social.data().threads[0].id;
+ const url=f.url+'/api/social/threads/'+id+'/attachments',headers={Authorization:'Bearer '+f.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent('검증.png')};
+ assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Backseat-Client':'studio'},body:png})).status,401);
+ assert.equal((await fetch(url,{method:'POST',headers,body:Buffer.from('<svg onload=alert(1) />')})).status,409);
+ const response=await fetch(url,{method:'POST',headers,body:png});assert.equal(response.status,200);const a=(await response.json()).attachments[0];let media=await req(f,a.url.slice(5));assert.equal(media.status,200);assert.deepEqual(Buffer.from(await media.arrayBuffer()),png);assert.equal(media.headers.get('cache-control'),'no-store');
+ await f.close();f=await fixture(null,{persist:true,dataDir:dir});try{assert.equal(f.s.social.detail(id).attachments[0].available,true);f.s.social.forget('thread',[id]);media=await req(f,a.url.slice(5));assert.equal(media.status,409);}finally{await f.close();}
+});
+test('creative pixel PNG is default OFF; ON persists artwork and OFF strips generation instruction',async t=>{
+ const {pixelPng}=await import('../server/social-media.js');const art=JSON.stringify({palette:['#000000','#ffffff'],pixels:Array(16).fill('0000111100001111')});
+ const f=await fixture(t,{react:async a=>result({scene:art,messages:[{personaId:a.settings.personas[0].id,text:'새로 그린 성 지도를 소개함',kind:'chat',spoiler:false}]})}),{author}=f.add();assert.equal(f.s.social.data().preferences.creativeImages,false);await f.run(f.target('social-daily',author));assert.equal(f.s.social.detail(f.s.social.data().threads[0].id).attachments.length,0);assert.ok(!f.calls[0].special.instruction.includes('palette'));
+ f.s.social.preferences({creativeImages:true});f.advance(86400001);await f.run(f.target('social-daily',author));const a=f.s.social.detail(f.s.social.data().threads.at(-1).id).attachments[0];assert.equal(a.generated,true);assert.deepEqual(f.s.social.media.read(a),pixelPng(art));assert.match(f.calls.at(-1).special.instruction,/palette/);
+ assert.equal(pixelPng('{"script":"alert(1)"}'),null);assert.equal(pixelPng(JSON.stringify({palette:['#000000','#ffffff'],pixels:Array(16).fill('9999999999999999')})),null);
+});
+
+test('broadcast attachments reference only an existing witnessed clip; deleting original makes media unavailable',async t=>{
+ const {pixelPng}=await import('../server/social-media.js');const dir=mkdtempSync(join(tmpdir(),'social-clip-ref-')),f=await fixture(t,{persist:true,dataDir:dir}),{author}=f.add(),source=f.source();
+ const png=pixelPng(JSON.stringify({palette:['#000000','#ffffff'],pixels:Array(16).fill('0101010101010101')}));
+ const c=f.s.clips.create({title:'같이 본 장면',game:'퍼즐',participants:[{id:author.persona.id,name:author.persona.name}],messages:[{id:source.id,personaId:'streamer',name:'방장님',text:'공개 발언',time:f.s.now(),kind:'streamer'}],scene:'검증 장면',sessionId:randomUUID(),image:'data:image/png;base64,'+png.toString('base64')});
+ assert.equal(f.s.social.sharedClip(source,'unrelated'),null);await f.run(f.target('social-mention',author,source));const post=f.s.social.detail(f.s.social.data().threads[0].id);assert.equal(post.attachments[0].clipId,c.id);assert.equal(post.attachments[0].available,true);f.s.clips.remove(c.id);assert.equal(f.s.social.detail(post.id).attachments[0].available,false);
+});
+
+test('attachment limits and failed metadata save leave no published or orphan media',async t=>{
+ const {pixelPng,SocialMedia}=await import('../server/social-media.js'),f=await fixture(t),{author}=f.add();await f.run(f.target('social-daily',author));const post=f.s.social.data().threads[0],png=pixelPng(JSON.stringify({palette:['#000000','#ffffff'],pixels:Array(16).fill('0101010101010101')}));
+ const oversized=Buffer.alloc(8*1024*1024+1);png.copy(oversized);assert.throws(()=>f.s.social.attach(post.id,oversized,'large.png'),/8MB/);
+ assert.throws(()=>f.s.social.media.save(Buffer.alloc(24*1024*1024+1),'large.webm'),/24MB/);
+ const full=new SocialMedia();full.used=()=>200*1024*1024;assert.throws(()=>full.save(png,'quota.png'),/200MB/);
+ f.s.world.save=()=>{throw Error('metadata failure');};assert.throws(()=>f.s.social.attach(post.id,png,'rollback.png'),/metadata failure/);assert.equal(f.s.social.media.memory.size,0);assert.equal(f.s.social.detail(post.id).attachments.length,0);
+});
