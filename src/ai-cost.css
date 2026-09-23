@@ -1,0 +1,22 @@
+.ai-cost-summary .ai-cost-value {
+  font-size: clamp(1.15rem, 1.6vw, 1.65rem);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ai-cost-summary > span {
+  display: block;
+  line-height: 1.6;
+}
+.ai-cost-summary > button {
+  margin-top: 0.65rem;
+  align-self: flex-start;
+}
+.ai-request-cost {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+.ai-rates select {
+  width: 100%;
+  max-width: 100%;
+  margin-block: 0.5rem 1rem;
+}

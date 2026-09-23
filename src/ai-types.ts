@@ -9,6 +9,11 @@ export type AiUsage = {
   total: number;
   estimatedUsd: number;
   priced: number;
+  apiUncertaintyUsd: number;
+  referenceUsd: number;
+  referenceUncertaintyUsd: number;
+  referencePriced: number;
+  localCalls: number;
 };
 export type AiRate = {
   connection: string;
@@ -16,6 +21,25 @@ export type AiRate = {
   input: number;
   cached: number;
   output: number;
+  cacheWrite?: number;
+};
+export type AiPricing = {
+  kind: 'api' | 'reference' | 'local' | 'unavailable';
+  reason:
+    | 'calculated'
+    | 'missing-rate'
+    | 'missing-usage'
+    | 'invalid-usage'
+    | 'unsupported'
+    | 'running'
+    | 'local';
+  usd: number | null;
+  uncertaintyUsd: number;
+  source: 'official' | 'manual' | 'legacy' | 'none';
+  checkedAt: string;
+  longContext: boolean;
+  backfilled?: boolean;
+  rates?: { input: number; cached: number; cacheWrite: number; output: number };
 };
 export type AiPolicy = {
   paused: boolean;
@@ -44,6 +68,11 @@ export type AiState = {
   active: { id: string; featureId: string; status: string }[];
   features: AiFeature[];
   usage: Record<'today' | 'week' | 'session', Record<string, AiUsage>>;
+  pricingCatalog?: {
+    checkedAt: string;
+    source: string;
+    models: Omit<AiRate, 'connection'>[];
+  };
   recent: {
     id: string;
     featureId: string;
@@ -57,8 +86,10 @@ export type AiState = {
       cached: number | null;
       output: number | null;
       total: number | null;
+      cacheWrite?: number | null;
     } | null;
     estimatedUsd: number | null;
+    pricing?: AiPricing;
     application: string;
     activityKind?: string;
     activityResult?: string;
