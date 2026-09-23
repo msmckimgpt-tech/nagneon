@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import type { State } from './types';
 import labels from '../shared/provider-routes.json';
+import audienceModels from '../shared/audience-models.json';
 
 export type ConnectionSpec = {
   id: string;
@@ -30,6 +31,9 @@ export type RoutingState = {
   connections: { id: string; configured: boolean }[];
 };
 const standard = (id: string): Route => ({ primary: id, fallbacks: [], timeoutMs: 45000 });
+const customModelValue = '__custom__';
+const isCatalogModel = (model?: string) =>
+  audienceModels.models.some((entry) => entry.id === model);
 
 export function ProviderRouting({ state, disabled }: { state: State; disabled: boolean }) {
   const current = state.providerChoice!;
@@ -63,6 +67,10 @@ export function ProviderRouting({ state, disabled }: { state: State; disabled: b
     [keys, setKeys] = useState<Record<string, string>>({}),
     [probes, setProbes] = useState<Record<string, string>>({});
   const savedSignature = JSON.stringify(current.routing?.config || current.config);
+  const isCustomModel = (c: ConnectionSpec) =>
+    c.provider.kind === 'codex' &&
+    !!c.provider.model &&
+    (c.provider.model === customModelValue || !isCatalogModel(c.provider.model));
   useEffect(() => {
     setDraft(initial());
     setKeys({});
@@ -93,6 +101,9 @@ export function ProviderRouting({ state, disabled }: { state: State; disabled: b
   }
   const matching =
     current.routing && JSON.stringify(draft) === JSON.stringify(current.routing.config);
+  const invalidCustomModel = draft.connections.some(
+    (c) => c.provider.kind === 'codex' && c.provider.model === customModelValue,
+  );
   return (
     <details className="login-alternative">
       <summary>역할별 모델 라우팅</summary>
@@ -145,18 +156,51 @@ export function ProviderRouting({ state, disabled }: { state: State; disabled: b
                 <option value="openai">OpenAI 호환 API</option>
               </select>
             </label>
-            <label>
-              모델 ID
-              <input
-                aria-label={`연결 ${i + 1} 모델`}
-                value={c.provider.model || ''}
-                maxLength={200}
-                placeholder={
-                  c.provider.kind === 'codex' ? '비워두면 앱 기본 모델' : '제공처의 정확한 모델 ID'
-                }
-                onChange={(e) => provider(c, { model: e.target.value || undefined })}
-              />
-            </label>
+            {c.provider.kind === 'codex' ? (
+              <>
+                <label>
+                  모델
+                  <select
+                    aria-label={`연결 ${i + 1} 모델`}
+                    value={isCustomModel(c) ? customModelValue : c.provider.model || ''}
+                    onChange={(e) => provider(c, { model: e.target.value || undefined })}
+                  >
+                    <option value="">앱 기본 설정 사용</option>
+                    {audienceModels.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                    <option value={customModelValue}>목록에 없는 모델 직접 입력</option>
+                  </select>
+                </label>
+                {isCustomModel(c) && (
+                  <label>
+                    사용자 지정 모델 ID
+                    <input
+                      aria-label={`연결 ${i + 1} 사용자 지정 모델`}
+                      value={c.provider.model === customModelValue ? '' : c.provider.model || ''}
+                      maxLength={200}
+                      placeholder="제공처의 정확한 모델 ID"
+                      onChange={(e) => provider(c, { model: e.target.value || undefined })}
+                    />
+                  </label>
+                )}
+              </>
+            ) : (
+              <label>
+                모델 ID
+                <input
+                  aria-label={`연결 ${i + 1} 모델`}
+                  value={c.provider.model || ''}
+                  maxLength={200}
+                  placeholder={
+                    c.provider.kind === 'ollama' ? '설치한 모델명' : '제공처의 정확한 모델 ID'
+                  }
+                  onChange={(e) => provider(c, { model: e.target.value || undefined })}
+                />
+              </label>
+            )}
             {c.provider.kind !== 'codex' && (
               <label>
                 서버 주소
@@ -433,9 +477,15 @@ export function ProviderRouting({ state, disabled }: { state: State; disabled: b
           연결·모델 사용 불가 또는 시간 초과 때만 순서대로 사용합니다. 지정한 대체 서버에도 같은
           입력을 전송하며, 취소·인증·사용량 오류에서는 중단합니다.
         </p>
+        {invalidCustomModel && (
+          <p role="alert" className="connection-problem">
+            사용자 지정 모델 ID를 입력하세요.
+          </p>
+        )}
         <button
           type="button"
           className="secondary"
+          disabled={invalidCustomModel}
           onClick={() =>
             void perform(async () => {
               const response = (await api('connection/provider', draft)) as State['providerChoice'];
