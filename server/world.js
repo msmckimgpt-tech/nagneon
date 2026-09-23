@@ -1,3 +1,4 @@
+import {SocialRuntimeData,migrateSocial} from './social-runtime-state.js';
 import {z} from 'zod';
 import {randomUUID} from 'node:crypto';
 import {Settings} from './schema.js';
@@ -6,12 +7,12 @@ const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/).refine(v=>!['__proto__','c
 
 // Roster, relationship state and point settlement share one JsonStore rename.
 // Legacy files are inputs to the first migration only; they remain untouched.
-export const WorldData=z.object({
-  version:z.literal(1),settings:Settings,audience:AudienceData,economy:EconomyData,
+const CurrentWorldData=z.object({
+  version:z.literal(2),socialWorld:SocialRuntimeData,settings:Settings,audience:AudienceData,economy:EconomyData,
   autonomy:z.object({
     retired:z.record(z.string(),z.unknown()).default({}),
     unlocks:z.record(actor,z.object({profile:z.boolean().optional(),relations:z.boolean().optional()})).default({}),
-    receipts:z.record(z.string().uuid(),z.object({firstTutorial:z.boolean().optional(),status:z.enum(['pending','completed','failed']),cost:z.number().int().nonnegative(),at:z.number(),source:z.object({path:z.enum(['points','broadcast','clip']),key:z.string(),label:z.string(),clipId:z.string().optional()}),personaId:z.string().optional(),error:z.string().optional()})).default({}),
+    receipts:z.record(z.string().uuid(),z.object({firstTutorial:z.boolean().optional(),status:z.enum(['pending','completed','failed']),cost:z.number().int().nonnegative(),at:z.number(),source:z.object({path:z.enum(['points','broadcast','clip','community']),key:z.string(),label:z.string(),clipId:z.string().optional()}),personaId:z.string().optional(),error:z.string().optional()})).default({}),
     broadcastSeconds:z.number().nonnegative().default(0),lastArrivalAt:z.number().nonnegative().default(0)
   })
 }).superRefine((value,ctx)=>{
@@ -22,6 +23,7 @@ export const WorldData=z.object({
       ctx.addIssue({code:'custom',message:'클립 유입 기억과 관객 생성 기록이 일치하지 않습니다.',path:['audience','members',id,'arrivalClip']});
   }
 });
+export const WorldData=z.preprocess(value=>value?.version===1?{...value,version:2,socialWorld:migrateSocial(value.socialWorld)}:value,CurrentWorldData);
 export function migrateWorld(settings,audience,economy,{fresh=false}={}){
   const next=structuredClone({version:1,settings,audience,economy,autonomy:{retired:{},receipts:{},broadcastSeconds:0,lastArrivalAt:0}});
   if(fresh){

@@ -1,7 +1,16 @@
+import {
+  ownProfileWriter,
+  inspectWorldFormat,
+  markWorldFormat,
+  backupWorldV1,
+} from './profile-writer.js';
+import { socialRoutes } from './social-runtime.js';
 import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutorial.js';
 import { SpeechCapture } from './speech-screen.js';
 import { DebugConfig, initialDebug, withDebugPrompt, debugRoutes } from './debug-mode.js';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenBrowserLoopback, validateBrowserListenPort } from './browser-loopback.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
@@ -53,34 +62,60 @@ import { externalChatRoutes } from './external-chat-session.js';
 import { RuntimeComponents } from './runtime-components.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export async function startServer({
-  port = Number(process.env.PORT) || 4318,
-  dataDir = resolve(root, 'data'),
-  provider,
-  persist = true,
-  localSpeech = true,
-  speechWorker,
-  soundWorker,
-  browserConnect = false,
-  developmentOrigin,
-  runtime = {},
-  obsClientFactory,
-  youtubeFactory,
-  chzzkFactory,
-  authFactory,
-  openExternalAuth,
-  providerFactories,
-  providerSwitchAllowed = () => true,
-} = {}) {
+export async function startServer(options = {}) {
+  validateBrowserListenPort(
+    options.port === undefined ? Number(process.env.PORT) || 4318 : options.port,
+  );
+  const release =
+    options.persist === false
+      ? () => {}
+      : ownProfileWriter(options.dataDir || resolve(root, 'data'));
+  const cleanups = [];
+  try {
+    const service = await startServerImpl(options, (cleanup) => cleanups.push(cleanup));
+    const close = service.close;
+    let closing;
+    service.close = () => (closing ||= close().finally(release));
+    return service;
+  } catch (error) {
+    await Promise.allSettled(cleanups.map((cleanup) => Promise.resolve().then(cleanup)));
+    release();
+    throw error;
+  }
+}
+async function startServerImpl(
+  {
+    port = Number(process.env.PORT) || 4318,
+    dataDir = resolve(root, 'data'),
+    provider,
+    persist = true,
+    localSpeech = true,
+    speechWorker,
+    soundWorker,
+    browserConnect = false,
+    developmentOrigin,
+    runtime = {},
+    obsClientFactory,
+    youtubeFactory,
+    chzzkFactory,
+    authFactory,
+    openExternalAuth,
+    providerFactories,
+    providerSwitchAllowed = () => true,
+  } = {},
+  onResource = () => {},
+) {
   const access = createLocalAccess({ browserConnect });
   let expectedHost;
   const stores = [];
+  const worldFormat = persist ? inspectWorldFormat(dataDir) : { protected: false, migrate: false };
   const useStore = (name, schema, initial) => {
     if (!persist) return { data: initial(), save: () => {} };
     const store = new JsonStore(resolve(dataDir, name + '.json'), {
       validate: (value) => schema.parse(value),
       initial,
       backupCount: 3,
+      forbidRecovery: name === 'world' && worldFormat.protected,
     });
     const data = store.load();
     stores.push(store);
@@ -125,6 +160,8 @@ export async function startServer({
   if (provider.check) await provider.check();
   const speech = speechWorker || new LocalSpeech(runtime.speech);
   const sound = soundWorker || new LocalSound(runtime.sound);
+  onResource(() => speech.close?.());
+  onResource(() => sound.close?.());
   const clipInspector = new ClipInspector(runtime.clips);
   const runtimeComponents = runtime.components ? new RuntimeComponents(runtime.components) : null;
   if (runtimeComponents) {
@@ -149,6 +186,7 @@ export async function startServer({
   }
   let debug;
   const requests = new RequestLifetime();
+  onResource(() => requests.close());
   provider = ownProviderRequests(
     withDebugPrompt(provider, () => debug?.read()),
     requests,
@@ -186,7 +224,12 @@ export async function startServer({
     }),
   );
   const cultureStore = useStore('culture-learning', CultureLearningData, emptyCultureLearning);
-  const aiStore = useStore('ai-control', AiControlData, emptyAiControl);
+  const aiStore = useStore('ai-control', AiControlData, () => {
+    const value = emptyAiControl();
+    value.policy.background = true;
+    value.policy.features.culture = false;
+    return value;
+  });
   const clipsStore = useStore('clips', ClipsData, () => []);
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
@@ -200,8 +243,21 @@ export async function startServer({
   // first-run identity so a partial completion cannot become a legacy profile.
   if (persist && !existsSync(resolve(dataDir, 'onboarding.json')))
     onboardingStore.save(onboardingStore.data);
-  if (!hasWorld) worldStore.save(worldStore.data);
+  if (persist) {
+    backupWorldV1(dataDir);
+    markWorldFormat(dataDir);
+  }
+  if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);
   const world = new World(worldStore.data, worldStore.save);
+  if (
+    stores.some(
+      (store) =>
+        store.recoveredFrom && (store === journalStorage || store.file?.endsWith('clips.json')),
+    )
+  )
+    world.change((d) => {
+      d.socialWorld.quarantined = true;
+    });
   world.recover();
   const knowledge = new Knowledge(knowledgeStore.data, knowledgeStore.save);
   const audience = new Audience(world.data.audience, (value) => world.part('audience', value));
@@ -237,10 +293,14 @@ export async function startServer({
     clipPerception: new ClipPerception(runtime),
     storageStatus,
   });
+  onResource(() => studio.close());
+  onResource(() => studio.culture.close());
+  onResource(() => studio.communityActivity.yield());
   provider = studio.provider;
   const app = express();
   if (providerChoice) providerChoice.onFallback = () => studio.reserveCall();
   const tutorial = new Tutorial(studio, tutorialStore);
+  studio.tutorialReady = () => ['completed', 'skipped'].includes(tutorial.store.data.status);
   const probe = new ConnectionProbe(provider, () => studio.publish());
   const obsInput = new ObsInput({
     createClient: obsClientFactory,
@@ -302,6 +362,7 @@ export async function startServer({
       ? res.status(409).json({ error: 'AI 제공처 변경을 마친 뒤 다시 시도하세요.' })
       : next(),
   );
+  socialRoutes(app, studio);
   app.get('/api/state', (_req, res) => res.json(studio.state()));
   app.get('/api/ai', (_req, res) => res.json(studio.ai.snapshot()));
   app.patch('/api/ai/policy', (req, res) => res.json(studio.ai.update(req.body)));
@@ -923,10 +984,7 @@ export async function startServer({
           : error.message || '요청 처리 실패',
     }),
   );
-  const server = await new Promise((resolve, reject) => {
-    const s = app.listen(port, '127.0.0.1', () => resolve(s));
-    s.on('error', reject);
-  });
+  const server = await listenBrowserLoopback(createServer(app), { port });
   expectedHost = `127.0.0.1:${server.address().port}`;
   // Start the local worker only when the renderer requests audio preparation.
   const health = setInterval(() => studio.publish(), 5000);

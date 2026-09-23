@@ -189,7 +189,7 @@ export class AiControl {
     if (!p.features[id]) return '이 AI 기능의 실행 허용이 꺼져 있습니다.';
     if (f.scope === 'background' && !p.background)
       return '방송 밖 자동 AI 호출이 차단되어 있습니다.';
-    if (id === 'community' && ctx.settings?.communityActivityEnabled === false)
+    if (id === 'community' && ctx.settings?.communityActivityEnabled === false && !ctx.social?.enabled)
       return '기존 설정에서 커뮤니티 자동 활동을 껐습니다.';
     if (id === 'culture' && ctx.settings?.memesEnabled === false)
       return '기존 설정에서 문화·밈 사용을 껐습니다.';

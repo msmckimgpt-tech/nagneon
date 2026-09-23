@@ -77,3 +77,7 @@ Codex 패키지에서 실행한 자식 프로세스의 AppData 접근이 패키�
 - 기존 CMD 데이터의 격리 복사본으로 패키지 시작/정상 종료를 확인했다(`artifacts/native-main-import.json`). 실제 기본 프로필에서도 관객·포인트는 원본과 같고 기존 설정값은 보존됐다. 신규 설정인 communityActivityEnabled와 speechDevice만 스키마 기본값으로 추가됐다.
 - `artifacts/final-data-preservation.json`: 프로젝트 원본 337개 파일 해시 유지, 이전 기본 프로필과 프리뷰 데이터 보존.
 - 원본 작업 `f1e1f2c` → squash 통합 `83efaf0`, 실행기 수정 `ed5707b` → squash 통합 `3527fe6`. 통합 코드의 679개 테스트/빌드와 PowerShell 실행기 검증을 통과했다. 작업 브랜치는 내용 일치를 확인한 뒤 로컬/원격에서 정리했다. 실행본·모델·검증 자료가 있는 worktree는 보존한다.
+
+## 0.1.7 사회 기록 형식
+
+world.json v2는 삭제한 기억의 재등장을 막기 위해 손상 시 자동 백업 복귀를 하지 않는다. 변환 전 v1 원본은 migration-backups에 해시 검증하여 보존한다. profile-format.json이 있는 프로필은 최소 0.1.7이 필요하며 실행기는 storage.json의 선택 프로필 또는 실제 기본 프로필을 검사한다. 구버전 복귀는 업데이트 전 백업을 별도 프로필로 복사해 수행하며 현재 v2 기록은 덮어쓰지 않는다. [세부 동작](EXTERNAL-COMMUNITIES.md)을 참고한다.

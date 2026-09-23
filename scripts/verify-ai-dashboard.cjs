@@ -11,6 +11,7 @@ app.whenReady().then(async()=>{
  try{
   const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href);let calls=0;
   service=await startServer({port:0,persist:false,localSpeech:false,provider:{model:'synthetic-ui',status:()=>({kind:'codex',configured:true}),react:async()=>{calls++;return {observation:{messages:[{personaId:'probe',text:'합성 응답'}]},usage:{input_tokens:12,output_tokens:3,total_tokens:15}};}}});
+  assert.equal(service.studio.ai.data.policy.background,true);assert.equal(service.studio.ai.data.policy.features.culture,false);service.studio.ai.update({background:false});checks.push('new social defaults allow background without enabling culture; saved explicit OFF is respected');
   const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};
   assert.equal((await fetch(service.url+'/api/onboarding',{method:'POST',headers,body:JSON.stringify({skip:true})})).status,200);
   win=new BrowserWindow({width:1440,height:1000,show:false,webPreferences:{offscreen:true,backgroundThrottling:false,session:createStudioSession(session,service),contextIsolation:true,sandbox:true}});
@@ -20,7 +21,7 @@ app.whenReady().then(async()=>{
   const click=async label=>{assert.equal(await js(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)return false;b.click();return true;})()`),true,label);};
   const shot=async name=>{await new Promise(r=>setTimeout(r,250));fs.writeFileSync(join(out,name+'.png'),(await win.webContents.capturePage()).toPNG());};
   await win.loadURL(service.url);await until(`!!document.querySelector('.app-shell')`);await click('AI 대시보드');await until(`!!document.querySelector('.ai-dashboard')`);
-  assert.equal(service.studio.ai.data.policy.background,false);assert.equal(calls,0);assert.match(await js('document.querySelector(".ai-overview").innerText'),/방송 밖 자동 AI 차단/);checks.push('dashboard opens without model call; background default is blocked');
+  assert.equal(service.studio.ai.data.policy.background,false);assert.equal(calls,0);assert.match(await js('document.querySelector(".ai-overview").innerText'),/방송 밖 자동 AI 차단/);checks.push('dashboard opens without model call; explicit background OFF is blocked');
   await click('모든 AI 호출 차단');await until(`document.querySelector('.ai-overview').innerText.includes('모든 AI 호출 차단 중')`);assert.equal(service.studio.ai.data.policy.paused,true);
   await win.reload();await until(`!!document.querySelector('.app-shell')`);await click('AI 대시보드');await until(`document.querySelector('.ai-overview')?.innerText.includes('모든 AI 호출 차단 중')`);await click('AI 호출 차단 해제');await until(`!document.querySelector('.ai-overview').innerText.includes('모든 AI 호출 차단 중')`);checks.push('master pause reaches server and survives renderer reload');
   await until(`!document.querySelector('.ai-policy input[role=switch]').disabled`);await js(`document.querySelector('.ai-policy input[role=switch]').click()`);await until(`document.querySelector('.ai-overview').innerText.includes('방송 밖 자동 AI 허용 중')`);assert.equal(service.studio.ai.data.policy.background,true);assert.equal(calls,0);

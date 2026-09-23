@@ -14,7 +14,7 @@ test('authenticated settings, background analysis, restart and source removal pr
   const options = { port: 0, dataDir: folder, provider, localSpeech: false };
   t.after(async () => { await service?.close(); });
   service = await startServer(options);
-  service.studio.ai.update({background:true});
+  service.studio.ai.update({background:true,features:{culture:true}});
   const put = async body => {
     const response = await fetch(service.url + '/api/settings', { method: 'PUT', headers: { Authorization: 'Bearer ' + service.accessToken, 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' }, body: JSON.stringify(body) });
     assert.equal(response.status, 200, await response.text());
@@ -42,7 +42,7 @@ test('authenticated settings, background analysis, restart and source removal pr
 
 test('server close aborts and drains an owned background collector', async t => {
   const service = await startServer({ port: 0, persist: false, localSpeech: false, provider: { status: () => ({ configured: true }) } });
-  service.studio.ai.update({background:true});
+  service.studio.ai.update({background:true,features:{culture:true}});
   t.after(() => service.close());
   const s = service.studio; clearInterval(s.timer);
   s.settings.mode = 'live'; s.settings.cultureDomains = ['https://community.example.org'];
