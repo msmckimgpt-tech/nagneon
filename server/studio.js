@@ -144,6 +144,8 @@ export class Studio extends EventEmitter {
     this.startedAt = null;
     this.voiceCues = null;
     this.failures = 0;
+    this.retrySuccesses = 0;
+    this.retryFailures = 0;
     this.retryAt = 0;
   }
   endVideo({ sessionId, sourceId }) {
@@ -684,6 +686,21 @@ export class Studio extends EventEmitter {
   reserveCall() {
     this.calls++;
   }
+  reactionFailed() {
+    this.retrySuccesses = 0;
+    this.retryFailures = Math.min(5, this.retryFailures + 1);
+    this.failures = this.retryFailures;
+    this.retryAt = this.now() + Math.min(60000, 3000 * 2 ** this.failures);
+  }
+  reactionRecovered() {
+    this.retryAt = 0;
+    // 한 번의 성공만으로 불안정한 연결의 실패 이력을 지우지 않는다.
+    this.retrySuccesses = Math.min(3, this.retrySuccesses + 1);
+    if (this.retrySuccesses === 3) {
+      this.failures = 0;
+      this.retryFailures = 0;
+    }
+  }
   // 요청 캡처 시점의 목격자 스냅샷: 화면을 함께 본 것으로 인정할, 이번 세션에 실제 입장한(joinedAt>=startedAt) active/lurking 관객.
   // 모델 응답이 지연되어 그 사이 입장/이탈이 생겨도 이 스냅샷을 기준으로 목격을 판단한다(늦게 온 관객은 목격자가 아니다).
   presentWitnesses() {
@@ -868,8 +885,7 @@ export class Studio extends EventEmitter {
       }
       if (viewing) this.viewing.acknowledge(viewing);
       this.speechInbox.acknowledge(speechBatch.ids);
-      this.failures = 0;
-      this.retryAt = 0;
+      this.reactionRecovered();
       return { ok: true };
     } catch (error) {
       if (Number.isFinite(error.aiGenerated))
@@ -890,8 +906,7 @@ export class Studio extends EventEmitter {
           : 'error';
       if (operation.superseded && epoch === this.epoch) return { skipped: 'superseded' };
       if (epoch === this.epoch) {
-        this.failures++;
-        this.retryAt = this.now() + Math.min(60000, 3000 * 2 ** this.failures);
+        this.reactionFailed();
         this.lastError = error.message;
         this.log(error.message);
       }
@@ -1018,6 +1033,7 @@ export class Studio extends EventEmitter {
           this.publish();
           throw error;
         }
+        // 모델을 호출하지 않은 동일 화면은 연결 회복의 근거가 아니다.
         this.failures = 0;
         this.retryAt = 0;
         if (this.lastError) {
@@ -1253,8 +1269,7 @@ export class Studio extends EventEmitter {
         },
       );
       this.viewing.acknowledge(viewing);
-      this.failures = 0;
-      this.retryAt = 0;
+      this.reactionRecovered();
       return { outcome: 'accepted', result: { ok: true } };
     }
     const correction = this.correctTranscripts(
