@@ -34,6 +34,7 @@ const report = {
   checks: [],
 };
 const logs = [];
+const spawnedAt = Date.now();
 const child = spawn(
   join(folder, 'Nagneon.exe'),
   ['--backseat-profile=' + profile, '--remote-debugging-port=0'],
@@ -47,6 +48,29 @@ const closed = once(child, 'close').then(([code]) => {
   exited = true;
   report.exitCode = code;
 });
+// Exercise the Windows title-bar close path. CDP Browser.close can time out
+// without acknowledging shutdown; it is not evidence of a normal user close.
+const psQuote = value => "'" + value.replaceAll("'", "''") + "'";
+async function closeNativeWindow() {
+  const expectedExe = psQuote(join(folder, 'Nagneon.exe'));
+  const expectedProfile = psQuote('--backseat-profile=' + profile);
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    "$p=Get-Process -Id " + child.pid,
+    "$info=Get-CimInstance Win32_Process -Filter 'ProcessId=" + child.pid + "'",
+    "if($info.ExecutablePath -ne " + expectedExe + " -or $info.ParentProcessId -ne " + process.pid + " -or -not $info.CommandLine.Contains(" + expectedProfile + ")) { throw 'Test app ownership differs' }",
+    "if(([DateTimeOffset]$p.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -lt " + (spawnedAt - 2000) + ") { throw 'Test app creation time differs' }",
+    "if(-not $p.CloseMainWindow()) { throw 'Test app did not accept normal window close' }",
+  ].join('; ');
+  await new Promise((done, fail) => {
+    const closer = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
+    let error = '';
+    closer.stderr.on('data', bytes => { error += bytes; });
+    closer.once('error', fail);
+    closer.once('close', code => code === 0 ? done() : fail(Error('Normal window close failed: ' + error)));
+  });
+  report.closeMethod = 'owned Windows process CloseMainWindow';
+}
 let socket,
   serial = 0;
 const pending = new Map();
@@ -207,7 +231,7 @@ try {
     Buffer.from((await call('Page.captureScreenshot')).data, 'base64'),
   );
   report.checks.push('onboarding, navigation and packaged UI captured');
-  await Promise.race([call('Browser.close'), closed]);
+  await closeNativeWindow();
   await Promise.race([
     closed,
     new Promise((_, fail) => setTimeout(() => fail(Error('App failed normal close')), 15000)),
@@ -219,7 +243,7 @@ try {
   report.error = error.stack;
   process.exitCode = 1;
 } finally {
-  if (!exited && socket?.readyState === WebSocket.OPEN) await call('Browser.close').catch(() => {});
+  if (!exited) await closeNativeWindow().catch(error => { report.cleanupError = error.message; });
   socket?.close();
   await writeFile(join(output, 'native.log'), Buffer.concat(logs));
   await writeFile(join(output, 'result.json'), JSON.stringify(report, null, 2));
