@@ -60,6 +60,7 @@ import { useMedia } from './useMedia';
 import { useChatFollow } from './useChatFollow';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
+import { createNavigationHistory, type NavigationDirection } from '../shared/navigation-history.js';
 
 const time = (n: number) =>
   new Date(n).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -119,7 +120,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<'broadcast' | 'mood' | 'connection'>('broadcast');
   const composeInput = useRef<HTMLInputElement>(null);
   const [communitySection, setCommunitySection] = useState<'broadcast' | 'outside'>('broadcast');
-  const [tab, setTab] = useState('studio'),
+  const [tab, setTabState] = useState('studio'),
     [draft, setDraft] = useState<Settings | null>(null),
     [modal, setModal] = useState(false),
     [captureSound, setCaptureSound] = useState<boolean | null>(null),
@@ -133,6 +134,15 @@ export function App() {
   const [overlayTransparency, setOverlayTransparency] = useState(0);
   const [focusMessage, setFocusMessage] = useState<Message | null>(null);
   const [donationsOpen, setDonationsOpen] = useState(false);
+  const [tabHistory] = useState(() => createNavigationHistory('studio'));
+  const navigateTab = useCallback(
+    (destination: string) => setTabState(tabHistory.push(destination).current),
+    [tabHistory],
+  );
+  const moveTabHistory = useCallback(
+    (direction: NavigationDirection) => setTabState(tabHistory.move(direction).current),
+    [tabHistory],
+  );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
   useEffect(() => {
@@ -148,6 +158,10 @@ export function App() {
     if (state && initialGuide === null) setInitialGuide(state.onboarding?.status === 'new');
   }, [state, initialGuide]);
   useEffect(() => window.backseat?.onOverlayState(setThrough), []);
+  useEffect(() => {
+    if (overlay) return;
+    return window.backseat?.onNavigationHistory?.(moveTabHistory);
+  }, [overlay, moveTabHistory]);
   const action = useCallback(async (path: string, body?: unknown, method?: string) => {
     try {
       setError('');
@@ -160,10 +174,13 @@ export function App() {
     (actionName: string, id: string) => void action('moderate', { action: actionName, id }),
     [action],
   );
-  const showInsight = useCallback((message: Message) => {
-    setFocusMessage(message);
-    setTab('special');
-  }, []);
+  const showInsight = useCallback(
+    (message: Message) => {
+      setFocusMessage(message);
+      navigateTab('special');
+    },
+    [navigateTab],
+  );
   function settings() {
     if (!state) return;
     setSettingsTab('broadcast');
@@ -297,13 +314,13 @@ export function App() {
         onDone={() => {
           setInitialGuide(false);
           setStarter(true);
-          setTab('studio');
+          navigateTab('studio');
         }}
       />
     );
   return (
     <div className={tutorialActive ? 'guided-layout' : undefined}>
-      {tutorialActive && <GuidedTutorial state={state} tab={tab} navigate={setTab} />}
+      {tutorialActive && <GuidedTutorial state={state} tab={tab} navigate={navigateTab} />}
       <div className="app-shell">
         <aside className="sidebar">
           <a className="brand" href="/">
@@ -325,7 +342,7 @@ export function App() {
                 data-tutorial={'nav-' + item.id}
                 key={item.id}
                 className={tab === item.id ? 'selected' : ''}
-                onClick={() => setTab(item.id)}
+                onClick={() => navigateTab(item.id)}
               >
                 <item.icon size={18} />
                 {item.label}
@@ -402,7 +419,7 @@ export function App() {
               </b>
             </div>
             <div className="top-status">
-              <button className="ai-status-link" onClick={() => setTab('ai')}>
+              <button className="ai-status-link" onClick={() => navigateTab('ai')}>
                 {!connected
                   ? 'AI 상태 확인 불가'
                   : state.ai?.policy.paused
@@ -421,7 +438,7 @@ export function App() {
           </header>
           <main>
             <RuntimeDownloads state={state} activeOnly />
-            <FirstViewerStatus state={state} onView={() => setTab('audience')} />
+            <FirstViewerStatus state={state} onView={() => navigateTab('audience')} />
             {state.tutorial?.status === 'paused' && (
               <div className="first-viewer-status">
                 <span>따라 배우기를 잠시 쉬고 있어요. 이전 단계부터 이어갈 수 있어요.</span>
@@ -522,8 +539,8 @@ export function App() {
                     setCommunitySection(
                       destination === 'community:outside' ? 'outside' : 'broadcast',
                     );
-                    setTab('community');
-                  } else setTab(destination);
+                    navigateTab('community');
+                  } else navigateTab(destination);
                 }}
               />
             )}
@@ -831,7 +848,7 @@ export function App() {
                           <b>오늘의 관객</b>
                           <span className="count">{present.filter((p) => !p.system).length}</span>
                         </div>
-                        <button className="text-button" onClick={() => setTab('audience')}>
+                        <button className="text-button" onClick={() => navigateTab('audience')}>
                           모두 보기 <ChevronRight size={14} />
                         </button>
                       </div>
@@ -1150,7 +1167,7 @@ export function App() {
             initialTab={settingsTab}
             onDashboard={() => {
               setModal(false);
-              setTab('ai');
+              navigateTab('ai');
             }}
             onClose={() => setModal(false)}
             onSaved={() => setModal(false)}
