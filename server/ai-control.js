@@ -44,7 +44,6 @@ const rateSchema = z
     input: finite.max(100000),
     cached: finite.max(100000),
     output: finite.max(100000),
-    cacheWrite: finite.max(100000).optional(),
   })
   .strict();
 const policySchema = z

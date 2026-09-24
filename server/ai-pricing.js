@@ -132,7 +132,8 @@ export function priceUsage(row, customRates = []) {
   const rates = {
     input: rate.input * inputMultiplier,
     cached: rate.cached * inputMultiplier,
-    cacheWrite: (rate.cacheWrite ?? rate.input) * inputMultiplier,
+    // 수동 단가는 기존 세 항목 계약을 유지한다. 캐시 쓰기는 일반 입력 단가다.
+    cacheWrite: (manual ? rate.input : (rate.cacheWrite ?? rate.input)) * inputMultiplier,
     output: rate.output * (longContext ? 1.5 : 1),
   };
   // Missing cache fields stay missing in the ledger. Bound their contribution

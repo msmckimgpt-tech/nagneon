@@ -21,7 +21,6 @@ export type AiRate = {
   input: number;
   cached: number;
   output: number;
-  cacheWrite?: number;
 };
 export type AiPricing = {
   kind: 'api' | 'reference' | 'local' | 'unavailable';

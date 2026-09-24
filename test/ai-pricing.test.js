@@ -202,15 +202,14 @@ test('rate save backfills existing missing costs once and preserves already pric
     model: 'custom',
     input: 1,
     cached: 0.1,
-    cacheWrite: 1.25,
     output: 5,
   };
   ai.update({ rates: [rate] });
   assert.equal(sum(ai).priced, 1);
-  near(sum(ai).estimatedUsd, 0.1395);
+  near(sum(ai).estimatedUsd, 0.132);
   ai.update({ rates: [{ ...rate, input: 100 }] });
   assert.equal(sum(ai).priced, 1);
-  near(sum(ai).estimatedUsd, 0.1395);
+  near(sum(ai).estimatedUsd, 0.132);
   const restored = new AiControl({ data: ai.data, now: () => at });
   assert.deepEqual(sum(restored), sum(ai));
 });

@@ -122,25 +122,26 @@ app.whenReady().then(async () => {
     );
     await until(`document.querySelectorAll('.ai-rate-fields input')[1].value==='custom-ui-model'`);
     await js(
-      `(()=>{const inputs=document.querySelectorAll('.ai-rate-fields input');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;['1','0.1','5','1.25'].forEach((value,index)=>{setter.call(inputs[index+2],value);inputs[index+2].dispatchEvent(new Event('input',{bubbles:true}));});})()`,
+      `(()=>{const inputs=document.querySelectorAll('.ai-rate-fields input');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;['1','0.1','5'].forEach((value,index)=>{setter.call(inputs[index+2],value);inputs[index+2].dispatchEvent(new Event('input',{bubbles:true}));});})()`,
     );
     await click('단가 저장');
-    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4185')`);
+    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4110')`);
     totals = service.studio.ai.snapshot().usage.today.probe;
     assert.equal(totals.priced, 2);
+    assert.deepEqual(Object.keys(service.studio.ai.data.policy.rates[0]).sort(), ['cached', 'connection', 'input', 'model', 'output']);
     assert.equal(calls, 3);
     checks.push(
       'selecting a recorded connection/model and saving rates backfills the prior request without a new call',
     );
 
     await click('최근 7일');
-    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4185')`);
+    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4110')`);
     await click('이번 방송');
     await until(
       `document.querySelector('.ai-cost-summary').innerText.includes('선택한 기간에 요청이 없습니다')`,
     );
     await click('오늘');
-    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4185')`);
+    await until(`document.querySelector('.ai-cost-summary').innerText.includes('$0.4110')`);
     checks.push('today/week/session period selection updates cost totals');
 
     await js(

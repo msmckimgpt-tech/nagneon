@@ -89,7 +89,6 @@ export function AiDashboard({
     input: '',
     cached: '',
     output: '',
-    cacheWrite: '',
   });
   if (!ai) return <div className="panel">AI 상태를 불러오는 중입니다.</div>;
   const totals = Object.values(ai.usage[period]).reduce(
@@ -485,6 +484,8 @@ export function AiDashboard({
           환산액으로 따로 표시하며 실제 청구액이나 구독 잔여량이 아닙니다. 캐시 읽기·쓰기 세부값이
           없으면 가능한 금액 범위로 표시합니다. 사용자 단가가 있으면 해당 연결·모델에 우선합니다.
           저장 시 보관된 최근 500건 중 미산정 기록도 보완하며 이미 산정한 금액은 바꾸지 않습니다.
+          수동 단가는 기존 세 항목을 유지하며 일반 입력과 캐시 쓰기에 같은 입력 단가를 적용합니다.
+          공식 자동 단가는 모델의 캐시 쓰기 단가를 별도로 반영합니다.
         </p>
         <p className="ai-note">
           공식 단가 확인일: {ai.pricingCatalog?.checkedAt || '미확인'} · USD / 100만 토큰.
@@ -501,8 +502,6 @@ export function AiDashboard({
             e.preventDefault();
             if (
               !rate.model.trim() ||
-              (rate.cacheWrite !== '' &&
-                (!Number.isFinite(Number(rate.cacheWrite)) || Number(rate.cacheWrite) < 0)) ||
               [rate.input, rate.cached, rate.output].some(
                 (v) => v === '' || !Number.isFinite(Number(v)) || Number(v) < 0,
               )
@@ -521,7 +520,6 @@ export function AiDashboard({
                   input: Number(rate.input),
                   cached: Number(rate.cached),
                   output: Number(rate.output),
-                  ...(rate.cacheWrite !== '' ? { cacheWrite: Number(rate.cacheWrite) } : {}),
                 },
               ],
             });
@@ -545,7 +543,6 @@ export function AiDashboard({
                   input: saved ? String(saved.input) : '',
                   cached: saved ? String(saved.cached) : '',
                   output: saved ? String(saved.output) : '',
-                  cacheWrite: saved?.cacheWrite == null ? '' : String(saved.cacheWrite),
                 });
               }}
             >
@@ -571,7 +568,6 @@ export function AiDashboard({
                 ['input', '입력 단가'],
                 ['cached', '캐시 입력 단가'],
                 ['output', '출력 단가'],
-                ['cacheWrite', '캐시 쓰기 단가 (빈칸이면 입력 단가)'],
               ] as const
             ).map(([key, label]) => (
               <label key={key}>
@@ -579,7 +575,7 @@ export function AiDashboard({
                 <input
                   value={rate[key]}
                   type={
-                    ['input', 'cached', 'output', 'cacheWrite'].includes(key) ? 'number' : 'text'
+                    ['input', 'cached', 'output'].includes(key) ? 'number' : 'text'
                   }
                   min="0"
                   step="any"
@@ -594,7 +590,7 @@ export function AiDashboard({
         {ai.policy.rates.map((r) => (
           <p key={r.connection + ':' + r.model}>
             {r.connection || '단일 연결'} · {r.model} · 입력 ${r.input} / 캐시 읽기 ${r.cached} /
-            출력 ${r.output} / 캐시 쓰기 ${r.cacheWrite ?? r.input}{' '}
+            출력 ${r.output}{' '}
             <button
               disabled={disabled}
               onClick={() => void update({ rates: ai.policy.rates.filter((v) => v !== r) })}
