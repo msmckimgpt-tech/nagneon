@@ -7,7 +7,7 @@ const assert=require('node:assert/strict');
 const folder=resolve('artifacts/routing-ui-'+Date.now());mkdirSync(folder,{recursive:true});app.setPath('userData',resolve(folder,'profile'));
 let service,win;const watchdog=setTimeout(()=>app.exit(2),45000);
 app.whenReady().then(async()=>{
-  const report={passed:false,synthetic:true,checks:[]};let code=0;
+  const report={passed:false,synthetic:true,checks:[]};let code=0,stage='boot';
   try{
     const {startServer}=await import(pathToFileURL(resolve('server/index.js')).href),{OllamaProvider}=await import(pathToFileURL(resolve('server/ollama-provider.js')).href);
     const provider=new OllamaProvider({OLLAMA_MODEL:'fixture-local'},async url=>new Response(JSON.stringify(url.endsWith('/show')?{details:{format:'gguf'},capabilities:['completion']}:{done:true,message:{content:JSON.stringify({game:'fixture',scene:'연결 시험',confidence:0,excitement:0,messages:[{personaId:'probe',text:'안녕하세요!',kind:'chat',spoiler:false}]})},prompt_eval_count:10,eval_count:5})));
@@ -15,26 +15,34 @@ app.whenReady().then(async()=>{
     service=await startServer({port:0,persist:false,localSpeech:false,providerFactories:{codex:()=>codex,ollama:()=>provider}});await fetch(service.url+'/api/onboarding',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify({skip:true})});
     win=new BrowserWindow({width:1200,height:900,show:false,title:'Routing integration QA',webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true}});
     const js=code=>win.webContents.executeJavaScript(code,true),until=async code=>{for(let i=0;i<200;i++){if(await js(code))return;await new Promise(r=>setTimeout(r,25));}throw Error('UI timeout');};
-    await win.loadURL(service.url);await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);
+    stage='open settings';await win.loadURL(service.url);await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);
     await until(`!!document.querySelector('select[aria-label="AI 제공처"]')`);
     const click=async text=>js(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)throw Error('Missing enabled button '+${JSON.stringify(text)});b.click()})()`);
     const fill=async(label,value,select=false)=>js(`(()=>{const e=[...document.querySelectorAll('[aria-label]')].find(e=>e.getAttribute('aria-label')===${JSON.stringify(label)});Object.getOwnPropertyDescriptor(${select?'HTMLSelectElement':'HTMLInputElement'}.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('${select?'change':'input'}',{bubbles:true}));})()`);
     await click('연결·사용량');
     await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);
-    await click('연결 추가');await until(`!!document.querySelector('[aria-label="연결 2 모델"]')`);
-    await fill('연결 2 방식','ollama',true);await fill('연결 2 모델','fixture-local');await fill('연결 2 이름','내 로컬');
-    const id=await js(`Array.from(document.querySelector('[aria-label="일반 대화 모델"]').options).find(o=>o.textContent==='내 로컬').value`);
-    await fill('일반 대화 모델',id,true);await click('역할별 경로 저장');await until(`document.body.textContent.includes('역할별 경로를 저장했습니다.')`);
+    assert.equal(await js(`document.querySelector('[aria-label="연결 1 모델"]').tagName`),'SELECT');
+    assert.equal(await js(`Array.from(document.querySelector('[aria-label="연결 1 모델"]').options).some(o=>o.value==='gpt-6-luna'&&o.textContent.includes('GPT-6 Luna'))`),true);
+    stage='save catalog model';await fill('연결 1 모델','gpt-6-luna',true);await click('역할별 경로 저장');await until(`document.body.textContent.includes('역할별 경로를 저장했습니다.')`);
+    assert.equal(service.studio.state().providerChoice.routing.config.connections[0].provider.model,'gpt-6-luna');
+    stage='reload catalog model';await win.reload();await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);await until(`!!document.querySelector('select[aria-label="AI 제공처"]')`);await click('연결·사용량');
+    await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);await until(`!!document.querySelector('[aria-label="연결 1 모델"]')`);
+    assert.equal(await js(`document.querySelector('[aria-label="연결 1 모델"]').value`),'gpt-6-luna');
+    stage='choose custom model';await fill('연결 1 모델','__custom__',true);await until(`!!document.querySelector('[aria-label="연결 1 사용자 지정 모델"]')`);await fill('연결 1 사용자 지정 모델','future-codex');await new Promise(r=>setTimeout(r,100));assert.equal(await js(`document.querySelector('[aria-label="연결 1 사용자 지정 모델"]')?.value`),'future-codex');assert.equal(await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='역할별 경로 저장')?.disabled`),false);
+    stage='save custom model';await click('역할별 경로 저장');for(let i=0;i<200&&service.studio.state().providerChoice.routing?.config.connections[0].provider.model!=='future-codex';i++)await new Promise(r=>setTimeout(r,25));assert.equal(service.studio.state().providerChoice.routing.config.connections[0].provider.model,'future-codex');await new Promise(r=>setTimeout(r,250));
+    stage='reload custom model load';await win.reload();stage='reload custom model settings button';await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);stage='reload custom model settings panel';await until(`!!document.querySelector('select[aria-label="AI 제공처"]')`);stage='reload custom model usage tab';await click('연결·사용량');
+    await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);report.reloadCustomDebug=await js(`(()=>{const d=[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅'),model=d.querySelector('[aria-label="연결 1 모델"]'),custom=d.querySelector('[aria-label="연결 1 사용자 지정 모델"]');return {labels:[...d.querySelectorAll('[aria-label]')].map(e=>e.getAttribute('aria-label')),model:model?.value,custom:custom?.value}})()`);report.reloadCustomDebug.serverRouting=service.studio.state().providerChoice.routing;assert.equal(report.reloadCustomDebug.model,'__custom__');assert.equal(report.reloadCustomDebug.custom,'future-codex');
+    stage='add local connection';await click('연결 추가');await until(`!!document.querySelector('[aria-label="연결 2 모델"]')`);
+    stage='configure local connection';await fill('연결 2 방식','ollama',true);await fill('연결 2 모델','fixture-local');await fill('연결 2 이름','내 로컬');
+    stage='select local chat route';const id=await js(`Array.from(document.querySelector('[aria-label="일반 대화 모델"]').options).find(o=>o.textContent==='내 로컬').value`);
+    stage='save local chat route';await fill('일반 대화 모델',id,true);await click('역할별 경로 저장');for(let i=0;i<200&&service.studio.state().providerChoice.routing?.config.routes.chat?.primary!==id;i++)await new Promise(r=>setTimeout(r,25));
     assert.equal(service.studio.state().providerChoice.routing.config.routes.chat.primary,id);
-    await js(`Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.trim()==='이 연결 응답 확인 · 1회 사용')[1].click()`);await until(`document.body.textContent.includes('안녕하세요!')`);
-    await win.reload();await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);await until(`!!document.querySelector('[aria-label="연결 2 모델"]')`);
-    assert.equal(await js(`document.querySelector('[aria-label="연결 2 모델"]').value`),'fixture-local');
-    await click('연결·사용량');
-    await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);
-    await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').scrollIntoView({block:'start'})`);
+    stage='probe local connection';await js(`Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.trim()==='이 연결 응답 확인 · 1회 사용')[1].click()`);await until(`document.body.textContent.includes('안녕하세요!')`);
+    stage='reload local route load';await win.reload();stage='reload local route settings button';await until(`!!document.querySelector('button[title="방송 설정"]')`);await js(`document.querySelector('button[title="방송 설정"]').click()`);stage='reload local route settings panel';await until(`!!document.querySelector('select[aria-label="AI 제공처"]')`);stage='reload local route usage tab';await click('연결·사용량');stage='reload local route details';await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').open=true`);const reloadLocal=await js(`(()=>{const d=[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅'),model=d.querySelector('[aria-label="연결 2 모델"]');return {model:model?.value,labels:[...d.querySelectorAll('[aria-label]')].map(e=>e.getAttribute('aria-label'))}})()`);report.reloadLocal=reloadLocal;assert.equal(reloadLocal.model,'fixture-local');
+    stage='capture routing';await js(`[...document.querySelectorAll('details')].find(e=>e.querySelector('summary')?.textContent==='역할별 모델 라우팅').scrollIntoView({block:'start'})`);
     await new Promise(r=>setTimeout(r,100));
     writeFileSync(resolve(folder,'routing.png'),(await win.webContents.capturePage()).toPNG());
-    await click('선택한 설정 적용');await until(`document.body.textContent.includes('설정을 저장했습니다.')`);assert.equal(service.studio.state().providerChoice.routing,null);
-    report.checks.push('renderer adds local model and role assignment','individual synthetic response probe','reload restores routing','single-provider mode restored');report.passed=true;
-  }catch(error){report.error=error.message;code=1;}finally{writeFileSync(resolve(folder,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({...report,folder}));win?.destroy();await service?.close();clearTimeout(watchdog);app.exit(code);}
+    stage='restore single provider';await fill('관객 모델','',true);await fill('관객 추론 수준','',true);await click('선택한 설정 적용');for(let i=0;i<200&&service.studio.state().providerChoice.routing!==null;i++)await new Promise(r=>setTimeout(r,25));assert.equal(service.studio.state().providerChoice.routing,null);
+    report.checks.push('Codex model catalog is a dropdown','catalog selection persists after reload','custom Codex model remains supported','renderer adds local model and role assignment','individual synthetic response probe','reload restores routing','single-provider mode restored');report.passed=true;
+  }catch(error){report.error=`${stage}: ${error.message}`;code=1;}finally{writeFileSync(resolve(folder,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({...report,folder}));win?.destroy();await service?.close();clearTimeout(watchdog);app.exit(code);}
 });
