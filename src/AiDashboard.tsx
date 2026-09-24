@@ -4,6 +4,7 @@ import { api } from './api';
 import type { State } from './types';
 import type { AiPolicy, AiUsage } from './ai-types';
 import './ai-dashboard.css';
+import { AiCostSummary, AiRequestCost } from './AiCostSummary';
 
 const number = (n: number | null | undefined) => (n == null ? '미보고' : n.toLocaleString('ko-KR'));
 const stamp = (n: number) =>
@@ -60,6 +61,11 @@ const empty: AiUsage = {
   total: 0,
   estimatedUsd: 0,
   priced: 0,
+  apiUncertaintyUsd: 0,
+  referenceUsd: 0,
+  referenceUncertaintyUsd: 0,
+  referencePriced: 0,
+  localCalls: 0,
 };
 
 export function AiDashboard({
@@ -88,7 +94,7 @@ export function AiDashboard({
   const totals = Object.values(ai.usage[period]).reduce(
     (a, b) =>
       Object.fromEntries(
-        Object.keys(a).map((k) => [k, a[k as keyof AiUsage] + b[k as keyof AiUsage]]),
+        Object.keys(a).map((k) => [k, a[k as keyof AiUsage] + (b[k as keyof AiUsage] ?? 0)]),
       ) as AiUsage,
     { ...empty },
   );
@@ -226,11 +232,7 @@ export function AiDashboard({
             <strong>{number(totals.total)}</strong>
             <span>토큰 총량 미보고 {totals.unknown}회</span>
           </article>
-          <article className="panel">
-            <small>확인 가능한 API 예상 비용</small>
-            <strong>{totals.priced ? `$${totals.estimatedUsd.toFixed(4)}` : '계산 불가'}</strong>
-            <span>단가와 토큰이 확인된 {totals.priced}회만 포함</span>
-          </article>
+          <AiCostSummary totals={totals} />
         </div>
         <p className="ai-note">
           나그네온에서 이 기록 기능을 적용한 이후의 사용량입니다. 구독 잔여량·실제 청구액은
@@ -392,6 +394,7 @@ export function AiDashboard({
                   <th>요청 결과</th>
                   <th>입력 / 캐시 / 출력</th>
                   <th>총 토큰</th>
+                  <th>토큰 비용 / 환산</th>
                 </tr>
               </thead>
               <tbody>
@@ -438,6 +441,9 @@ export function AiDashboard({
                       {number(r.usage?.output)}
                     </td>
                     <td>{number(r.usage?.total)}</td>
+                    <td>
+                      <AiRequestCost pricing={r.pricing} legacyCost={r.estimatedUsd} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -471,12 +477,25 @@ export function AiDashboard({
           </button>
         </section>
       </div>
-      <details className="panel ai-rates">
+      <details id="ai-cost-rates" className="panel ai-rates">
         <summary>API 예상 비용 단가 설정</summary>
         <p>
-          사용 중인 연결 ID와 모델에 해당하는 100만 토큰당 USD 단가를 직접 입력하세요. 입력 토큰 중
-          캐시를 분리해 계산합니다. 도구·음성·기타 요금은 포함하지 않으며 구독·로컬 모델에는
-          적용하지 않습니다. 저장 이후 요청에 적용됩니다.
+          지원되는 OpenAI 공식 API 모델은 기본 단가를 자동 적용합니다. 구독 연결은 API 표준 단가
+          환산액으로 따로 표시하며 실제 청구액이나 구독 잔여량이 아닙니다. 캐시 읽기·쓰기 세부값이
+          없으면 가능한 금액 범위로 표시합니다. 사용자 단가가 있으면 해당 연결·모델에 우선합니다.
+          저장 시 보관된 최근 500건 중 미산정 기록도 보완하며 이미 산정한 금액은 바꾸지 않습니다.
+          수동 단가는 기존 세 항목을 유지하며 일반 입력과 캐시 쓰기에 같은 입력 단가를 적용합니다.
+          공식 자동 단가는 모델의 캐시 쓰기 단가를 별도로 반영합니다.
+        </p>
+        <p className="ai-note">
+          공식 단가 확인일: {ai.pricingCatalog?.checkedAt || '미확인'} · USD / 100만 토큰.
+          도구·음성·세금·지역·Fast/Flex 등의 별도 요금과 할인은 제외합니다. 공식 API는 요청별 장문
+          입력 배수를 반영합니다. 구독 환산은 턴 합산 토큰의 표준 단가 비교이며 요청별 장문 배수와
+          실제 구독 과금은 추정하지 않습니다. 로컬 기기 비용도 합산하지 않습니다. 기존 API 기록의
+          연결 출처가 없으면 현재 연결에서 추정하지 않고 직접 설정한 단가만 사용합니다.
+        </p>
+        <p className="ai-note">
+          자동 단가 지원: {ai.pricingCatalog?.models.map((m) => m.model).join(', ') || '없음'}
         </p>
         <form
           onSubmit={(e) => {
@@ -493,10 +512,10 @@ export function AiDashboard({
             void update({
               rates: [
                 ...ai.policy.rates.filter(
-                  (r) => r.connection !== rate.connection || r.model !== rate.model.trim(),
+                  (r) => r.connection !== rate.connection.trim() || r.model !== rate.model.trim(),
                 ),
                 {
-                  connection: rate.connection,
+                  connection: rate.connection.trim(),
                   model: rate.model.trim(),
                   input: Number(rate.input),
                   cached: Number(rate.cached),
@@ -506,6 +525,41 @@ export function AiDashboard({
             });
           }}
         >
+          <label>
+            최근 요청에서 연결·모델 선택
+            <select
+              aria-label="최근 요청의 연결·모델"
+              defaultValue=""
+              disabled={disabled}
+              onChange={(e) => {
+                const row = ai.recent.find((item) => item.id === e.target.value);
+                if (!row) return;
+                const saved = ai.policy.rates.find(
+                  (item) => item.connection === row.connection && item.model === row.model,
+                );
+                setRate({
+                  connection: row.connection,
+                  model: row.model,
+                  input: saved ? String(saved.input) : '',
+                  cached: saved ? String(saved.cached) : '',
+                  output: saved ? String(saved.output) : '',
+                });
+              }}
+            >
+              <option value="" disabled>
+                요청 기록에서 선택하세요
+              </option>
+              {[
+                ...new Map(
+                  ai.recent.map((row) => [JSON.stringify([row.connection, row.model]), row]),
+                ).values(),
+              ].map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.connection || '단일 연결'} · {row.model}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="ai-rate-fields">
             {(
               [
@@ -520,7 +574,9 @@ export function AiDashboard({
                 {label}
                 <input
                   value={rate[key]}
-                  type={['input', 'cached', 'output'].includes(key) ? 'number' : 'text'}
+                  type={
+                    ['input', 'cached', 'output'].includes(key) ? 'number' : 'text'
+                  }
                   min="0"
                   step="any"
                   disabled={disabled}
@@ -533,7 +589,8 @@ export function AiDashboard({
         </form>
         {ai.policy.rates.map((r) => (
           <p key={r.connection + ':' + r.model}>
-            {r.connection || '단일 연결'} · {r.model} · ${r.input} / ${r.cached} / ${r.output}{' '}
+            {r.connection || '단일 연결'} · {r.model} · 입력 ${r.input} / 캐시 읽기 ${r.cached} /
+            출력 ${r.output}{' '}
             <button
               disabled={disabled}
               onClick={() => void update({ rates: ai.policy.rates.filter((v) => v !== r) })}
