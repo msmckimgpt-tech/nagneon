@@ -335,33 +335,155 @@ test('speech runtime and runtime scratch retention only target owned non-active 
   assert.equal(await readFile(join(unknown, 'keep.bin'), 'utf8'), 'legacy');
 });
 
-test('retirement preserves package and runtime outputs referenced by latest pointers', async t => {
+test('retirement removes verified latest package/runtime pointers but preserves compact plan evidence', async t => {
   const f = await fixture(t);
   const clean = join(f.base, 'clean');
   git(f.repo, ['worktree', 'add', '-b', 'clean-test', clean, f.head]);
 
   const build = join(clean, 'release', 'current');
-  await owner(build, 'package-build', 'complete', {
-    fingerprint: 'e'.repeat(64),
-    folder: 'app/Nagneon-win32-x64',
-    manifest: 'manifest.json',
-    runId: 'current',
-  });
+  const fingerprint = 'e'.repeat(64);
+  await packageBuild(build, fingerprint, 'current', 'verified-app');
   await mkdir(join(clean, 'artifacts'), { recursive: true });
   await writeFile(join(clean, 'artifacts', 'latest-package.json'), JSON.stringify({ build }));
 
   const runtimeStore = join(clean, 'artifacts', 'runtime-packs');
   await owner(runtimeStore, 'runtime-pack-store', 'active');
+  const runtimeCatalog = join(runtimeStore, 'catalogs', 'current.json');
+  await mkdir(dirname(runtimeCatalog), { recursive: true });
+  await writeFile(runtimeCatalog, JSON.stringify({
+    schema: 'nagneon.runtime-pack-catalog/2',
+    verified: true,
+    catalogId: 'current',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    components: [],
+  }));
   await writeFile(join(clean, 'artifacts', 'latest-runtime-packs.json'), JSON.stringify({
     output: runtimeStore,
-    catalog: join(runtimeStore, 'catalogs', 'current.json'),
+    catalog: runtimeCatalog,
+    verified: true,
+  }));
+
+  const speech = join(clean, 'artifacts', 'speech-runtime-retired');
+  await owner(speech, 'speech-runtime', 'complete', { outputName: 'speech-runtime-retired' });
+  await writeFile(join(speech, 'runtime.bin'), 'speech');
+  const evidence = join(clean, 'artifacts', 'evidence', 'keep.json');
+  await mkdir(dirname(evidence), { recursive: true });
+  await writeFile(evidence, '{"keep":true}');
+
+  const preview = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--retire-worktree=' + clean, '--integrated=' + f.head, '--plan=artifacts/retire-plan.json']));
+  const packageCandidate = preview.candidates.find(item => item.path === build && item.kind === 'retired-package-build');
+  assert.ok(packageCandidate);
+  assert.equal(packageCandidate.manifestEvidence.buildFingerprint, fingerprint);
+  assert.match(packageCandidate.manifestSha256, /^[a-f0-9]{64}$/);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-package-pointer' && item.build === build), true);
+  assert.equal(preview.candidates.some(item => item.path === runtimeStore && item.kind === 'retired-runtime-store'), true);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-runtime-pointer' && item.store === runtimeStore), true);
+  assert.equal(preview.candidates.some(item => item.path === speech && item.kind === 'retired-speech-runtime'), true);
+  assert.equal(preview.candidates.some(item => item.path === evidence), false);
+
+  const planText = await readFile(join(f.repo, 'artifacts', 'retire-plan.json'));
+  const plan = JSON.parse(planText);
+  const recorded = plan.candidates.find(item => item.path === build);
+  assert.equal(recorded.manifestEvidence.files[0].sha256, createHash('sha256').update('verified-app').digest('hex'));
+
+  if (process.platform === 'win32') {
+    const planHash = createHash('sha256').update(planText).digest('hex');
+    const applied = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--apply', '--plan=artifacts/retire-plan.json', '--plan-sha256=' + planHash]));
+    assert.equal(applied.removed.some(item => item.path === build), true);
+    assert.equal(applied.removed.some(item => item.kind === 'retired-package-pointer'), true);
+    assert.equal(applied.removed.some(item => item.path === runtimeStore), true);
+    assert.equal(applied.removed.some(item => item.kind === 'retired-runtime-pointer'), true);
+    assert.equal(applied.removed.some(item => item.path === speech), true);
+    await assert.rejects(readFile(join(clean, 'artifacts', 'latest-package.json')), error => error?.code === 'ENOENT');
+    await assert.rejects(readFile(join(clean, 'artifacts', 'latest-runtime-packs.json')), error => error?.code === 'ENOENT');
+    assert.equal(await readFile(evidence, 'utf8'), '{"keep":true}');
+    assert.equal(JSON.parse(await readFile(join(f.repo, 'artifacts', 'retire-plan.json'), 'utf8')).candidates.some(item => item.manifestEvidence), true);
+  }
+});
+
+test('retirement preserves runtime store when the latest runtime pointer is stale', async t => {
+  const f = await fixture(t);
+  const clean = join(f.base, 'clean');
+  git(f.repo, ['worktree', 'add', '-b', 'clean-test', clean, f.head]);
+  const runtimeStore = join(clean, 'artifacts', 'runtime-packs');
+  await owner(runtimeStore, 'runtime-pack-store', 'active');
+  await writeFile(join(clean, 'artifacts', 'latest-runtime-packs.json'), JSON.stringify({
+    output: runtimeStore,
+    catalog: join(runtimeStore, 'catalogs', 'missing.json'),
+    verified: true,
   }));
 
   const preview = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--retire-worktree=' + clean, '--integrated=' + f.head]));
-  assert.equal(preview.candidates.some(item => item.path === build), false);
   assert.equal(preview.candidates.some(item => item.path === runtimeStore), false);
-  assert.equal(preview.refused.some(item => item.path === build && /latest-package/.test(item.reason)), true);
-  assert.equal(preview.refused.some(item => item.path === runtimeStore && /latest-runtime-packs/.test(item.reason)), true);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-runtime-pointer'), false);
+  assert.equal(preview.refused.some(item => item.kind === 'retired-runtime-pointer' && /catalog|검증/.test(item.reason)), true);
+  assert.equal(preview.refused.some(item => item.path === runtimeStore && item.kind === 'retired-runtime-store'), true);
+});
+
+test('retirement preserves runtime store while runtime scratch exists', async t => {
+  const f = await fixture(t);
+  const clean = join(f.base, 'clean');
+  git(f.repo, ['worktree', 'add', '-b', 'clean-test', clean, f.head]);
+  const runtimeStore = join(clean, 'artifacts', 'runtime-packs');
+  await owner(runtimeStore, 'runtime-pack-store', 'active');
+  const runtimeCatalog = join(runtimeStore, 'catalogs', 'current.json');
+  await mkdir(dirname(runtimeCatalog), { recursive: true });
+  await writeFile(runtimeCatalog, JSON.stringify({
+    schema: 'nagneon.runtime-pack-catalog/2',
+    verified: true,
+    catalogId: 'current',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    components: [],
+  }));
+  await writeFile(join(clean, 'artifacts', 'latest-runtime-packs.json'), JSON.stringify({
+    output: runtimeStore,
+    catalog: runtimeCatalog,
+    verified: true,
+  }));
+  const scratch = join(runtimeStore, '.scratch', 'active');
+  await owner(scratch, 'runtime-pack-scratch', 'building', { runId: 'active', catalogId: 'current' });
+
+  const preview = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--retire-worktree=' + clean, '--integrated=' + f.head]));
+  assert.equal(preview.candidates.some(item => item.path === runtimeStore), false);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-runtime-pointer'), false);
+  assert.equal(preview.refused.some(item => item.path === runtimeStore && /scratch/.test(item.reason)), true);
+});
+
+test('retirement refuses a corrupted non-latest owned package', async t => {
+  const f = await fixture(t);
+  const clean = join(f.base, 'clean');
+  git(f.repo, ['worktree', 'add', '-b', 'clean-test', clean, f.head]);
+  const first = join(clean, 'release', 'older');
+  const latest = join(clean, 'release', 'latest');
+  await packageBuild(first, '1'.repeat(64), 'older', 'older');
+  await packageBuild(latest, '2'.repeat(64), 'latest', 'latest');
+  await mkdir(join(clean, 'artifacts'), { recursive: true });
+  await writeFile(join(clean, 'artifacts', 'latest-package.json'), JSON.stringify({ build: latest }));
+  await writeFile(join(first, 'app', 'Nagneon-win32-x64', 'Nagneon.exe'), 'tampered');
+
+  const preview = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--retire-worktree=' + clean, '--integrated=' + f.head]));
+  assert.equal(preview.candidates.some(item => item.path === first), false);
+  assert.equal(preview.refused.some(item => item.path === first && /무결성/.test(item.reason)), true);
+  assert.equal(preview.candidates.some(item => item.path === latest && item.kind === 'retired-package-build'), true);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-package-pointer' && item.build === latest), true);
+});
+
+test('retirement fails closed when latest package integrity cannot be verified', async t => {
+  const f = await fixture(t);
+  const clean = join(f.base, 'clean');
+  git(f.repo, ['worktree', 'add', '-b', 'clean-test', clean, f.head]);
+  const build = join(clean, 'release', 'current');
+  const fingerprint = 'f'.repeat(64);
+  await packageBuild(build, fingerprint, 'current', 'original');
+  await mkdir(join(clean, 'artifacts'), { recursive: true });
+  await writeFile(join(clean, 'artifacts', 'latest-package.json'), JSON.stringify({ build }));
+  await writeFile(join(build, 'app', 'Nagneon-win32-x64', 'Nagneon.exe'), 'tampered');
+
+  const preview = parse(node(f.repo, ['scripts/storage-maintenance.mjs', '--retire-worktree=' + clean, '--integrated=' + f.head]));
+  assert.equal(preview.candidates.some(item => item.path === build), false);
+  assert.equal(preview.candidates.some(item => item.kind === 'retired-package-pointer'), false);
+  assert.equal(preview.refused.some(item => item.path === build && /참조 집합/.test(item.reason)), true);
+  assert.equal(preview.refused.some(item => item.kind === 'retired-package-pointer' && /무결성/.test(item.reason)), true);
 });
 
 test('apply refuses deletion while another process command line references the target', async t => {
