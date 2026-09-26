@@ -243,7 +243,7 @@ export class DecisionAssistant {
   async advise(
     task,
     { state, questions },
-    { signal, scopeToken = null, questionVersion = 1, aiFeature = 'reaction' } = {},
+    { signal, scopeToken = null, questionVersion = 1, aiFeature = 'reaction', timeoutMs } = {},
   ) {
     assertDecisionTask(task);
     signal?.throwIfAborted();
@@ -287,7 +287,7 @@ export class DecisionAssistant {
           cacheKey,
           handle,
         },
-        { signal, scopeToken, questionVersion },
+        { signal, scopeToken, questionVersion, timeoutMs },
       );
     } catch (error) {
       if (signal?.aborted) signal.throwIfAborted();

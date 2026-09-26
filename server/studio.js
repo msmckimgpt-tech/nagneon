@@ -4,6 +4,7 @@ import {
   liveDecisionEnabled,
 } from './decision/policies.js';
 import { SocialRuntime } from './social-runtime.js';
+import { adviseLiveQueue } from './decision/live-queue.js';
 import { SpeechCapture, witnessedSpeech } from './speech-screen.js';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -77,6 +78,8 @@ export class Studio extends EventEmitter {
     this.messages = [];
     this.events = [];
     this.queue = [];
+    this.liveDecisions = new Set();
+    this.liveRecallGuards = new WeakMap();
     this.controller = new AbortController();
     this.epoch = 0;
     this.economy = economy || new Economy(undefined, () => {}, now);
@@ -130,6 +133,7 @@ export class Studio extends EventEmitter {
           this.culture.interrupt();
         if (affected.includes('reaction') || affected.includes('ambient')) {
           if (affected.includes(this.liveReaction?.aiFeature)) this.liveReaction.controller.abort();
+          this.cancelLiveDecisions((op) => affected.includes(op.aiFeature));
           this.queue = this.queue.filter(
             (m) => m.origin !== 'live' || !affected.includes(m.aiFeature || 'reaction'),
           );
@@ -169,6 +173,7 @@ export class Studio extends EventEmitter {
     for (const [id, at] of this.endedVideoSources)
       if (this.now() - at > 120000) this.endedVideoSources.delete(id);
     this.endedVideoSources.set(sourceId, this.now());
+    this.cancelLiveDecisions((op) => op.sourceId === sourceId || op.speechSourceIds?.has(sourceId));
     if (
       this.liveReaction?.sourceId === sourceId ||
       this.liveReaction?.speechSourceIds?.has(sourceId)
@@ -187,6 +192,20 @@ export class Studio extends EventEmitter {
   }
   attachRuntime(runtime) {
     this.runtime = runtime;
+  }
+  trackLiveDecision(promise, operation) {
+    const entry = { promise: null, operation };
+    entry.promise = Promise.resolve(promise)
+      .catch(() => {})
+      .then(() => this.liveDecisions.delete(entry));
+    this.liveDecisions.add(entry);
+  }
+  cancelLiveDecisions(matches) {
+    for (const { operation } of this.liveDecisions)
+      if (matches(operation)) {
+        operation.superseded = true;
+        operation.controller.abort();
+      }
   }
   state() {
     return {
@@ -270,6 +289,9 @@ export class Studio extends EventEmitter {
     );
     if (!result.duplicate) {
       this.queue = this.queue.filter((m) => m.origin !== 'live');
+      this.cancelLiveDecisions(
+        (op) => !op.hasSpeech || revisesLiveSituation(text) || adviceIntent(text).refused,
+      );
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
       if (
@@ -666,8 +688,9 @@ export class Studio extends EventEmitter {
         absent =
           this.settings.mode === 'live' &&
           !sameViewingVisit(this.audience, m.personaId, m.viewingVisit);
-      if (expired || absent) {
-        this.reactions.drop(m.diagnosticId, expired ? 'expired' : 'absent');
+      const revoked = this.liveRecallGuards.has(m) && !this.liveRecallGuards.get(m)();
+      if (expired || absent || revoked) {
+        this.reactions.drop(m.diagnosticId, expired ? 'expired' : absent ? 'absent' : 'cleared');
         return false;
       }
       return true;
@@ -851,6 +874,9 @@ export class Studio extends EventEmitter {
           latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
         });
         const responseStartedAt = this.now();
+        const screenDecision = !speech.trim() && !idleConversation && !!image;
+        const shadowDecision = this.decision?.config.mode === 'shadow';
+        let decisionWaitMs = 0;
         const providerArgs = (prepared) => ({
           aiFeature,
           settings: prepared.eligibleSettings,
@@ -876,11 +902,20 @@ export class Studio extends EventEmitter {
         const journalRevision = this.journal.data.revision;
         let preflightCurrent = () => true;
         let baselineRecallCurrent = () => true;
-        if (liveDecisionEnabled(this, 'before', aiFeature)) {
+        if (!screenDecision && liveDecisionEnabled(this, 'before', aiFeature)) {
           baselineRecallCurrent = captureLiveRecallSources(this, args.viewerContext);
-          preflightCurrent =
-            (await prepareLiveDecision(this, context, args, { signal, epoch, operation })) ||
-            preflightCurrent;
+          const start = performance.now();
+          const pending = prepareLiveDecision(this, context, args, {
+            signal,
+            epoch,
+            operation,
+            timeoutMs: 1000,
+          });
+          if (shadowDecision) this.trackLiveDecision(pending, operation);
+          else {
+            preflightCurrent = (await pending) || preflightCurrent;
+            decisionWaitMs += performance.now() - start;
+          }
         }
         signal.throwIfAborted();
         if (epoch !== this.epoch || !this.running || operation.superseded)
@@ -910,7 +945,9 @@ export class Studio extends EventEmitter {
         // Fingerprint exactly the final prompt before any generation await.
         // This guard also owns the no-JEV and no-postflight-question paths.
         const recallCurrent = captureLiveRecallSources(this, args.viewerContext);
+        const providerStartedAt = this.now();
         let result = await this.provider.react(args, signal);
+        const providerMs = Math.max(0, this.now() - providerStartedAt);
         this.ai.assertCurrent(result);
         context.generatedCount = result.observation.messages.length;
         if (!recallCurrent()) {
@@ -918,13 +955,15 @@ export class Studio extends EventEmitter {
           diagnosticOutcome = 'superseded';
           return { skipped: 'superseded' };
         }
-        if (liveDecisionEnabled(this, 'after', aiFeature))
-          result = await checkLiveDecision(this, context, result, {
+        if (!screenDecision && liveDecisionEnabled(this, 'after', aiFeature)) {
+          const start = performance.now();
+          const pending = checkLiveDecision(this, context, result, {
             speech,
             signal,
             epoch,
             operation,
             aiFeature,
+            timeoutMs: Math.max(0, 1200 - decisionWaitMs),
             clipContext: () => ({
               image,
               speech,
@@ -939,6 +978,13 @@ export class Studio extends EventEmitter {
               ),
             }),
           });
+          if (shadowDecision) this.trackLiveDecision(pending, operation);
+          else {
+            result = await pending;
+            decisionWaitMs += performance.now() - start;
+          }
+        }
+        this.reactions.timing(diagnosticId, { providerMs, decisionWaitMs });
         signal.throwIfAborted();
         this.ai.assertCurrent(result);
         if (!recallCurrent()) {
@@ -961,8 +1007,22 @@ export class Studio extends EventEmitter {
           idleConversation,
           image,
         });
-        for (const message of this.queue)
-          if (!previousQueue.has(message)) message.aiFeature = aiFeature;
+        const batch = this.queue.filter((message) => !previousQueue.has(message));
+        for (const message of batch) {
+          message.aiFeature = aiFeature;
+          this.liveRecallGuards.set(message, recallCurrent);
+        }
+        if (screenDecision && batch.length)
+          this.trackLiveDecision(
+            adviseLiveQueue(this, context, result, batch, {
+              signal,
+              epoch,
+              operation,
+              aiFeature,
+              recallCurrent,
+            }),
+            operation,
+          );
         if (!accepted) this.ai.accepted(result);
         if (accepted) {
           diagnosticOutcome = accepted.outcome;

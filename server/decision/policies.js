@@ -51,7 +51,12 @@ export const liveDecisionEnabled = (s, phase, feature) =>
     : ['reaction-check', 'clip-relevance']
   ).some((t) => enabled(s, t, feature));
 
-export async function prepareLiveDecision(s, context, args, { signal, epoch, operation }) {
+export async function prepareLiveDecision(
+  s,
+  context,
+  args,
+  { signal, epoch, operation, timeoutMs },
+) {
   const tasks = ['live-plan', 'memory-rerank', 'intent-hint', 'route-hint'].filter((t) =>
     enabled(s, t, args.aiFeature),
   );
@@ -191,6 +196,7 @@ export async function prepareLiveDecision(s, context, args, { signal, epoch, ope
     { state, questions },
     {
       signal,
+      timeoutMs,
       aiFeature: args.aiFeature,
       questionVersion: 1,
       scopeToken: {
@@ -253,7 +259,7 @@ export async function checkLiveDecision(
   s,
   context,
   result,
-  { speech, signal, epoch, operation, aiFeature, clipContext },
+  { speech, signal, epoch, operation, aiFeature, clipContext, timeoutMs },
 ) {
   const reactions = enabled(s, 'reaction-check', aiFeature),
     clips = enabled(s, 'clip-relevance', aiFeature) && s.autonomy && s.settings.autoHighlights;
@@ -311,6 +317,7 @@ export async function checkLiveDecision(
     { state, questions },
     {
       signal,
+      timeoutMs,
       aiFeature,
       questionVersion: 1,
       scopeToken: {

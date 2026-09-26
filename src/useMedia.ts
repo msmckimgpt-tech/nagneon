@@ -9,6 +9,7 @@ import {SpeechOutbox,type SpeechCapture} from './speech-flow';
 import {ContinuousListening} from './continuous-listening.ts';
 import {TemporalFrames} from './temporal-frames';
 import {startTemporalCapture} from './temporal-capture';
+import {startReactionSchedule,type ReactionResult} from './reaction-schedule';
 import {prepareCapture,releaseCapture,type CapturePhase} from './capture-preparation';
 
 export function useMedia(state:State|null,onError:(s:string)=>void){
@@ -135,26 +136,17 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
     return()=>{clearInterval(timer);navigator.mediaDevices.removeEventListener('devicechange',reconnect);};
   },[state?.running,state?.sessionId,state?.settings.mode]);
   useEffect(()=>{
-    if(!state?.running)return;let disposed=false,inFlight=false,nextAttemptAt=0,speechVersion=0,answeredVersion=0;const session=state.sessionId;
-    const tick=async()=>{
-      const s=stateRef.current;if(disposed||!s?.running||s.sessionId!==session)return;
-      try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');speechVersion++;return result;});}
-      catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');}
-      const current=stateRef.current;if(disposed||inFlight||!current?.running||current.sessionId!==session||current.busy)return;
-      const companyAt=current.ambient?.nextConversationAt;
-      const companyDue=typeof companyAt==='number'&&Date.now()>=companyAt;
-      if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt&&!companyDue)return;
-      inFlight=true;
-      const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
-      try{const result=await api<{ok?:boolean;skipped?:string;transcriptionNeedsReview?:boolean}>('react',{video:window,...(current.settings.mode==='live'&&current.obsInput?.sourceId?{obsSourceId:current.obsInput.sourceId}:{})});
-        if(window&&((result.ok&&!result.transcriptionNeedsReview)||['unchanged-input','stale-screen'].includes(result.skipped||'')))temporal.current.acknowledge(window);
-        if(result.ok||['unchanged-input','stale-screen'].includes(result.skipped||'')){answeredVersion=requestSpeechVersion;nextAttemptAt=requestedAt+current.settings.intervalSeconds*1000;}
-        else nextAttemptAt=Date.now()+1500;
-        if(result.transcriptionNeedsReview&&!disposed)errorRef.current('음성을 확실하게 이해하지 못했어요. 마지막 말을 다시 들려주세요.');}
-      catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'관객 응답 실패');}
-      finally{inFlight=false;}
-    };
-    wake.current=()=>void tick();void tick();const timer=setInterval(()=>void tick(),1500);return()=>{disposed=true;wake.current=()=>{};clearInterval(timer);};
+    if(!state?.running)return;
+    const scheduler=startReactionSchedule({sessionId:state.sessionId,current:()=>stateRef.current,
+      flushSpeech:delivered=>pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');delivered();return result;}),
+      react:async current=>{const video=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined;
+        const result=await api<ReactionResult>('react',{video,...(current.settings.mode==='live'&&current.obsInput?.sourceId?{obsSourceId:current.obsInput.sourceId}:{})});return {...result,video};},
+      onResult:result=>{if(result.video&&((result.ok&&!result.transcriptionNeedsReview)||['unchanged-input','stale-screen'].includes(result.skipped||'')))temporal.current.acknowledge(result.video);
+        if(result.transcriptionNeedsReview)errorRef.current('음성을 확실하게 이해하지 못했어요. 마지막 말을 다시 들려주세요.');},
+      onSpeechError:e=>errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.'),
+      onReactionError:e=>errorRef.current(e instanceof Error?e.message:'관객 응답 실패')
+    });
+    wake.current=scheduler.wake;return()=>{scheduler.dispose();wake.current=()=>{};};
   },[state?.running,state?.sessionId]);
   useEffect(()=>{if(state){if(wasRunning.current&&!state.running)stopAll();wasRunning.current=state.running;}},[state?.running]);
   useEffect(()=>()=>{epoch.current++;micPreparation.current?.abort();micPreparation.current=null;pendingSpeech.current.clear();temporal.current.reset();captureEpoch.current++;capturePreparation.current?.abort();capturePreparation.current=null;screenStream.current?.getTracks().forEach(t=>t.stop());if(captureVideo.current){captureVideo.current.pause();captureVideo.current.srcObject=null;}recording.current=false;listening.current?.stopCapture();listening.current=null;micStream.current?.getTracks().forEach(t=>t.stop());},[]);

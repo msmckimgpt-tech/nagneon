@@ -46,7 +46,7 @@ export class DecisionService {
       timeoutMs: this.config.timeoutMs,
     };
   }
-  advise(task, input, { signal, scopeToken = null, questionVersion = null } = {}) {
+  advise(task, input, { signal, scopeToken = null, questionVersion = null, timeoutMs } = {}) {
     assertDecisionTask(task);
     if (this.controller.signal.aborted) return Promise.reject(this.controller.signal.reason);
     if (signal?.aborted) return Promise.reject(signal.reason);
@@ -54,12 +54,16 @@ export class DecisionService {
     if (this.config.mode === DecisionMode.OFF)
       return Promise.resolve(decisionAbstain(base, 'disabled'));
     if (!this.adapter) return Promise.resolve(decisionAbstain(base, 'unavailable'));
+    const allowance = Number.isFinite(timeoutMs)
+      ? Math.max(0, Math.min(this.config.timeoutMs, Math.floor(timeoutMs)))
+      : this.config.timeoutMs;
+    if (!allowance) return Promise.resolve(decisionAbstain(base, 'timeout'));
     if (this.inFlight >= this.config.maxInFlight)
       return Promise.resolve(decisionAbstain(base, 'busy'));
 
     const requestId = this.idFactory(),
       startedAt = this.now(),
-      timeout = AbortSignal.timeout(this.config.timeoutMs);
+      timeout = AbortSignal.timeout(allowance);
     const combined = AbortSignal.any([
       this.controller.signal,
       timeout,

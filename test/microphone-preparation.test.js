@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as speechFlow from '../src/speech-flow.ts';
 import {TemporalFrames} from '../src/temporal-frames.ts';
 import * as capturePreparation from '../src/capture-preparation.ts';
+import * as reactionSchedule from '../src/reaction-schedule.ts';
 // Execute the shipped hook handlers with controlled transport/devices. This is
 // file-based sequencing coverage, not a React renderer or native device test.
 const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -16,7 +17,7 @@ function harness(fetch,getUserMedia){
   class Listener{constructor(options){this.options=options;this.drained=new Promise(resolve=>{this.resolveDrain=resolve;});listeners.push(this);}async start(){this.timer=++timerId;timers.add(this.timer);return this;}stopCapture(){timers.delete(this.timer);}}
   const state={running:true,sessionId:'test-session',settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
   const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:effect=>effects.push(effect)};
-  const imports={react,'./useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechOutbox:Outbox},'./continuous-listening.ts':{ContinuousListening:Listener},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
+  const imports={react,'./useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechOutbox:Outbox},'./continuous-listening.ts':{ContinuousListening:Listener},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation,'./reaction-schedule':reactionSchedule};
   const module={exports:{}};
   class Recorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.onstop?.();}}
   class Context{resume(){return Promise.resolve();}createMediaStreamSource(){return {connect(){}};}createAnalyser(){return {fftSize:512,getFloatTimeDomainData(){}};}close(){return Promise.resolve();}}

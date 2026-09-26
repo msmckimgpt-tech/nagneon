@@ -3,7 +3,11 @@ import { api } from './api';
 import type { DecisionConfig, DecisionSnapshot, DecisionTask, State } from './types';
 
 const tasks: [DecisionTask, string, string][] = [
-  ['live-plan', '먼저 반응할 관객', '이미 반응할 수 있는 관객 중 순서를 고릅니다.'],
+  [
+    'live-plan',
+    '먼저 반응할 관객·화면 반응',
+    '발언에 답할 관객이나 현재 화면 이해에 도움 되는 반응 순서를 고릅니다. 화면 채팅은 JEV를 기다리지 않습니다.',
+  ],
   ['memory-rerank', '관련 기억 찾기', '목격한 대화와 기록 중 관련 있는 내용을 찾습니다.'],
   ['intent-hint', '말의 의도 보조', '질문·이어 말하기를 구분할 때 돕습니다.'],
   ['reaction-check', '자동 반응의 반복 줄이기', '선택적인 자동 채팅의 반복을 살핍니다.'],

@@ -168,6 +168,7 @@ test('semantic omission preserves addressed speech and the sole user-response ca
 test('optional semantic duplicate is omitted without regenerating or changing scene facts', async (t) => {
   const f = fixture(t, { judge: () => ({ message_0: 'e0' }) });
   await f.s.react({ image: 'data:image/png;base64,c3ludGhldGlj' });
+  await Promise.all([...f.s.liveDecisions].map(e => e.promise));
   assert.equal(f.generated.length, 1);
   assert.deepEqual(
     f.s.queue.map((m) => m.personaId),
@@ -243,6 +244,7 @@ test('disabled decisions preserve the synchronous start of the existing model op
 test('semantic omission still reports the original generated count', async (t) => {
   const f = fixture(t, { judge: () => ({ message_0: 'e0' }) });
   await f.s.react({ image: 'data:image/png;base64,c3ludGhldGlj' });
+  await Promise.all([...f.s.liveDecisions].map(e => e.promise));
   const d = f.s.reactions.snapshot(f.s.queue);
   assert.equal(d.summary.generated, 2);
   assert.equal(d.summary.rejected.duplicate, 1);
@@ -386,8 +388,11 @@ test('deleting a recalled source during postflight prevents stale publication', 
   await ready;
   f.s.journal.forget([id]);
   release();
-  assert.equal((await pending).skipped, 'superseded');
+  assert.equal((await pending).ok, true, 'screen admission does not await JEV');
+  await Promise.all([...f.s.liveDecisions].map(e => e.promise));
+  f.s.pump();
   assert.equal(f.s.queue.length, 0);
+  assert.equal(f.s.messages.some(m => observation.messages.some(c => c.text === m.text)), false);
   assert.equal(f.decision.snapshot().last.outcome, 'abstain');
 });
 

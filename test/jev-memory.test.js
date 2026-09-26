@@ -335,10 +335,17 @@ for (const kind of ['clip', 'social']) {
     });
     const ids = kind === 'clip' ? clips(f) : social(f).ids;
     f.s.addMessage('momo', '밤하늘 이야기를 나눴지', 'chat');
+    f.s.provider.react = async () => {
+      const result = response();
+      result.observation.messages.push({personaId:'momo',kind:'chat',text:'화면에 새 창이 열렸네',spoiler:false});
+      return result;
+    };
     assert.equal(
-      (await f.s.react({ image: 'data:image/png;base64,c3ludGhldGlj' })).skipped,
-      'superseded',
+      (await f.s.react({ image: 'data:image/png;base64,c3ludGhldGlj' })).ok,
+      true,
     );
+    await Promise.all([...f.s.liveDecisions].map(e => e.promise));
+    f.s.pump();
     assert.equal(f.calls.length, 1);
     assert.equal(f.s.queue.length, 0);
     assert.equal(f.decision.snapshot().last.outcome, 'abstain');
