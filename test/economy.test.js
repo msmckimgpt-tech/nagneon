@@ -16,13 +16,37 @@ test('viewer recharge uses elapsed real time, caps, survives restart and handles
   s.advance(86400000);assert.equal(reloaded.snapshot(settings.personas).wallets.momo.balance,200);
   reloaded.change(d=>{reloaded.wallet(d,'momo');});s.advance(-86400000);assert.equal(reloaded.snapshot(settings.personas).wallets.momo.balance,200);
 });
-test('only strong positive moments reward eligible viewers and duplicate events cannot pay twice',()=>{
+test('only meaningful positive moments reward eligible viewers and duplicate events cannot pay twice',()=>{
   const {e,a,advance}=setup();const args={settings,audience:a,hasInput:true};const before=e.data.balance;
   assert.deepEqual(e.reward({...args,observation:moment({positiveMoment:{...moment().positiveMoment,positive:false}})}),[]);
   assert.deepEqual(e.reward({...args,observation:moment(),paid:true}),[]);
   const gifts=e.reward({...args,observation:moment()});assert.equal(gifts.length,2);assert.equal(e.data.balance,before+gifts.reduce((s,g)=>s+g.amount,0));
   const total=e.data.balance;e.reward({...args,observation:moment()});advance(700000);e.reward({...args,observation:moment()});assert.equal(e.data.balance,total);
   const restarted=new Economy(structuredClone(e.data),()=>{},e.now);assert.deepEqual(restarted.reward({...args,observation:moment()}),[]);
+});
+
+test('quiet meaningful exchange can reward without inflating excitement',()=>{
+  const {e,a,advance}=setup();
+  const observation=moment({excitement:.08,positiveMoment:{...moment().positiveMoment,impact:.65,signature:'shared quiet preference',reason:'서로의 취향을 이해하고 고마움을 나눴다',donations:[{personaId:'momo',message:'기억해 줘서 고마워요',anonymous:false}]}});
+  const args={settings,audience:a,hasInput:true,observation};
+  const before=e.data.balance,gifts=e.reward(args);
+  assert.equal(gifts.length,1);assert.equal(gifts[0].personaId,'momo');assert.ok(e.data.balance>before);
+  assert.equal(observation.excitement,.08);
+  advance(700000);assert.deepEqual(e.reward(args),[],'same conversation cannot pay again');
+});
+
+test('quiet exchange retains evidence, paid-action and viewer eligibility guards',()=>{
+  for(const change of [
+    args=>{args.hasInput=false;},args=>{args.paid=true;},
+    args=>{args.observation.confidence=.74;},args=>{args.observation.positiveMoment.signature='';},
+    args=>{args.observation.positiveMoment.positive=false;},args=>{args.observation.positiveMoment.reason='';},
+    args=>{args.observation.positiveMoment.donations=[];},
+    args=>{args.audience.presence.momo='away';},args=>{args.audience.data.members.momo.seconds=59;}
+  ]){
+    const {e,a}=setup(),before=e.data.balance;
+    const args={settings,audience:a,hasInput:true,observation:moment({excitement:0,positiveMoment:{...moment().positiveMoment,donations:[{personaId:'momo',message:'고마워요',anonymous:false}]}})};
+    change(args);assert.deepEqual(e.reward(args),[]);assert.equal(e.data.balance,before);
+  }
 });
 test('purchases are idempotent, atomic, and crash-held points are refunded once',()=>{
   const {e}=setup(),id=randomUUID();e.purchase(id,'thought','message',15);assert.equal(e.data.balance,185);assert.equal(e.purchase(id,'thought','message',15).existing,true);assert.equal(e.data.balance,185);
