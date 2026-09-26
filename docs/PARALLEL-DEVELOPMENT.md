@@ -21,6 +21,18 @@
 - 사용 종료와 통합을 검증한 로컬/원격 작업 브랜치 삭제는 사용자에게 승인받은 전역 정리 범위다. 기본/보호/미통합/진행 중 브랜치와 릴리즈 태그는 보존한다. 원격 삭제 직전 SHA가 바뀌면 중단한다. 로컬 삭제는 안전한 `git branch -d`를 우선하며 거절을 강제 삭제로 우회하지 않는다. 완료 보고에 삭제와 보존 사유를 남긴다.
 <!-- END GIT-PARALLEL-WORKTREE -->
 
+### 통합 완료 worktree의 저장량 종료 절차
+
+통합 후에도 worktree의 `node_modules`, `dist`, 소유권이 검증된 package/runtime-pack 출력이 남으면 G: 사용량이 worktree 수에 비례해 누적될 수 있다. 이들은 worktree 자체 삭제와 분리하여 `scripts/storage-maintenance.mjs`로 먼저 조회한다.
+
+```powershell
+node scripts/storage-maintenance.mjs --retire-worktree=<정확한 절대 경로> --integrated=<원격 main에 포함된 통합 SHA> --plan=artifacts/worktree-retire-plan.json
+# preview 결과·보존 항목·SHA를 검토한 뒤에만:
+node scripts/storage-maintenance.mjs --apply --plan=artifacts/worktree-retire-plan.json --plan-sha256=<정확한 SHA-256>
+```
+
+retire preview는 등록된 Git worktree, clean 상태, 잠금 없음, HEAD와 통합 SHA의 계보를 확인한다. squash 통합이면 통합 커밋의 `Nagneon-Source-SHA: <원본 전체 SHA>` 추적과 원본 commit의 원격 게시를 모두 확인해야 한다. dirty/staged/untracked, locked, 미통합·미게시, reparse/symlink, 실행 중 프로세스가 있거나 상태를 확정할 수 없으면 삭제하지 않는다. 정리 후보는 재생성 가능한 명시 항목에 한정하며 `.models`, 일반 `artifacts` 증거, 프로필·기록, 설치본은 대상에 넣지 않는다. 이 preview/apply가 worktree 자체를 삭제하지 않으며, 보존할 ignored 파일이 남은 worktree를 `git worktree remove --force`로 처리할 근거도 되지 않는다.
+
 전역 설치 및 재적용:
 
 ```powershell
