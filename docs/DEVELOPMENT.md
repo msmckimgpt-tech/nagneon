@@ -51,7 +51,7 @@ node scripts/storage-maintenance.mjs --reserve-package-slot --reserve-runtime-sl
 node scripts/storage-maintenance.mjs --apply --plan=artifacts/storage-cleanup-plan.json --plan-sha256=<preview가 출력한 SHA-256>
 ```
 
-`--apply`는 정확한 plan SHA, 현재 HEAD/origin-main 기준, 소유권 표식, 경로·링크, 실행 중 프로세스를 다시 확인한 뒤에만 계획에 적힌 항목을 제거한다. 계획 이후 상태가 바뀌거나 확인이 불완전하면 중단한다. 설치본·사용자 프로필·원본 `.models`·일반 `artifacts` 증거는 일반 정리 후보가 아니다. 통합 완료 worktree의 재생성 가능한 `node_modules`·`dist` 등은 [병렬 개발](PARALLEL-DEVELOPMENT.md)의 종료 절차에서 별도로 preview한 뒤에만 정리한다.
+`--apply`는 정확한 plan SHA, 현재 HEAD/origin-main 기준, 소유권 표식, 경로·링크, 실행 중 프로세스를 다시 확인한 뒤에만 계획에 적힌 항목을 제거한다. 계획 이후 상태가 바뀌거나 확인이 불완전하면 중단한다. 설치본·사용자 프로필·원본 `.models`·일반 `artifacts` 증거는 일반 정리 후보가 아니다. 통합 완료 worktree의 재생성 가능한 `node_modules`·`dist`·소유 runtime/speech runtime과 검증된 package는 [병렬 개발](PARALLEL-DEVELOPMENT.md)의 종료 절차에서 별도로 preview한 뒤에만 정리한다. retire되는 최신 package는 plan에 manifest 증거를 보존하고 해당 package 포인터와 함께 제거하며, 손상·외부 참조·unknown/protected 상태에서는 fail-closed로 보존한다.
 
 패키지 manifest의 `storage`와 CLI snapshot은 최종 배포 크기와 transient stage/runtime 크기를 분리해 기록한다. 전후 비교에서는 상위/하위 폴더를 중복 합산하지 않고, 합성 fixture 크기를 실제 디스크 절감량으로 보고하지 않는다.
 

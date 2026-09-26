@@ -31,7 +31,7 @@ node scripts/storage-maintenance.mjs --retire-worktree=<정확한 절대 경로>
 node scripts/storage-maintenance.mjs --apply --plan=artifacts/worktree-retire-plan.json --plan-sha256=<정확한 SHA-256>
 ```
 
-retire preview는 등록된 Git worktree, clean 상태, 잠금 없음, HEAD와 통합 SHA의 계보를 확인한다. squash 통합이면 통합 커밋의 `Nagneon-Source-SHA: <원본 전체 SHA>` 추적과 원본 commit의 원격 게시를 모두 확인해야 한다. dirty/staged/untracked, locked, 미통합·미게시, reparse/symlink, 실행 중 프로세스가 있거나 상태를 확정할 수 없으면 삭제하지 않는다. 정리 후보는 재생성 가능한 명시 항목에 한정하며 `.models`, 일반 `artifacts` 증거, 프로필·기록, 설치본은 대상에 넣지 않는다. 이 preview/apply가 worktree 자체를 삭제하지 않으며, 보존할 ignored 파일이 남은 worktree를 `git worktree remove --force`로 처리할 근거도 되지 않는다.
+retire preview는 등록된 Git worktree, clean 상태, 잠금 없음, HEAD와 통합 SHA의 계보를 확인한다. squash 통합이면 통합 커밋의 `Nagneon-Source-SHA: <원본 전체 SHA>` 추적과 원본 commit의 원격 게시를 모두 확인해야 한다. dirty/staged/untracked, locked, 미통합·미게시, reparse/symlink, 실행 중 프로세스가 있거나 상태를 확정할 수 없으면 삭제하지 않는다. 정리 후보는 재생성 가능한 명시 항목에 한정한다. 통합 완료 worktree의 `latest-package.json`이 가리키는 package는 소유 표식·complete 상태·manifest 파일 목록/크기/SHA-256을 모두 재검증한 경우에만 package와 포인터를 같은 plan에서 retire하며, plan에는 package manifest 증거를 남긴다. 소유된 runtime-pack store와 latest pointer도 참조가 해당 store 내부이고 protected catalog가 없을 때만 함께 retire하며, 소유된 complete/failed speech runtime도 종료 후보로 취급한다. 포인터 손상·외부 참조·unknown/protected 항목은 fail-closed로 보존한다. `.models`, 일반 `artifacts` 증거, 프로필·기록, 설치본은 대상에 넣지 않는다. 이 preview/apply가 worktree 자체를 삭제하지 않으며, 보존할 ignored 파일이 남은 worktree를 `git worktree remove --force`로 처리할 근거도 되지 않는다.
 
 전역 설치 및 재적용:
 

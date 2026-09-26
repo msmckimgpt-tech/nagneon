@@ -205,52 +205,122 @@ async function buildPlan() {
     const owned = await listOwnedPackageBuilds(target);
     const latestPackagePath = join(target, 'artifacts', 'latest-package.json');
     let latestPackageBuild = null;
+    let latestPackageEntry = null;
+    let latestPackageVerified = null;
     let packageReferenceKnown = true;
     try {
       const latestPackage = JSON.parse(await readFile(latestPackagePath, 'utf8'));
       if (typeof latestPackage.build !== 'string' || !latestPackage.build) throw Error('build 참조가 없음');
       latestPackageBuild = resolve(latestPackage.build);
+      latestPackageEntry = owned.owned.find(entry => samePath(entry.path, latestPackageBuild)) || null;
+      if (!samePath(dirname(latestPackageBuild), join(target, 'release')) || !latestPackageEntry) throw Error('소유된 complete package 직접 하위 경로가 아님');
+      latestPackageVerified = await verifyOwnedPackageBuild(latestPackageEntry.path, latestPackageEntry.owner.fingerprint);
     } catch (error) {
       if (error?.code !== 'ENOENT') {
         packageReferenceKnown = false;
-        refused.push({ path: latestPackagePath, kind: 'retired-package-pointer', reason: 'latest-package 참조를 안전하게 확인할 수 없음: ' + error.message });
+        refused.push({ path: latestPackagePath, kind: 'retired-package-pointer', reason: 'latest-package 참조/무결성을 안전하게 확인할 수 없음: ' + error.message });
       }
     }
     for (const entry of owned.owned) {
       if (!packageReferenceKnown) {
         refused.push({ path: entry.path, kind: 'retired-package-build', reason: 'latest-package 참조 집합을 확정할 수 없음' });
-      } else if (latestPackageBuild && samePath(entry.path, latestPackageBuild)) {
-        refused.push({ path: entry.path, kind: 'retired-package-build', reason: 'latest-package 포인터가 참조함' });
-      } else {
-        await add(await candidate(entry.path, 'retired-package-build', '통합 완료 worktree의 비참조 소유 package 검증 출력', { worktree: target, head: retire.head, fingerprint: entry.owner.fingerprint }));
+        continue;
       }
+      const isLatest = latestPackageBuild && samePath(entry.path, latestPackageBuild);
+      let verifiedEntry;
+      try {
+        verifiedEntry = isLatest && latestPackageVerified
+          ? latestPackageVerified
+          : await verifyOwnedPackageBuild(entry.path, entry.owner.fingerprint);
+      } catch (error) {
+        refused.push({ path: entry.path, kind: 'retired-package-build', reason: 'package 무결성을 안전하게 확인할 수 없음: ' + error.message });
+        continue;
+      }
+      const evidence = isLatest ? {
+        manifestSha256: await hashFile(verifiedEntry.manifestPath),
+        manifestEvidence: verifiedEntry.manifest,
+      } : {};
+      await add(await candidate(entry.path, 'retired-package-build', isLatest
+        ? '통합 완료 worktree의 검증된 latest package 출력'
+        : '통합 완료 worktree의 검증된 비참조 소유 package 출력', {
+        worktree: target,
+        head: retire.head,
+        fingerprint: entry.owner.fingerprint,
+        ...evidence,
+      }));
     }
+    if (packageReferenceKnown && latestPackageBuild && latestPackageVerified) {
+      await add(await candidate(latestPackagePath, 'retired-package-pointer', 'retire되는 검증 package를 가리키는 latest-package 포인터', {
+        worktree: target,
+        head: retire.head,
+        build: latestPackageBuild,
+        fingerprint: latestPackageEntry.owner.fingerprint,
+      }));
+    }
+
     const retiredScratch = await listPackageScratch(target);
     for (const entry of retiredScratch.owned) if (entry.owner.state !== 'building') await add(await candidate(entry.path, 'retired-package-scratch', '통합 완료 worktree의 종료된 package scratch', { worktree: target, head: retire.head, runId: entry.owner.runId }));
+
+    const retiredSpeech = await listOwnedSpeechRuntimes(target);
+    for (const entry of retiredSpeech.owned) {
+      if (entry.owner.state === 'building') refused.push({ path: entry.path, kind: 'retired-speech-runtime', reason: 'building 상태이므로 retire 후보 아님' });
+      else if (['complete', 'failed'].includes(entry.owner.state)) await add(await candidate(entry.path, 'retired-speech-runtime', '통합 완료 worktree의 재생성 가능한 speech runtime', {
+        worktree: target,
+        head: retire.head,
+        outputName: entry.owner.outputName || basename(entry.path),
+      }));
+      else refused.push({ path: entry.path, kind: 'retired-speech-runtime', reason: '알 수 없는 speech runtime 상태', state: entry.owner.state });
+    }
+    for (const entry of retiredSpeech.protectedPaths) refused.push({ path: entry.path, kind: 'retired-speech-runtime', reason: '보호된 speech runtime: ' + entry.reason });
+
     const runtimeStore = join(target, 'artifacts', 'runtime-packs');
     const runtimeMarker = await readFile(join(runtimeStore, STORAGE_OWNER_FILE), 'utf8').catch(error => error.code === 'ENOENT' ? null : Promise.reject(error));
     if (runtimeMarker) {
       const owner = JSON.parse(runtimeMarker);
-      if (owner.schema === STORAGE_OWNER_SCHEMA && owner.kind === 'runtime-pack-store') {
+      if (owner.schema === STORAGE_OWNER_SCHEMA && owner.kind === 'runtime-pack-store' && owner.state === 'active') {
         const latestRuntimePath = join(target, 'artifacts', 'latest-runtime-packs.json');
+        const runtimeState = await runtimeStoreState(target);
+        const runtimeScratchEntries = await readdir(join(runtimeStore, '.scratch'), { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
         let runtimeReferenced = false;
         let runtimeReferenceKnown = true;
+        if (runtimeScratchEntries.length) {
+          runtimeReferenceKnown = false;
+          refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'runtime scratch가 남아 있어 active/incomplete 상태를 배제할 수 없음' });
+        }
         try {
           const latestRuntime = JSON.parse(await readFile(latestRuntimePath, 'utf8'));
           const outputRef = typeof latestRuntime.output === 'string' && latestRuntime.output ? resolve(latestRuntime.output) : null;
           const catalogRef = typeof latestRuntime.catalog === 'string' && latestRuntime.catalog ? resolve(latestRuntime.catalog) : null;
-          if (!outputRef && !catalogRef) throw Error('output/catalog 참조가 없음');
-          runtimeReferenced = (outputRef && samePath(outputRef, runtimeStore)) || (catalogRef && inside(runtimeStore, catalogRef));
+          if (!outputRef || !catalogRef || latestRuntime.verified !== true) throw Error('검증된 output/catalog 참조가 모두 필요함');
+          if (!samePath(outputRef, runtimeStore) || !samePath(dirname(catalogRef), join(runtimeStore, 'catalogs'))) throw Error('retire 대상 runtime store의 직접 catalog를 참조하지 않음');
+          if (!runtimeState.verified.some(entry => samePath(entry.path, catalogRef))) throw Error('latest catalog가 검증된 runtime catalog가 아님');
+          runtimeReferenced = true;
         } catch (error) {
           if (error?.code !== 'ENOENT') {
             runtimeReferenceKnown = false;
             refused.push({ path: latestRuntimePath, kind: 'retired-runtime-pointer', reason: 'latest-runtime-packs 참조를 안전하게 확인할 수 없음: ' + error.message });
           }
         }
-        if (!runtimeReferenceKnown) refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'runtime 최신 참조 집합을 확정할 수 없음' });
-        else if (runtimeReferenced) refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'latest-runtime-packs 포인터가 참조함' });
-        else await add(await candidate(runtimeStore, 'retired-runtime-store', '통합 완료 worktree의 비참조 content-addressed runtime pack 검증 저장소', { worktree: target, head: retire.head }));
-      } else refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'runtime store 소유권 표식 불일치' });
+        if (runtimeState.protected.length) {
+          runtimeReferenceKnown = false;
+          refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'protected runtime catalog 항목이 있어 retire 무결성 집합을 확정할 수 없음' });
+        }
+        if (!runtimeReferenceKnown) refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'runtime 최신 참조/소유 집합을 확정할 수 없음' });
+        else {
+          await add(await candidate(runtimeStore, 'retired-runtime-store', runtimeReferenced
+            ? '통합 완료 worktree의 latest content-addressed runtime pack 저장소'
+            : '통합 완료 worktree의 비참조 content-addressed runtime pack 검증 저장소', {
+            worktree: target,
+            head: retire.head,
+            catalogEvidence: runtimeState.verified.map(({ catalog }) => catalog),
+          }));
+          if (runtimeReferenced) await add(await candidate(latestRuntimePath, 'retired-runtime-pointer', 'retire되는 runtime store를 가리키는 latest-runtime-packs 포인터', {
+            worktree: target,
+            head: retire.head,
+            store: runtimeStore,
+          }));
+        }
+      } else refused.push({ path: runtimeStore, kind: 'retired-runtime-store', reason: 'runtime store 소유권 표식/상태 불일치' });
     }
   }
 
@@ -299,9 +369,33 @@ async function revalidateCandidate(item, plan) {
     if (!samePath(dirname(path), join(root, 'artifacts')) || !basename(path).startsWith('speech-runtime-')) throw Error('허용된 speech runtime 범위를 벗어난 삭제 계획입니다: ' + path);
     const owner = await verifyOwner(path, 'speech-runtime');
     if (owner.state === 'building') throw Error('speech runtime이 building 상태입니다.');
+  } else if (item.kind === 'retired-speech-runtime') {
+    if (!plan.retire || !samePath(dirname(path), join(plan.retire.target, 'artifacts')) || !basename(path).startsWith('speech-runtime-')) throw Error('허용된 retired speech runtime 범위를 벗어난 삭제 계획입니다: ' + path);
+    const owner = await verifyOwner(path, 'speech-runtime');
+    if (!['complete', 'failed'].includes(owner.state)) throw Error('retired speech runtime 상태가 바뀌었습니다.');
+  } else if (item.kind === 'retired-package-pointer') {
+    if (!plan.retire || !samePath(path, join(plan.retire.target, 'artifacts', 'latest-package.json'))) throw Error('허용된 retired package pointer 범위를 벗어난 삭제 계획입니다: ' + path);
+    const pointer = JSON.parse(await readFile(path, 'utf8'));
+    const build = typeof pointer.build === 'string' && pointer.build ? resolve(pointer.build) : null;
+    if (!build || !samePath(build, item.build) || !samePath(dirname(build), join(plan.retire.target, 'release'))) throw Error('latest-package 참조가 계획과 달라졌습니다.');
+    if (!plan.candidates.some(value => value.kind === 'retired-package-build' && samePath(value.path, build) && value.fingerprint === item.fingerprint)) throw Error('latest-package가 검증된 retire package 후보와 묶여 있지 않습니다.');
+  } else if (item.kind === 'retired-runtime-pointer') {
+    if (!plan.retire || !samePath(path, join(plan.retire.target, 'artifacts', 'latest-runtime-packs.json'))) throw Error('허용된 retired runtime pointer 범위를 벗어난 삭제 계획입니다: ' + path);
+    const pointer = JSON.parse(await readFile(path, 'utf8'));
+    const store = resolve(item.store);
+    const outputRef = typeof pointer.output === 'string' && pointer.output ? resolve(pointer.output) : null;
+    const catalogRef = typeof pointer.catalog === 'string' && pointer.catalog ? resolve(pointer.catalog) : null;
+    const runtimeState = await runtimeStoreState(plan.retire.target);
+    const runtimeScratchEntries = await readdir(join(store, '.scratch'), { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+    if (!samePath(store, join(plan.retire.target, 'artifacts', 'runtime-packs')) || pointer.verified !== true || !outputRef || !catalogRef || !samePath(outputRef, store) || !samePath(dirname(catalogRef), join(store, 'catalogs')) || !runtimeState.verified.some(entry => samePath(entry.path, catalogRef)) || runtimeState.protected.length || runtimeScratchEntries.length) throw Error('latest-runtime-packs 참조가 계획과 달라졌거나 검증/active 상태를 확인할 수 없습니다.');
+    if (!plan.candidates.some(value => value.kind === 'retired-runtime-store' && samePath(value.path, store))) throw Error('latest-runtime-packs가 retire runtime 후보와 묶여 있지 않습니다.');
   } else if (item.kind === 'retired-runtime-store') {
     if (!plan.retire || !samePath(path, join(plan.retire.target, 'artifacts', 'runtime-packs'))) throw Error('허용된 retired runtime store 범위를 벗어난 삭제 계획입니다: ' + path);
-    await verifyOwner(path, 'runtime-pack-store');
+    const owner = await verifyOwner(path, 'runtime-pack-store');
+    if (owner.state !== 'active') throw Error('retired runtime store 소유권 상태가 바뀌었습니다.');
+    const runtimeState = await runtimeStoreState(plan.retire.target);
+    const runtimeScratchEntries = await readdir(join(path, '.scratch'), { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+    if (runtimeState.protected.length || runtimeScratchEntries.length) throw Error('retired runtime store의 protected catalog 또는 runtime scratch 상태가 바뀌었습니다.');
   } else if (['runtime-catalog','runtime-pack','runtime-pack-metadata','runtime-cache'].includes(item.kind)) {
     const runtimeRoot = join(root, 'artifacts', 'runtime-packs');
     const expectedParent = item.kind === 'runtime-catalog'
