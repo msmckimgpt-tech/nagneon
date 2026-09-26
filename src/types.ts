@@ -40,6 +40,7 @@ export type Settings = {
   overlayMode: 'private' | 'public';
   speechDevice: 'gpu' | 'cpu';
   communityActivityEnabled: boolean;
+  continuousAudienceChat?: boolean;
   contextualTranscription: boolean;
   showStreamerMessages: boolean;
   clipBufferEnabled: boolean;
@@ -101,6 +102,7 @@ export type SoundState = {
 export type BroadcastSessionState =
   { running: true; sessionId: string } | { running: false; sessionId: string | null };
 export type State = BroadcastSessionState & {
+  decision?: DecisionSnapshot;
   social?: {
     revision: number;
     enabled: boolean;
@@ -130,7 +132,7 @@ export type State = BroadcastSessionState & {
   providerChoice?: {
     routing?: import('./ProviderRouting').RoutingState | null;
     config: {
-      kind: 'codex' | 'openai' | 'ollama';
+      kind: 'codex' | 'openai' | 'ollama' | 'antigravity';
       model?: string;
       effort?: string;
       base?: string;
@@ -159,7 +161,11 @@ export type State = BroadcastSessionState & {
     error: string;
   };
   autonomy?: { pending: boolean; price: number; broadcastSeconds: number };
-  ambient?: { active: null | { id: string; title: string }; quiet: boolean };
+  ambient?: {
+    active: null | { id: string; title: string };
+    quiet: boolean;
+    nextConversationAt?: number | null;
+  };
   sound?: SoundState;
   journal?: { revision: number; count: number; pinned: number; limit: number; pinLimit: number };
   onboarding?: {
@@ -227,6 +233,7 @@ export type State = BroadcastSessionState & {
     model: string;
     effort: string;
     kind?: string;
+    models?: { id: string; label: string }[];
     authMessage?: string;
     authState?: string;
     audioError?: string;
@@ -237,6 +244,41 @@ export type State = BroadcastSessionState & {
     audioFallback?: boolean;
     audioPreparing?: boolean;
   };
+};
+export type DecisionTask =
+  | 'live-plan'
+  | 'memory-rerank'
+  | 'intent-hint'
+  | 'reaction-check'
+  | 'community-affinity'
+  | 'culture-relevance'
+  | 'clip-relevance'
+  | 'route-hint';
+export type DecisionConfig = {
+  provider: 'typesafe' | 'openrouter';
+  mode: 'off' | 'shadow' | 'assist';
+  model: 'jev-1.13.0' | 'jev-latest';
+  timeoutMs: number;
+  acknowledgeTransfer: boolean;
+  tasks: Record<DecisionTask, boolean>;
+};
+export type DecisionSnapshot = DecisionConfig & {
+  configured: boolean;
+  keyStorage: 'none' | 'session' | 'saved';
+  keyStorageError: string | null;
+  storedKeyPresent: boolean;
+  counters: {
+    calls: number;
+    inputTokens: number;
+    estimatedUsd: number;
+    cacheHits: number;
+    abstained: number;
+    applied: number;
+  };
+  last: null | { task: string; outcome: string; durationMs: number; model: string };
+  probe: null | { task: string; outcome: string; durationMs: number; model: string };
+  cooldownUntil: number | null;
+  errorCode: string | null;
 };
 export type Source = { id: string; name: string; kind?: 'screen' | 'window'; thumbnail: string };
 export type AccountState = {
@@ -268,9 +310,21 @@ export type ProbeState = {
   reason?: string;
   message?: string;
 };
+export type MicrophoneState = {
+  enabled: boolean;
+  preparing: boolean;
+  available: boolean;
+  error: boolean;
+};
 declare global {
   interface Window {
     backseat?: {
+      microphoneState?: () => Promise<MicrophoneState>;
+      toggleMicrophone?: () => Promise<void>;
+      publishMicrophoneState?: (value: MicrophoneState) => void;
+      onMicrophoneState?: (fn: (value: MicrophoneState) => void) => () => void;
+      microphoneShortcut?: () => Promise<boolean>;
+      onMicrophoneToggle?: (fn: () => void) => () => void;
       storageStatus: () => Promise<{ profile: string; defaultProfile: string; isolated: boolean }>;
       changeStorage: (useDefault: boolean) => Promise<boolean>;
       appendSpeechRaw: (entry: {
@@ -293,6 +347,7 @@ declare global {
       startAccountLogin: (method: 'browser' | 'device') => Promise<AccountState>;
       cancelAccountLogin: () => Promise<AccountState>;
       openAccountLogin: () => Promise<void>;
+      openDecisionKeyConsole: (provider: DecisionConfig['provider']) => Promise<void>;
       onAccountState: (fn: (value: AccountState) => void) => () => void;
     };
   }

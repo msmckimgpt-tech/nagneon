@@ -18,7 +18,7 @@ function attachCapture({session,ipcMain,desktopCapturer,main,platform=process.pl
       const choice=selected;selected=null;
       const sources=await desktopCapturer.getSources({types:['screen','window'],thumbnailSize:{width:0,height:0}});
       const source=sources.find(s=>s.id===choice.id);
-      callback(source?{video:source,...(choice.systemAudio&&request.audioRequested&&platform==='win32'?{audio:'loopback'}:{})}:{});
+      callback(source?{video:source,...(choice.systemAudio&&request.audioRequested&&(platform==='win32'||platform==='darwin')?{audio:'loopback'}:{})}:{});
     }catch{callback({});}
   });
   ipcMain.handle('capture:sources',async event=>{

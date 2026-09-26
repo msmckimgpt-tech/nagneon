@@ -20,6 +20,7 @@ import { ProviderChoice, ProviderSelection, hostedModelEnv } from './provider-ch
 import { OllamaProvider } from './ollama-provider.js';
 import { ConfiguredApiProvider } from './configured-api-provider.js';
 import { CodexProvider } from './codex-provider.js';
+import { AntigravityProvider } from './antigravity-provider.js';
 import { Knowledge } from './knowledge.js';
 import { LocalSound } from './local-sound.js';
 import { soundRoutes } from './sound-routes.js';
@@ -34,6 +35,11 @@ import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
+import {
+  DecisionAssistant,
+  DecisionAssistantConfig,
+  defaultDecisionConfig,
+} from './decision/index.js';
 import {
   CultureLearningData,
   emptyCultureLearning,
@@ -59,7 +65,7 @@ import { ConversationJournal, emptyJournal } from './conversation-journal.js';
 import { JournalStore } from './journal-store.js';
 import { World, WorldData, migrateWorld } from './world.js';
 import { RequestLifetime, ownProviderRequests } from './request-lifetime.js';
-import { StateFeed } from './state-stream.js';
+import { StateFeed, projectState } from './state-stream.js';
 import { ObsInput } from './obs-input.js';
 import { externalChatRoutes } from './external-chat-session.js';
 import { RuntimeComponents } from './runtime-components.js';
@@ -105,6 +111,8 @@ async function startServerImpl(
     openExternalAuth,
     providerFactories,
     providerSwitchAllowed = () => true,
+    decisionFetchImpl = fetch,
+    decisionKeyStore,
   } = {},
   onResource = () => {},
 ) {
@@ -141,6 +149,7 @@ async function startServerImpl(
       initial,
       save: selectionStore.save,
       factories: providerFactories || {
+        antigravity: (config) => new AntigravityProvider(config),
         codex: (config) =>
           new CodexProvider({
             ...process.env,
@@ -234,6 +243,9 @@ async function startServerImpl(
     value.policy.features.culture = false;
     return value;
   });
+  const decisionStore = useStore('decision', DecisionAssistantConfig, () =>
+    structuredClone(defaultDecisionConfig),
+  );
   const clipsStore = useStore('clips', ClipsData, () => []);
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
@@ -282,11 +294,20 @@ async function startServerImpl(
   let studio;
   provider = withCultureContext(provider, () => studio);
   const aiControl = new AiControl(aiStore);
+  const decisionAssistant = new DecisionAssistant({
+    aiControl,
+    config: decisionStore.data,
+    save: decisionStore.save,
+    fetchImpl: decisionFetchImpl,
+    keyStore: decisionKeyStore,
+  });
+  onResource(() => decisionAssistant.close());
   if (stores.some((s) => s.file?.endsWith('ai-control.json') && s.recoveredFrom))
     aiControl.storageError =
       'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 사용 기록과 실행 허용 설정을 확인해주세요.';
   studio = new Studio({
     aiControl,
+    decisionAssistant,
     cultureLearning: { data: cultureStore.data, save: cultureStore.save },
     provider,
     settings: world.data.settings,
@@ -379,9 +400,81 @@ async function startServerImpl(
       : next(),
   );
   socialRoutes(app, studio, persist ? resolve(dataDir, 'social-media') : undefined);
-  app.get('/api/state', (_req, res) => res.json(studio.state()));
+  app.get('/api/state', (req, res) => res.json(projectState(studio.state(), req.query.surface)));
   app.get('/api/ai', (_req, res) => res.json(studio.ai.snapshot()));
   app.patch('/api/ai/policy', (req, res) => res.json(studio.ai.update(req.body)));
+  let decisionProbe = null;
+  const decisionIdle = () =>
+    !decisionProbe &&
+    !studio.running &&
+    !studio.busy &&
+    !requests.pending.size &&
+    !providerChoice?.changing &&
+    !probe.controller &&
+    providerSwitchAllowed();
+  const requireDecisionIdle = () => {
+    if (!decisionIdle()) throw new Error('방송과 요청을 마친 뒤 JEV 연결 설정을 변경하세요.');
+  };
+  app.get('/api/decision', (_req, res) => res.json(studio.decision.snapshot()));
+  app.put('/api/decision', (req, res) => {
+    const config = DecisionAssistantConfig.parse(req.body);
+    const current = studio.decision.config;
+    // A connection probe can run while mode is already off; this same-config off aborts it.
+    const offSwitch =
+      config.mode === 'off' &&
+      config.provider === current.provider &&
+      config.model === current.model &&
+      config.timeoutMs === current.timeoutMs &&
+      config.acknowledgeTransfer === current.acknowledgeTransfer &&
+      Object.keys(current.tasks).every((task) => config.tasks[task] === current.tasks[task]);
+    if (!offSwitch) requireDecisionIdle();
+    res.json(studio.decision.configure(config));
+    studio.publish();
+  });
+  app.post('/api/decision/key', (req, res) => {
+    requireDecisionIdle();
+    const { apiKey, provider } = z
+      .object({
+        apiKey: z.string().max(500),
+        provider: z.enum(['typesafe', 'openrouter']).default('typesafe'),
+      })
+      .strict()
+      .parse(req.body);
+    res.json(studio.decision.setKey(apiKey, provider));
+    studio.publish();
+  });
+  app.post('/api/decision/probe', async (req, res) => {
+    requireDecisionIdle();
+    const { provider } = z
+      .object({ provider: z.enum(['typesafe', 'openrouter']).default('typesafe') })
+      .strict()
+      .parse(req.body);
+    if (provider !== studio.decision.config.provider)
+      throw new Error('저장된 JEV 제공처가 바뀌었습니다. 제공처를 확인하고 다시 연결하세요.');
+    const operation = { controller: new AbortController(), epoch: studio.epoch };
+    decisionProbe = operation;
+    const cancel = () => {
+      if (!res.writableEnded) operation.controller.abort();
+    };
+    res.on('close', cancel);
+    studio.busy = true;
+    studio.publish();
+    try {
+      const result = await requests.run(
+        (signal) => studio.decision.probe({ signal }),
+        operation.controller.signal,
+      );
+      if (!res.destroyed) res.json(result);
+    } finally {
+      res.off('close', cancel);
+      // Abort starts draining; only the owning request's completion releases admission.
+      if (decisionProbe === operation) {
+        decisionProbe = null;
+        if (studio.epoch === operation.epoch) studio.busy = false;
+      }
+      studio.publish();
+    }
+  });
   debug = debugRoutes(app, studio, debugStore, {
     idle: () =>
       !requests.pending.size &&
@@ -487,6 +580,7 @@ async function startServerImpl(
     const feed = new StateFeed(res, {
       patches: req.query.transport === 'patches',
       currentState: () => studio.state(),
+      surface: req.query.surface,
     });
     const send = (state) => feed.send(state);
     send(studio.state());
@@ -616,7 +710,8 @@ async function startServerImpl(
     res.json(provider.status());
   });
   app.post('/api/connection/probe', async (_req, res) => {
-    if (studio.running || studio.busy) throw new Error('방송을 종료한 뒤 응답을 확인하세요.');
+    if (decisionProbe || studio.running || studio.busy)
+      throw new Error('방송을 종료한 뒤 응답을 확인하세요.');
     studio.busy = true;
     try {
       res.json(await probe.run());
@@ -710,7 +805,8 @@ async function startServerImpl(
   app.post('/api/community/posts/:id/react', autonomousCommunityOnly);
   app.post('/api/community/reflect', autonomousCommunityOnly);
   app.post('/api/start', (_req, res) => {
-    if (probe.controller) throw new Error('연결 응답 확인을 마친 뒤 방송을 시작하세요.');
+    if (probe.controller || decisionProbe)
+      throw new Error('연결 응답 확인을 마친 뒤 방송을 시작하세요.');
     studio.start();
     res.json(studio.state());
   });
@@ -841,6 +937,7 @@ async function startServerImpl(
     res.json({ ok: true });
   });
   app.post('/api/stop', (_req, res) => {
+    decisionProbe?.controller.abort();
     if (probe.controller) probe.cancel();
     else studio.stop();
     res.json(studio.state());

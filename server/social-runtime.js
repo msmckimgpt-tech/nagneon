@@ -1,3 +1,4 @@
+import { communityInterest, communityProjection } from './decision/policies.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import express from 'express';
@@ -24,6 +25,7 @@ export class SocialRuntime {
     this.s = studio;
     this.world = studio.world;
     this.media = new SocialMedia();
+    this.recalledSources = new WeakMap();
   }
   data() {
     return this.world?.data.socialWorld;
@@ -510,6 +512,7 @@ export class SocialRuntime {
       d = this.data(),
       input = structuredClone(target.raw),
       generation = d.profileGeneration,
+      liveSequence = d.liveSequence,
       c = communities.find((c) => c.id === input.communityId),
       topic = c.topics.find((t) => t.id === input.topicId),
       birth = target.kind === 'social-birth';
@@ -550,6 +553,9 @@ export class SocialRuntime {
       s.epoch === operation.epoch &&
       this.enabled() &&
       this.data().profileGeneration === generation &&
+      this.data().liveSequence === liveSequence &&
+      s.ai.allowed('community') &&
+      !s.settings.personas.some(p=>p.id===target.viewer.id&&!p.enabled) &&
       !this.data().preferences.mutedCommunities.includes(c.id) &&
       !this.data().preferences.mutedTopics.includes(topic.id) &&
       (!source || this.validSource(source)) &&
@@ -591,8 +597,18 @@ export class SocialRuntime {
           : target.kind === 'social-mention'
             ? '제공된 공개 방송 발언만 직접 목격 근거다. 공동체 취향에 맞는 짧은 감상 글 하나를 messages에 쓰거나 침묵한다. 다른 사건/영상/관객/친분을 지어내지 않는다.'
             : '이곳은 특정 방송인의 팬 게시판이 아니다. 방송을 보거나 관객이 되지 않아도 계속 머무는 일반 주민으로서, 방송인과 무관한 이 공동체의 일상 글 하나를 messages에 쓴다. 공동체의 말투와 규범을 반영하되 홍보나 방문 예고로 마무리하지 않는다. 주제에 대한 독립적인 취향·시행착오를 한국어 게시글 말투로 표현한다. 현실 뉴스/유행/날짜/실제 사이트 방문을 지어내지 않는다. 침묵도 정상이다.';
+    let readDecision = null;
+    if(target.kind === 'social-read' && delivered && s.decision?.enabled('community-affinity','community')) {
+      readDecision = await communityInterest(s, {
+        state:communityProjection(target.viewer,delivered),
+        scope:{epoch:operation.epoch,generation,liveSequence,threadId:thread.id,hash:input.threadHash,residentId:input.residentId}, signal, valid,
+      });
+      if(!valid())return;
+    }
+    let result = null;
+    if(!readDecision) {
     s.reserveCall();
-    const result = await s.provider.react(
+    result = await s.provider.react(
       {
         aiFeature: 'community',
         settings,
@@ -625,9 +641,11 @@ export class SocialRuntime {
       },
       signal,
     );
+    }
     if (!valid()) return;
-    s.ai.assertCurrent(result);
-    const observation = Observation.parse(result.observation);
+    if(readDecision) s.decision.assertCurrent(readDecision.result);
+    else s.ai.assertCurrent(result);
+    const observation = Observation.parse(result?.observation || {game:'일상',scene:'',confidence:0,excitement:0,messages:[]});
     const message = observation.messages.find(
       (m) =>
         m.personaId === target.viewer.id &&
@@ -742,7 +760,7 @@ export class SocialRuntime {
             receivedAt: now,
             receivedLiveSequence: next.liveSequence,
             eligibleFromLiveSequence: next.liveSequence + 1,
-            interested: !!observation.communityVotes.find(
+            interested: readDecision?.interested ?? !!observation.communityVotes.find(
               (v) => v.personaId === resident.persona.id && v.recommended,
             ),
             source,
@@ -769,27 +787,65 @@ export class SocialRuntime {
       if (generated) this.media.remove(generated);
       throw error;
     }
-    s.tokens += Number(result.usage?.total_tokens) || 0;
-    s.ai.accepted(result, applied);
+    s.tokens += Number(result?.usage?.total_tokens) || 0;
+    if(readDecision)s.decision.accepted(readDecision.result);
+    else s.ai.accepted(result, applied);
     s.publish();
   }
-  memory(personaId) {
+  memoryCandidates(personaId) {
     const d = this.data();
     if (!d || d.quarantined) return [];
-    const r = d.residents.find((r) => r.persona.id === personaId);
-    if (!r) return [];
+    const resident = d.residents.find((r) => r.persona.id === personaId);
+    if (!resident) return [];
     return d.receipts
-      .filter((x) => x.residentId === r.id && this.validReceipt(x))
-      .slice(-3)
-      .map((x) => {
-        const t = d.threads.find((t) => t.id === x.threadId);
+      .filter((r) => r.residentId === resident.id && this.validReceipt(r))
+      .map((receipt) => {
+        const thread = d.threads.find((t) => t.id === receipt.threadId);
         return {
-          experience: 'heard-from-community',
-          community: communities.find((c) => c.id === t.communityId).name,
-          text: t.text,
-          receivedAt: x.receivedAt,
+          id: receipt.id,
+          fingerprint: digest({ receipt, content: socialContentHash(thread) }),
+          text: thread.text,
+          project: () => {
+            const row = {
+              experience: 'heard-from-community',
+              community: communities.find((c) => c.id === thread.communityId).name,
+              text: thread.text,
+              receivedAt: receipt.receivedAt,
+            };
+            this.recalledSources.set(row, {
+              personaId,
+              id: receipt.id,
+              fingerprint: digest({ receipt, content: socialContentHash(thread) }),
+            });
+            return row;
+          },
         };
       });
+  }
+  memoryCandidatesCurrent(personaId, candidates) {
+    if (!candidates.length) return true;
+    const current = new Map(this.memoryCandidates(personaId).map((c) => [c.id, c.fingerprint]));
+    return candidates.every((c) => c && current.get(c.id) === c.fingerprint);
+  }
+  captureMemory(personaId, rows) {
+    const sources = rows.map((row) => this.recalledSources.get(row));
+    return () =>
+      sources.every((source) => source?.personaId === personaId) &&
+      this.memoryCandidatesCurrent(personaId, sources);
+  }
+  memory(personaId, { preferredIds = [] } = {}) {
+    const candidates = this.memoryCandidates(personaId),
+      preferred = new Set(preferredIds);
+    const selected = new Set(
+      [
+        ...candidates.filter((c) => preferred.has(c.id)),
+        ...candidates.filter((c) => !preferred.has(c.id)).reverse(),
+      ]
+        .slice(0, 3)
+        .map((c) => c.id),
+    );
+    // Preserve the original receipt chronology, including an unchanged baseline.
+    return candidates.filter((c) => selected.has(c.id)).map((c) => c.project());
   }
   validReceipt(r) {
     const d = this.data(),

@@ -74,3 +74,10 @@ test('diagnostic HTTP export is authenticated, uncached, content-free and does n
  app.studio.lastError='PRIVATE-ERROR';app.studio.messages.push({id:'PRIVATE-ID',text:'PRIVATE-CHAT'});
  const response=await fetch(endpoint,{headers:{Authorization:'Bearer '+app.accessToken}});assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/attachment.*nagneon-reaction-diagnostics.json/);assert.equal(response.headers.get('cache-control'),'no-store');const raw=await response.text();assert.ok(!raw.includes('PRIVATE'));assert.equal(JSON.parse(raw).summary.modelSilent,1);assert.equal(calls,0);
 });
+
+test('diagnostics separate provider execution from blocking JEV wait and retain no payload',()=>{
+ let at=0;const d=new ReactionDiagnostics(()=>at);const id=d.begin();at=925;
+ d.timing(id,{providerMs:800,decisionWaitMs:125,text:'PRIVATE'});d.generated(id,1);d.finish(id,'accepted');
+ const r=d.snapshot();assert.equal(r.summary.modelP50Ms,925);assert.equal(r.summary.providerP50Ms,800);assert.equal(r.summary.decisionWaitP95Ms,125);
+ assert.equal(r.requests[0].providerMs,800);assert.equal(r.requests[0].decisionWaitMs,125);assert.ok(!JSON.stringify(r).includes('PRIVATE'));
+});

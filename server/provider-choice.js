@@ -6,9 +6,10 @@ import {ProviderRouter,RoutingSelection} from './provider-routing.js';
 const hostedFields={model:z.enum(audienceModels.models.map(m=>m.id)).optional(),effort:z.enum(Object.keys(audienceModels.effortLabels)).optional()};
 
 export const SingleProviderSelection=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('antigravity'),model:z.string().regex(/^gemini-[a-zA-Z0-9._-]+$/).max(200).optional(),effort:z.enum(['low','medium','high','max']).optional()}).strict(),
   z.object({kind:z.literal('codex'),...hostedFields}).strict(),z.object({kind:z.literal('openai'),...hostedFields}).strict(),
   z.object({kind:z.literal('ollama'),model:z.string().trim().min(1).max(200),base:z.string().max(200).default('http://127.0.0.1:11434'),contextSize:z.number().int().min(4096).max(131072).default(65536)}).strict()
-]).refine(config=>config.kind==='ollama'||!config.effort||(config.model?audienceModels.models.find(m=>m.id===config.model).efforts.includes(config.effort):['low','medium','high','xhigh'].includes(config.effort)),{message:'선택한 모델에서 지원하는 추론 수준을 선택해주세요.'});
+]).refine(config=>['ollama','antigravity'].includes(config.kind)||!config.effort||(config.model?audienceModels.models.find(m=>m.id===config.model).efforts.includes(config.effort):['low','medium','high','xhigh'].includes(config.effort)),{message:'선택한 모델에서 지원하는 추론 수준을 선택해주세요.'});
 export const ProviderSelection=z.union([SingleProviderSelection,RoutingSelection]);
 
 export const hostedModelEnv=config=>({...config?.model?{OPENAI_MODEL:config.model}:{},...config?.effort?{OPENAI_REASONING_EFFORT:config.effort}:{}});
@@ -32,6 +33,7 @@ export class ProviderChoice {
       if(c.provider.kind==='openai')backend.key=this.credentials.get(this.credentialId(c))||'';
       return backend;
     }});
+    if(config.kind==='antigravity')return this.factories.antigravity(config);
     if(config.kind==='ollama')return this.factories.ollama(config);
     const base=config.kind==='codex'?this.codex():(this.backends.openai??=this.factories.openai());
     if(!config.model&&!config.effort)return base;

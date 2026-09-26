@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir,mkdtemp,readFile} from 'node:fs/promises';
+import {mkdtemp,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {renameSync} from 'node:fs';
-import {resolve,join} from 'node:path';
+import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Clips,ClipFeatures} from '../server/clips.js';
 import {clipTextSnapshot} from '../server/clip-memory.js';
@@ -21,7 +22,9 @@ const reply=(id='new',text='이야기 잘 읽었어요')=>({personaId:id,text,ki
 const result=messages=>({observation:{game:'Just Chatting',scene:'대화',confidence:1,excitement:0,messages,positiveMoment:{positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}},usage:{total_tokens:1}});
 const fake=(react=async()=>result([reply()]))=>({status:()=>({configured:true}),react});
 const allItems=rows=>rows.flatMap(c=>c.items);
-async function folder(){await mkdir('artifacts',{recursive:true});return mkdtemp(resolve('artifacts/clip-memory-test-'));}
+// Keep durable test writes on the caller's test volume, not the repository's
+// potentially slow mounted image. This also honors the canonical TMPDIR.
+async function folder(){return mkdtemp(join(tmpdir(),'clip-memory-test-'));}
 function fixture(t,{provider=fake(),save=()=>{}}={}){
   let now=T+1000;const clips=new Clips({now:()=>now,save}),s=new Studio({provider,clips,settings:{...defaults,mode:'live',maxCalls:50,discovery:{...defaults.discovery,enabled:false}},now:()=>now,random:()=>.5});clearInterval(s.timer);s.ai.update({features:{clip:true}});s.start();t.after(()=>s.close());
   const c=clips.create(base());return {s,clips,c,tick:()=>now+=1000};

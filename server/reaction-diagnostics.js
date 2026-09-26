@@ -10,11 +10,12 @@ export class ReactionDiagnostics {
   constructor(now=Date.now){this.now=now;this.serial=0;this.reset();}
   reset(){this.since=this.now();this.rows=[];this.skips={};this.total=0;}
   begin({hasSpeech=false,frameCount=0,present=0,eligible=0,eligibleViewers=0,lurkingEligible=0,company=null,latestFrameAt}={}){
-    const row={id:++this.serial,startedAt:this.now(),hasSpeech:!!hasSpeech,frameCount:count(frameCount),present:count(present),eligible:count(eligible),eligibleViewers:count(eligibleViewers),lurkingEligible:count(lurkingEligible),company:['idle','watching'].includes(company)?company:null,latestFrameAgeMs:Number.isFinite(latestFrameAt)?elapsed(latestFrameAt,this.now()):null,modelMs:null,generated:null,admitted:0,delivered:0,pending:0,rejected:{},state:'generating',firstDeliveryMs:null};
+    const row={id:++this.serial,startedAt:this.now(),hasSpeech:!!hasSpeech,frameCount:count(frameCount),present:count(present),eligible:count(eligible),eligibleViewers:count(eligibleViewers),lurkingEligible:count(lurkingEligible),company:['idle','watching'].includes(company)?company:null,latestFrameAgeMs:Number.isFinite(latestFrameAt)?elapsed(latestFrameAt,this.now()):null,modelMs:null,providerMs:null,decisionWaitMs:0,generated:null,admitted:0,delivered:0,pending:0,rejected:{},state:'generating',firstDeliveryMs:null};
     this.rows.push(row);this.rows=this.rows.slice(-LIMIT);this.total++;return row.id;
   }
   row(id){return this.rows.find(row=>row.id===id);}
   generated(id,n){const row=this.row(id);if(!row)return;row.generated=count(n);row.modelMs=elapsed(row.startedAt,this.now());}
+  timing(id,{providerMs,decisionWaitMs}){const row=this.row(id);if(!row)return;row.providerMs=count(providerMs);row.decisionWaitMs=count(decisionWaitMs);}
   reject(id,reason,n=1){const row=this.row(id);if(!row||!reasons.has(reason))return;row.rejected[reason]=(row.rejected[reason]||0)+count(n);}
   admit(id){const row=this.row(id);if(row){row.admitted++;row.pending++;}}
   drop(id,reason){const row=this.row(id);if(!row||row.pending<=0)return;row.pending--;this.reject(id,reason);}
@@ -29,6 +30,7 @@ export class ReactionDiagnostics {
     const rows=structuredClone(this.rows),latencies=rows.filter(r=>r.generated!==null).map(r=>r.modelMs).filter(Number.isFinite).sort((a,b)=>a-b);
     const firstChatWaits=rows.filter(r=>r.delivered>0&&Number.isFinite(r.firstDeliveryMs)&&Number.isFinite(r.modelMs)).map(r=>Math.max(0,r.firstDeliveryMs-r.modelMs)).sort((a,b)=>a-b);
     const summary={attempts:this.total,retained:rows.length,modelSilent:rows.filter(r=>r.generated===0&&r.state==='accepted').length,generated:0,delivered:0,pending:0,rejected:{},outcomes:{},modelP50Ms:latencies.length?latencies[Math.floor((latencies.length-1)*.5)]:null,modelP95Ms:latencies.length?latencies[Math.ceil(latencies.length*.95)-1]:null};
+    for(const [field,prefix] of [['providerMs','provider'],['decisionWaitMs','decisionWait']]){const values=rows.filter(r=>r.generated!==null).map(r=>r[field]).filter(Number.isFinite).sort((a,b)=>a-b);summary[prefix+'P50Ms']=values.length?values[Math.floor((values.length-1)*.5)]:null;summary[prefix+'P95Ms']=values.length?values[Math.ceil(values.length*.95)-1]:null;}
     for(const row of rows){summary.outcomes[row.state]=(summary.outcomes[row.state]||0)+1;summary.generated+=row.generated||0;summary.delivered+=row.delivered;summary.pending+=row.pending;for(const [reason,n] of Object.entries(row.rejected))summary.rejected[reason]=(summary.rejected[reason]||0)+n;}
     Object.assign(summary,{firstChatSamples:firstChatWaits.length,firstChatWaitP50Ms:firstChatWaits.length?firstChatWaits[Math.floor((firstChatWaits.length-1)*.5)]:null,firstChatWaitP95Ms:firstChatWaits.length?firstChatWaits[Math.ceil(firstChatWaits.length*.95)-1]:null});
     return {version:1,since:this.since,exportedAt:this.now(),limit:LIMIT,retention:'current broadcast; retained after stop until the next start or app exit',scope:'live reactions only; counts and durations, no conversation or media content',summary,skips:{...this.skips},requests:rows};

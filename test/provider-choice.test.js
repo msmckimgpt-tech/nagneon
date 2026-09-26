@@ -49,3 +49,24 @@ test('failed readiness, save, cancellation or intervening activity cannot replac
   choice.save=()=>{};await assert.rejects(choice.select({kind:'ollama',model:'test'},{canApply:()=>false}));assert.equal(choice.active,primary);
   const controller=new AbortController();local.check=async()=>controller.abort();await assert.rejects(choice.select({kind:'ollama',model:'test'},{signal:controller.signal}));assert.equal(choice.active,primary);assert.equal(choice.changing,false);
 });
+
+test('Gemini account choice switches both ways and survives restart without changing audio',async()=>{
+  const factories={codex:()=>backend('codex'),antigravity:()=>backend('gemini')};let saved;
+  const choice=new ProviderChoice({factories,save:c=>saved=c});
+  choice.proxy.transcribe=async()=> 'local-speech';
+  const config={kind:'antigravity',model:'gemini-test',effort:'low'};
+  await choice.select(config);
+  assert.equal(await choice.proxy.react(),'gemini');
+  assert.equal(await choice.proxy.transcribe(),'local-speech');
+  assert.deepEqual(saved,config);
+  assert.equal(new ProviderChoice({factories,initial:saved}).status().kind,'antigravity');
+  await choice.select({kind:'codex'});
+  assert.equal(await choice.proxy.react(),'codex');
+  assert.equal(await choice.proxy.transcribe(),'local-speech');
+});
+
+test('Gemini selection refuses credentials, non-Gemini model names and unsupported effort',()=>{
+  assert.equal(ProviderSelection.safeParse({kind:'antigravity'}).success,true);
+  for(const extra of [{apiKey:'secret'},{model:'gpt-6-sol'},{model:'gemini-bad name'},{effort:'xhigh'}])
+    assert.equal(ProviderSelection.safeParse({kind:'antigravity',...extra}).success,false);
+});

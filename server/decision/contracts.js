@@ -1,10 +1,13 @@
 export const DecisionMode = Object.freeze({ OFF: 'off', SHADOW: 'shadow', ASSIST: 'assist' });
 export const DecisionTask = Object.freeze({
+  LIVE_PLAN: 'live-plan',
   MEMORY_RERANK: 'memory-rerank',
   REACTION_CHECK: 'reaction-check',
   INTENT_HINT: 'intent-hint',
   COMMUNITY_AFFINITY: 'community-affinity',
   ROUTE_HINT: 'route-hint',
+  CULTURE_RELEVANCE: 'culture-relevance',
+  CLIP_RELEVANCE: 'clip-relevance',
 });
 const modes = new Set(Object.values(DecisionMode));
 const tasks = new Set(Object.values(DecisionTask));
@@ -14,6 +17,7 @@ const reasons = new Set([
   'busy',
   'timeout',
   'auth',
+  'credits',
   'usage',
   'network',
   'invalid_response',

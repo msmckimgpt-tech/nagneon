@@ -1212,6 +1212,8 @@ footer .dot {
 }
 .overlay-grip {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   align-items: center;
   padding: 12px 14px;
@@ -1227,6 +1229,7 @@ footer .dot {
 }
 .overlay-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   -webkit-app-region: no-drag;

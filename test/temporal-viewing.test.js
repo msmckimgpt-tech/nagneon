@@ -78,10 +78,38 @@ test('A-B-A wakes the model despite matching endpoints and does not replay ackno
   assert.equal(f.s.viewing.last.video.through,f.now());
 });
 
-test('exact static spans use only boundary images without dropping small brief changes',()=>{
+test('exact static spans send only the newest image with the full sampled still interval',()=>{
   const ring=new TemporalFrames();ring.reset(randomUUID(),randomUUID());for(let i=0;i<33;i++)ring.add(a,100000+i*500);
-  assert.equal(ring.window(116000).frames.length,2);
-  assert.deepEqual(ring.window(116000).frames.at(-1).still,{since:100000,samples:33});
+  const video=ring.window(116000);
+  assert.deepEqual(video.frames,[{image:a,at:116000,still:{since:100000,samples:33}}]);
+  assert.equal(Frame.safeParse({video}).success,true);
+  assert.equal(ring.window(118501),undefined,'deduplication never refreshes an old capture');
+});
+
+test('static compaction keeps speech snapshots and acknowledged boundaries independent',()=>{
+  const ring=new TemporalFrames();ring.reset(randomUUID(),randomUUID());for(let i=0;i<5;i++)ring.add(a,100000+i*500);
+  const speech=ring.speechWindow(100500,102000),first=ring.window(102000);
+  assert.deepEqual(speech.frames.map(f=>f.at),[100000,101000,102000]);
+  ring.acknowledge(first);ring.add(a,102500);ring.add(a,103000);
+  assert.deepEqual(ring.window(103000).frames,[{image:a,at:103000,still:{since:102000,samples:3}}]);
+  assert.deepEqual(ring.speechWindow(100500,102000),speech);
+  ring.reset(randomUUID(),randomUUID());ring.add(a,200000);
+  assert.deepEqual(ring.window(200000).frames,[{image:a,at:200000}]);
+  ring.acknowledge(first);assert.equal(ring.through,0);
+});
+
+test('static compaction does not grant late viewers evidence from before their entry',()=>{
+  const sessionId=randomUUID(),sourceId=randomUUID(),ring=new TemporalFrames();ring.reset(sessionId,sourceId);
+  ring.add(a,100000);ring.add(a,100500);ring.add(a,101000);
+  const video=ring.window(101000),visible=temporalVideo(video,{now:101000,sessionId,startedAt:100000,joinedAt:[100750]});
+  assert.deepEqual(visible.frames.map(f=>f.at),[101000]);
+  assert.equal(visible.timeline.frames[0].still,undefined);
+});
+
+test('matching endpoints never hide a brief intermediate change in a pending window',()=>{
+  const ring=new TemporalFrames();ring.reset(randomUUID(),randomUUID());
+  ring.add(a,100000);ring.add(b,100500);ring.add(a,101000);
+  assert.deepEqual(ring.window(101000).frames.map(f=>f.image),[a,b,a]);
   ring.reset(randomUUID(),randomUUID());for(let i=0;i<33;i++)ring.add(img(String(i)),100000+i*500,i===17?.006:0);
   const frames=ring.window(116000).frames;assert.ok(frames.some(f=>f.at===108000));assert.ok(frames.some(f=>f.at===108500));assert.equal(frames.length,8);
 });

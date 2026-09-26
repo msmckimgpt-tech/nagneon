@@ -32,3 +32,17 @@ test('forwarded movement restores toolbar input and slider dragging keeps input 
   listeners.pointerdown({target:control});listeners.pointercancel();assert.equal(sent.at(-1)[1],false);
   listeners.pointerdown({target:control});listeners.mousemove({target:chat,buttons:0});assert.equal(sent.at(-1)[1],false);
 });
+
+test('focused composer keeps click-through interactive until focus leaves, and window blur releases it',()=>{
+  const listeners={},sent=[];const control={closest:()=>({}),matches:()=>true},chat={closest:()=>null,matches:()=>false};
+  const listen=(name,fn)=>listeners[name]=fn;
+  vm.runInNewContext(readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8'),{
+    require:()=>({contextBridge:{exposeInMainWorld(){}},ipcRenderer:{send:(...args)=>sent.push(args)}}),
+    location:{pathname:'/overlay'},window:{addEventListener:listen},document:{addEventListener:listen,elementFromPoint:()=>chat,activeElement:control}
+  });
+  assert.equal(typeof listeners.focusin,'function');
+  listeners.focusin({target:control});listeners.mousemove({target:chat,buttons:0});assert.equal(sent.at(-1)[1],true);
+  listeners.focusout({relatedTarget:chat});assert.equal(sent.at(-1)[1],false);
+  listeners.focusin({target:control});listeners.blur();assert.equal(sent.at(-1)[1],false);
+  assert.equal(typeof listeners.focus,'function');listeners.focus();listeners.mouseleave();assert.equal(sent.at(-1)[1],true);
+});

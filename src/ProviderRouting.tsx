@@ -42,7 +42,8 @@ export function ProviderRouting({ state, disabled }: { state: State; disabled: b
           id: 'main',
           label: '기존 연결',
           provider: {
-            ...current.config,
+            ...(current.config.kind === 'antigravity' ? {} : current.config),
+            kind: current.config.kind === 'antigravity' ? 'codex' : current.config.kind,
             ...(current.config.kind === 'openai'
               ? {
                   model: current.config.model || state.provider.model,

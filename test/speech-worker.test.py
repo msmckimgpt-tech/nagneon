@@ -108,7 +108,9 @@ class SpeechWorkerTests(unittest.TestCase):
 
     def test_silence_does_not_retry_but_unrecognized_voice_does(self):
         silent = FakeModel([[]], duration=0)
-        self.assertEqual(worker.recognize(silent, np.zeros(48000))[0], '')
+        text, policy = worker.recognize(silent, np.zeros(48000))
+        self.assertEqual(text, '')
+        self.assertTrue(policy['noSpeech'])
         self.assertEqual(len(silent.calls), 1)
         voiced = FakeModel([[], [segment()]], duration=1)
         self.assertTrue(worker.recognize(voiced, np.zeros(48000))[1]['fallback'])

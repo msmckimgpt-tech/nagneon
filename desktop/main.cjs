@@ -1,13 +1,16 @@
-const {app,BrowserWindow,desktopCapturer,session,ipcMain,globalShortcut,screen,dialog,shell}=require('electron');
+const {app,BrowserWindow,desktopCapturer,session,ipcMain,globalShortcut,screen,dialog,shell,safeStorage}=require('electron');
 const {join}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {createStudioSession}=require('./session.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
+const {openOfficialKeyConsole}=require('./official-links.cjs');
 const {applyOverlayPrivacy}=require('./overlay-privacy.cjs');
 const storage=require('./storage.cjs');
+const {configureOverlayWorkspaces,registerMicrophoneShortcut}=require('./desktop-controls.cjs');
 const recovery=require('./profile-recovery.cjs');
+const {JevKeyStore}=require('./jev-key-store.cjs');
 const profile=profileDirectory(process.argv);
 const storageDefaults=storage.storagePaths(app.getPath('appData'));
 try{app.setPath('userData',recovery.requestProfile(app.getPath('appData'),profile).profile);}
@@ -16,6 +19,7 @@ let pendingStorage;
 app.setName('Nagneon');
 const networkRecovery=require('./network-recovery.cjs').createNetworkRecovery(app);
 let main,overlay,service,startingService,studioSession,account,overlayInput;
+let microphoneState={enabled:false,preparing:false,available:false,error:false};
 const preload=join(__dirname,'preload.cjs');
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(service.url+'/'))event.preventDefault();});}
 function trusted(event,mainOnly=false){if(!event.senderFrame?.url.startsWith(service.url+'/')||(mainOnly&&event.sender!==main.webContents))throw new Error('허용되지 않은 창 요청');}
@@ -29,6 +33,7 @@ async function openOverlay(){
   if(overlay&&!overlay.isDestroyed()){overlay.showInactive();return;}
   const area=screen.getPrimaryDisplay().workArea;
   overlay=new BrowserWindow({width:390,height:650,x:area.x+area.width-415,y:area.y+55,transparent:true,frame:false,alwaysOnTop:true,skipTaskbar:true,resizable:true,hasShadow:false,backgroundColor:'#00000000',webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+  configureOverlayWorkspaces(overlay);
   overlayInput=createOverlayInput(overlay,publishThrough);
   const created=overlay;const input=overlayInput;created.once('closed',()=>{if(overlay===created)overlay=null;publishThrough(false);});
   created.on('blur',()=>input.reset());
@@ -55,7 +60,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
-    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}});
+    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),decisionKeyStore:new JevKeyStore({file:join(app.getPath('userData'),'data','secrets','jev-key.bin'),safeStorage}),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}});
     service=await startingService;
     service.studio.on('state',syncOverlayPrivacy);
     if(shutdown.quitting)return;
@@ -84,6 +89,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     const checkAccount=async()=>{if(provider.check)await provider.check();service.studio.publish();return provider.status();};
     account=new AccountLogin({bin:provider.bin,env:provider.env,check:checkAccount,openExternal:url=>shell.openExternal(url),onChange:value=>{if(main&&!main.isDestroyed())main.webContents.send('account:state',value);}});
     ipcMain.handle('account:status',event=>{trusted(event,true);return account.snapshot();});
+    ipcMain.handle('decision:key-console',(event,provider)=>openOfficialKeyConsole({event,provider,mainWebContents:main.webContents,serviceUrl:service.url,openExternal:url=>shell.openExternal(url)}));
     ipcMain.handle('account:start',(event,method)=>{trusted(event,true);if(service.studio.running||service.studio.busy)throw new Error('방송을 마친 뒤 계정을 연결하세요.');if(provider.status().kind!=='codex')throw new Error('현재 제공처는 ChatGPT 구독 연결을 지원하지 않습니다.');return account.start(method);});
     ipcMain.handle('account:cancel',event=>{trusted(event,true);return account.stop();});
     ipcMain.handle('account:open',event=>{trusted(event,true);return account.open();});
@@ -93,6 +99,17 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     ipcMain.handle('overlay:open',event=>{trusted(event);return openOverlay();});ipcMain.handle('overlay:through',event=>{trusted(event);return through();});ipcMain.handle('overlay:close',event=>{trusted(event);closeOverlay();});
     ipcMain.on('overlay:interactive',(event,value)=>{if(overlay&&!overlay.isDestroyed()&&event.sender===overlay.webContents&&event.senderFrame===overlay.webContents.mainFrame)overlayInput.interactive(value);});
     globalShortcut.register('CommandOrControl+Shift+F10',through);
+    const microphoneShortcut=registerMicrophoneShortcut(globalShortcut,()=>main);
+    ipcMain.handle('microphone:shortcut',event=>{trusted(event,true);return microphoneShortcut;});
+    const microphoneWindow=event=>{trusted(event);if(event.sender!==main.webContents&&event.sender!==overlay?.webContents)throw Error('허용되지 않은 마이크 요청');};
+    ipcMain.handle('microphone:state',event=>{microphoneWindow(event);return microphoneState;});
+    ipcMain.handle('microphone:toggle',event=>{microphoneWindow(event);if(!main.isDestroyed())main.webContents.send('microphone:toggle');});
+    ipcMain.on('microphone:update',(event,value)=>{
+      try{trusted(event,true);}catch{return;}
+      if(!value||['enabled','preparing','available','error'].some(key=>typeof value[key]!=='boolean'))return;
+      microphoneState={enabled:value.enabled,preparing:value.preparing,available:value.available,error:value.error};
+      if(overlay&&!overlay.isDestroyed())overlay.webContents.send('microphone:state',microphoneState);
+    });
     main.on('closed',()=>{closeOverlay();app.quit();});
     if(await networkRecovery.load(main,service.url+'/')&&!shutdown.quitting&&!main.isDestroyed())main.show();
   }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});

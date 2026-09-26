@@ -12,6 +12,7 @@ export const Settings = z.object({
   showStreamerMessages:z.boolean().default(true),
   overlayMode:z.enum(['private','public']).default('private'),
   communityActivityEnabled:z.boolean().default(true),
+  continuousAudienceChat:z.boolean().default(false),
   memesEnabled:z.boolean().default(true),
   cultureDomains:z.array(z.string().max(300).transform((v,ctx)=>{try{return domainOrigin(v);}catch{ctx.addIssue({code:'custom',message:'공개 HTTPS 커뮤니티 도메인을 입력하세요.'});return z.NEVER;}})).max(5).default([]).refine(v=>new Set(v).size===v.length,'도메인이 중복됩니다.'),
   speechDevice:z.enum(['gpu','cpu']).default('gpu'),

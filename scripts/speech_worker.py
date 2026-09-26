@@ -51,7 +51,8 @@ def recognize(model, samples):
             segments, info = model.transcribe(samples, **options)
             segments = list(segments)
         text = ' '.join(s.text.strip() for s in segments if s.no_speech_prob < .65)
-        return text[:3000], {'encoderWindowMs': frames * 10, 'fallback': fallback,
+        return text[:3000], {'noSpeech': not text.strip() and info.duration_after_vad == 0,
+                            'encoderWindowMs': frames * 10, 'fallback': fallback,
                             'encoderPassesMs': [frames * 10] + ([30000] if fallback else [])}
     finally:
         model.encoder_frames = 3000
@@ -100,7 +101,7 @@ def process_job(model, job):
     except Exception:
         cues = None
     finished = time.perf_counter()
-    return {'id': job['id'], 'text': text, 'cues': cues,
+    return {'id': job['id'], 'text': text, 'cues': cues, 'noSpeech': policy['noSpeech'],
             'timing': {**policy, 'decodeMs': round((decoded - started) * 1000),
                        'recognitionMs': round((recognized - decoded) * 1000),
                        'cuesMs': round((finished - recognized) * 1000),

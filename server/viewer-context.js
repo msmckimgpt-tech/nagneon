@@ -228,3 +228,59 @@ export function liveViewerContext(
   );
   return { audience: structuredClone({ ...audience, members }), viewerContext: packets };
 }
+
+// Capture IDs from the final prompt, not from a later filtered source store.
+// A missing or edited source invalidates the entire in-flight reaction. Keep
+// this controller guard independent of optional judgment tasks and questions.
+export function captureLiveRecallSources({ journal, clips, social, audience }, viewerContext = {}) {
+  const guards = [];
+  for (const [id, packet] of Object.entries(viewerContext)) {
+    if (packet.clipMemories?.length) guards.push(clips.captureRecall(id, packet.clipMemories));
+    if (packet.heardFromCommunity?.length)
+      guards.push(social.captureMemory(id, packet.heardFromCommunity));
+    if (packet.arrivalClipMemory) {
+      const reading = audience?.data.members[id]?.arrivalClip;
+      const receipt = JSON.stringify(reading),
+        summary = JSON.stringify(packet.arrivalClipMemory);
+      guards.push(
+        () =>
+          !!reading &&
+          JSON.stringify(audience.data.members[id]?.arrivalClip) === receipt &&
+          JSON.stringify(clips.recallArrival(reading, packet.watchTiming.receivedAt)) === summary,
+      );
+    }
+    if (
+      audience &&
+      (packet.recollections?.length ||
+        packet.clipMemories?.length ||
+        packet.heardFromCommunity?.length ||
+        packet.arrivalClipMemory)
+    ) {
+      const joinedAt = packet.joinedAt;
+      guards.push(() => audience.data.members[id]?.joinedAt === joinedAt);
+    }
+  }
+  const ids = new Set(
+    Object.values(viewerContext).flatMap((packet) =>
+      (packet.recollections || []).map((entry) => entry.sourceId),
+    ),
+  );
+  if (!ids.size) return () => guards.every((current) => current());
+  const revision = journal.data.revision,
+    entries = new Map(journal.data.entries.map((entry) => [entry.id, entry]));
+  const sources = new Map(
+    [...ids].map((id) => [id, entries.has(id) ? JSON.stringify(entries.get(id)) : null]),
+  );
+  return () => {
+    if (
+      !guards.every((current) => current()) ||
+      [...sources.values()].some((source) => source === null)
+    )
+      return false;
+    if (journal.data.revision === revision) return true;
+    const current = new Map(journal.data.entries.map((entry) => [entry.id, entry]));
+    return [...sources].every(
+      ([id, source]) => current.has(id) && JSON.stringify(current.get(id)) === source,
+    );
+  };
+}

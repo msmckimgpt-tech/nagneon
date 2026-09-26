@@ -40,7 +40,7 @@ export function prepareCapture({acquire,signal,onPhase,picture=true,createVideo=
       try{
         video=createVideo();video.muted=true;video.playsInline=true;
         if(!picture){
-          if(!stream.getAudioTracks().some(t=>t.readyState==='live'))throw new Error('Windows 출력 소리를 받지 못했습니다. 소리 연결을 다시 선택해주세요.');
+          if(!stream.getAudioTracks().some(t=>t.readyState==='live'))throw new Error('시스템 출력 소리를 받지 못했습니다. 소리 연결을 다시 선택해주세요.');
           // Sound-only sharing does not need to decode an unseen game frame.
           settled=true;cleanup();resolve({stream,video});return;
         }

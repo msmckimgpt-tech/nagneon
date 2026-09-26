@@ -386,3 +386,40 @@ test('decision configuration and task names are bounded before any external call
   assert.throws(() => service.advise('unregistered-task', {}));
   assert.equal(called, false);
 });
+
+test('live per-call allowance can shorten but never extend configured timeout', async () => {
+  const hold = deferred();
+  const service = new DecisionService({
+    config: { mode: 'assist', timeoutMs: 500, maxInFlight: 1 },
+    adapter: { evaluate: () => hold.promise },
+  });
+  const keepAlive = setTimeout(() => hold.resolve({ value: 'too late' }), 1000);
+  try {
+    const started = performance.now();
+    const result = await service.advise(DecisionTask.INTENT_HINT, {}, { timeoutMs: 20 });
+    assert.equal(result.reason, 'timeout');
+    assert.ok(performance.now() - started < 250, 'uses phase allowance, not 500 ms config');
+    assert.equal(service.status().inFlight, 1);
+    hold.resolve({ value: 'drain' });
+  } finally {
+    clearTimeout(keepAlive);
+    hold.resolve({ value: 'cleanup' });
+    await service.close();
+  }
+});
+test('exhausted live allowance does not send a decision request', async () => {
+  let calls = 0;
+  const service = new DecisionService({
+    config: { mode: 'assist' },
+    adapter: {
+      evaluate: async () => {
+        calls++;
+        return { value: 'wrong' };
+      },
+    },
+  });
+  const result = await service.advise(DecisionTask.INTENT_HINT, {}, { timeoutMs: 0 });
+  assert.equal(result.reason, 'timeout');
+  assert.equal(calls, 0);
+  await service.close();
+});

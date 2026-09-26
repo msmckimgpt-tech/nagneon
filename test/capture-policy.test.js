@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const {attachCapture}=createRequire(import.meta.url)('../desktop/capture.cjs');
-function fixture(getSources=async()=>[{id:'window:1',name:'Game',thumbnail:{toDataURL:()=>''}}]){const frame={},main={webContents:{mainFrame:frame}},handlers={};let request;attachCapture({main,session:{setDisplayMediaRequestHandler:f=>request=f},ipcMain:{handle:(name,f)=>handlers[name]=f},desktopCapturer:{getSources},platform:'win32'});return {handlers,event:{sender:main.webContents,senderFrame:frame},call:async(audioRequested=true,otherFrame=false)=>{let result;await request({frame:otherFrame?{}:frame,audioRequested},v=>result=v);return result;}};}
+function fixture(getSources=async()=>[{id:'window:1',name:'Game',thumbnail:{toDataURL:()=>''}}],platform='win32'){const frame={},main={webContents:{mainFrame:frame}},handlers={};let request;attachCapture({main,session:{setDisplayMediaRequestHandler:f=>request=f},ipcMain:{handle:(name,f)=>handlers[name]=f},desktopCapturer:{getSources},platform});return {handlers,event:{sender:main.webContents,senderFrame:frame},call:async(audioRequested=true,otherFrame=false)=>{let result;await request({frame:otherFrame?{}:frame,audioRequested},v=>result=v);return result;}};}
 test('system output loopback requires both explicit selection and a browser audio request',async()=>{const f=fixture();f.handlers['capture:select'](f.event,'window:1',false);assert.equal((await f.call()).audio,undefined);f.handlers['capture:select'](f.event,'window:1',true);assert.equal((await f.call(false)).audio,undefined);f.handlers['capture:select'](f.event,'window:1',true);assert.equal((await f.call()).audio,'loopback');assert.deepEqual(await f.call(),{});});
 test('overlay and subframe selection/capture are rejected without consuming the main selection',async()=>{const f=fixture();await assert.rejects(()=>f.handlers['capture:select']({...f.event,senderFrame:{}},'window:1',true));f.handlers['capture:select'](f.event,'window:1',true);assert.deepEqual(await f.call(true,true),{});assert.equal((await f.call()).audio,'loopback');});
 test('disappearing screen source never grants audio and malformed audio choice is rejected',async()=>{const f=fixture();await assert.rejects(()=>f.handlers['capture:select'](f.event,'window:1','true'));f.handlers['capture:select'](f.event,'missing',true);assert.deepEqual(await f.call(),{});});
@@ -31,4 +31,14 @@ test('failed preview work can be retried and malformed or foreign frame requests
   await assert.rejects(()=>f.handlers['capture:sources']({...f.event,sender:{}}));
   await assert.rejects(()=>f.handlers['capture:previews'](f.event,'all'));assert.equal(calls,0);
   await assert.rejects(()=>f.handlers['capture:previews'](f.event,'window'));assert.deepEqual(await f.handlers['capture:previews'](f.event,'window'),[]);assert.equal(calls,2);
+});
+
+for(const platform of ['darwin','linux'])test(`system audio uses native loopback only on supported platforms: ${platform}`,async()=>{
+  const f=fixture(undefined,platform);
+  await f.handlers['capture:select'](f.event,'window:1',true);
+  assert.equal((await f.call()).audio,platform==='darwin'?'loopback':undefined);
+  await f.handlers['capture:select'](f.event,'window:1',false);
+  assert.equal((await f.call()).audio,undefined);
+  await f.handlers['capture:select'](f.event,'window:1',true);
+  assert.equal((await f.call(false)).audio,undefined);
 });

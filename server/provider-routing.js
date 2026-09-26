@@ -146,6 +146,7 @@ export class ProviderRouter {
       this.config.connections.map((c) => [c.id, { ...c, backend: create(c) }]),
     );
     this.primary = this.entries.get(this.config.routes.default.primary);
+    this.decisionToken = Object.freeze({});
   }
   get managesAiAttempts() { return true; }
   get transcriptionModel() { return this.primary.backend.transcriptionModel; }
@@ -202,13 +203,26 @@ export class ProviderRouter {
   async transcribe(...args) {
     return this.primary.backend.transcribe(...args);
   }
+  decisionRoutes(args) {
+    const need=routeRequirements(args),route=this.config.routes[need.role]||this.config.routes.default;
+    return {token:this.decisionToken,candidates:[route.primary,...route.fallbacks].flatMap(id=>{
+      const c=this.entries.get(id),status=c.backend.status();
+      const vision=c.provider.kind==='codex'||(c.provider.kind==='ollama'?status.vision:c.provider.vision);
+      const search=c.provider.kind==='codex'||(c.provider.kind==='openai'&&c.provider.webSearch);
+      return status.configured&&(!need.vision||vision)&&(!need.webSearch||search)?[{id,model:c.backend.model||c.provider.model||'',kind:c.provider.kind}]:[];
+    })};
+  }
   async react(args, signal) {
     const need = routeRequirements(args),
       route = this.config.routes[need.role] || this.config.routes.default;
     const deadline = AbortSignal.timeout(90000),
       total = AbortSignal.any([deadline, ...(signal ? [signal] : [])]);
+    const hint=args.decisionRouteHint,eligible=hint?.token===this.decisionToken?this.decisionRoutes(args):null;
+    const original=[route.primary,...route.fallbacks];
+    const path=eligible?.candidates.some(c=>c.id===hint.id)?[hint.id,...original.filter(id=>id!==hint.id)]:original;
+    const providerArgs=hint?(({decisionRouteHint,...rest})=>rest)(args):args;
     const attempts = [];
-    for (const id of [route.primary, ...route.fallbacks]) {
+    for (const id of path) {
       total.throwIfAborted();
       const c = this.entries.get(id),
         b = c.backend,
@@ -225,7 +239,7 @@ export class ProviderRouter {
           throw failure('capability', '요청에 필요한 화면 또는 검색 기능을 지원하지 않습니다.');
         if (!args.connectionProbe && attempts.some((a) => a.called)) this.onFallback();
         attempts.push({ id, called: true });
-        const result = await runAiAttempt(args, b, attemptSignal, (a,s) => b.react(a,s), id);
+        const result = await runAiAttempt(providerArgs, b, attemptSignal, (a,s) => b.react(a,s), id);
         total.throwIfAborted();
         attemptSignal.throwIfAborted();
         return {
@@ -248,7 +262,7 @@ export class ProviderRouter {
         const code = attemptSignal.aborted ? 'timeout' : error.code || 'invalid_response';
         if (attempts.at(-1)?.id === id) attempts.at(-1).code = code;
         else attempts.push({ id, called: false, code });
-        if (!retryable.has(code) || id === [route.primary, ...route.fallbacks].at(-1))
+        if (!retryable.has(code) || id === path.at(-1))
           throw failure(
             code,
             `${c.label}: ${code === 'timeout' ? '응답 시간이 초과됐습니다.' : code === 'capability' ? '화면·검색 기능을 확인하세요.' : code === 'unavailable' ? '연결을 확인하세요.' : '응답을 완료하지 못했습니다. 연결·모델 설정을 확인하세요.'}`,

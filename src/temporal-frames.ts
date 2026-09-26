@@ -27,7 +27,9 @@ export class TemporalFrames {
       if(i===0||f.image!==all[i-1].image)runStart=i;
       return {...f,...(i>runStart?{still:{since:all[runStart].at,samples:i-runStart+1}}:{})};
     });
-    const frames=pending.filter((f,i)=>i===0||i===pending.length-1||f.image!==pending[i-1].image||f.image!==pending[i+1].image);
+    // A fully static span needs one attachment. Compare every raw sample so an
+    // A-B-A transition cannot disappear just because its endpoints match.
+    const frames=pending.every(f=>f.image===pending[0].image)?[pending.at(-1)!]:pending.filter((f,i)=>i===0||i===pending.length-1||f.image!==pending[i-1].image||f.image!==pending[i+1].image);
     const selected=new Set([0,frames.length-1]);
     // Reserve two transition pairs, then fill the largest time gaps. Endpoints
     // alone miss a short jump/failure that returns to the original pose.

@@ -103,3 +103,50 @@ test('continuous frames are stored before recognition, retried from raw audio an
   ]);
   assert.equal(listener.closed, true);
 });
+
+
+test('confirmed non-speech completes so later speech is delivered without retries', async (t) => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  const heard = [], errors = [];
+  globalThis.fetch = async (input) => {
+    if (String(input).startsWith('/api/audio/raw/')) return new Response(new Uint8Array(44));
+    requests++;
+    return Response.json(requests === 1 ? {text: '', noSpeech: true} : {text: '다음 발언'});
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const listener = new ContinuousListening({sessionId, track: {}, onLevel() {}, onTranscript: text => heard.push(text), onError: message => errors.push(message)});
+  t.after(() => listener.close());
+  listener.durableThrough = 32000;
+  for (let i = 0; i < 2; i++) listener.acceptSegment({startFrame:i*16000,endFrame:(i+1)*16000,capture:{startedAt: i*1000,endedAt:(i+1)*1000}});
+  await listener.controller.whenIdle();
+  assert.deepEqual(heard, ['다음 발언']);
+  assert.equal(requests, 2);
+  assert.deepEqual(errors, []);
+  assert.equal(listener.controller.retryFailed(), 0);
+});
+
+test('reconnected microphone preserves new speech while previous recognition drains', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const requests = [], heard = [];
+  let finishPrevious;
+  const previousDrained = new Promise(resolve => { finishPrevious = resolve; });
+  globalThis.fetch = async input => {
+    requests.push(String(input));
+    return String(input).startsWith('/api/audio/raw/')
+      ? new Response(new Uint8Array(44)) : Response.json({text:'재연결 뒤 발언'});
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const listener = new ContinuousListening({sessionId, track:{}, recognizeAfter:previousDrained,
+    onLevel(){}, onTranscript:text=>heard.push(text), onError:message=>assert.fail(message)});
+  t.after(() => listener.close());
+  listener.durableThrough = 16000;
+  listener.acceptSegment({startFrame:0,endFrame:16000,capture:{startedAt:1000,endedAt:2000}});
+  await tick();
+  assert.deepEqual(requests, [], 'new capture must not compete with the old decoder');
+  assert.equal(listener.captures.size, 1, 'new speech remains queued');
+  finishPrevious();
+  await listener.controller.whenIdle();
+  assert.deepEqual(heard, ['재연결 뒤 발언']);
+  assert.equal(requests.length, 2);
+});
