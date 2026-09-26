@@ -23,6 +23,8 @@ test('one uninterrupted PCM stream yields ordered speech segments with no record
   segmenter.finish();
   assert.ok(segments.length >= 2);
   assert.equal(segments[1].startFrame, segments[0].endFrame);
+  assert.equal(segments[1].capture.startedAt,101500);
+  assert.equal(segments[1].capture.endedAt,107500);
   assert.equal(segments.at(-1).endFrame, 75 * 1600);
   assert.throws(() => segmenter.add(frames(76 * 1600, 5000)), /이어지지/);
   const bytes = Buffer.from(await segments[0].blob.arrayBuffer());

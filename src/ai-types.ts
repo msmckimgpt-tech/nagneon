@@ -39,6 +39,7 @@ export type AiPricing = {
   longContext: boolean;
   backfilled?: boolean;
   rates?: { input: number; cached: number; cacheWrite: number; output: number };
+  audioRates?: { input: number; cached: number; output: number };
 };
 export type AiPolicy = {
   paused: boolean;
@@ -86,6 +87,16 @@ export type AiState = {
       output: number | null;
       total: number | null;
       cacheWrite?: number | null;
+      modalities?: {
+        textInput: number | null;
+        audioInput: number | null;
+        imageInput: number | null;
+        textCached: number | null;
+        audioCached: number | null;
+        imageCached: number | null;
+        textOutput: number | null;
+        audioOutput: number | null;
+      };
     } | null;
     estimatedUsd: number | null;
     pricing?: AiPricing;

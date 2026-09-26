@@ -72,6 +72,7 @@ export const pricingSchema = z.object({
   longContext: z.boolean(),
   backfilled: z.boolean().optional(),
   rates: z.object({ input: finite, cached: finite, cacheWrite: finite, output: finite }).optional(),
+  audioRates: z.object({ input: finite, cached: finite, output: finite }).optional(),
 });
 const unavailable = (reason) => ({
   kind: 'unavailable',
@@ -107,6 +108,7 @@ export function priceUsage(row, customRates = []) {
     return unavailable('unsupported');
   const usage = row.usage;
   if (usage?.input == null || usage?.output == null) return unavailable('missing-usage');
+  if (row.featureId === 'native-audio') return priceNativeAudio(row);
   const valid = (n) => Number.isFinite(n) && n >= 0;
   if (
     !valid(usage.input) ||
@@ -158,6 +160,59 @@ export function priceUsage(row, customRates = []) {
     checkedAt: manual ? '' : PRICING_CATALOG.checkedAt,
     longContext,
     rates,
+  };
+}
+
+// Realtime audio must never inherit text-only/manual per-token pricing.
+// https://developers.openai.com/api/docs/models/gpt-realtime-2.1 (2026-09-27)
+export function priceNativeAudio(row) {
+  if (
+    row.provider !== 'openai' ||
+    row.pricingVendor !== 'openai' ||
+    row.model !== 'gpt-realtime-2.1'
+  )
+    return unavailable('missing-rate');
+  const u = row.usage,
+    m = u?.modalities;
+  if (
+    !m ||
+    [m.textInput, m.audioInput, m.imageInput, m.textOutput, m.audioOutput].some((n) => n == null)
+  )
+    return unavailable('missing-usage');
+  if (m.imageInput !== 0) return unavailable('unsupported');
+  if (
+    Object.values(m).some((n) => n != null && (!Number.isFinite(n) || n < 0)) ||
+    m.textInput + m.audioInput !== u.input ||
+    m.textOutput + m.audioOutput !== u.output ||
+    (m.textCached ?? 0) > m.textInput ||
+    (m.audioCached ?? 0) > m.audioInput
+  )
+    return unavailable('invalid-usage');
+  const rates = { input: 4, cached: 0.4, cacheWrite: 4, output: 24 },
+    audioRates = { input: 32, cached: 0.4, output: 64 };
+  let minimum = (m.textOutput * rates.output + m.audioOutput * audioRates.output) / 1e6,
+    maximum = minimum;
+  for (const [input, cached, price] of [
+    [m.textInput, m.textCached, rates],
+    [m.audioInput, m.audioCached, audioRates],
+  ]) {
+    const known = cached ?? (u.cached === 0 ? 0 : null);
+    maximum += ((input - (known ?? 0)) * price.input + (known ?? 0) * price.cached) / 1e6;
+    minimum +=
+      known == null
+        ? (input * price.cached) / 1e6
+        : ((input - known) * price.input + known * price.cached) / 1e6;
+  }
+  return {
+    kind: 'api',
+    reason: 'calculated',
+    usd: maximum,
+    uncertaintyUsd: Math.max(0, maximum - minimum),
+    source: 'official',
+    checkedAt: '2026-09-27',
+    longContext: false,
+    rates,
+    audioRates,
   };
 }
 

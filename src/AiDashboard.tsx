@@ -439,6 +439,17 @@ export function AiDashboard({
                     <td>
                       {number(r.usage?.input)} / {number(r.usage?.cached)} /{' '}
                       {number(r.usage?.output)}
+                      {r.usage?.modalities && (
+                        <small>
+                          음성 입력 {number(r.usage.modalities.audioInput)} · 캐시{' '}
+                          {number(r.usage.modalities.audioCached)} · 출력{' '}
+                          {number(r.usage.modalities.audioOutput)}
+                          <br />
+                          텍스트 입력 {number(r.usage.modalities.textInput)} · 캐시{' '}
+                          {number(r.usage.modalities.textCached)} · 출력{' '}
+                          {number(r.usage.modalities.textOutput)}
+                        </small>
+                      )}
                     </td>
                     <td>{number(r.usage?.total)}</td>
                     <td>
@@ -574,9 +585,7 @@ export function AiDashboard({
                 {label}
                 <input
                   value={rate[key]}
-                  type={
-                    ['input', 'cached', 'output'].includes(key) ? 'number' : 'text'
-                  }
+                  type={['input', 'cached', 'output'].includes(key) ? 'number' : 'text'}
                   min="0"
                   step="any"
                   disabled={disabled}

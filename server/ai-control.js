@@ -22,6 +22,18 @@ const usageSchema = z.object({
   output: finite.nullable(),
   total: finite.nullable(),
   cacheWrite: finite.nullable().optional(),
+  modalities: z
+    .object({
+      textInput: finite.nullable(),
+      audioInput: finite.nullable(),
+      imageInput: finite.nullable(),
+      textCached: finite.nullable(),
+      audioCached: finite.nullable(),
+      imageCached: finite.nullable(),
+      textOutput: finite.nullable(),
+      audioOutput: finite.nullable(),
+    })
+    .optional(),
 });
 const statsSchema = z.object({
   ...costStatsShape,
@@ -154,6 +166,7 @@ export function normalizeUsage(value) {
   const cached = count(
     value.cached_input_tokens ??
       value.input_tokens_details?.cached_tokens ??
+      value.input_token_details?.cached_tokens ??
       value.prompt_tokens_details?.cached_tokens,
   );
   return [input, output, total, cached].some((n) => n !== null)
@@ -162,6 +175,20 @@ export function normalizeUsage(value) {
         output,
         total,
         cached,
+        ...(value.input_token_details
+          ? {
+              modalities: {
+                textInput: count(value.input_token_details.text_tokens),
+                audioInput: count(value.input_token_details.audio_tokens),
+                imageInput: count(value.input_token_details.image_tokens),
+                textCached: count(value.input_token_details.cached_tokens_details?.text_tokens),
+                audioCached: count(value.input_token_details.cached_tokens_details?.audio_tokens),
+                imageCached: count(value.input_token_details.cached_tokens_details?.image_tokens),
+                textOutput: count(value.output_token_details?.text_tokens),
+                audioOutput: count(value.output_token_details?.audio_tokens),
+              },
+            }
+          : {}),
         ...(value.input_tokens_details?.cache_write_tokens != null ||
         value.prompt_tokens_details?.cache_write_tokens != null
           ? {
