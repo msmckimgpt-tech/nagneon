@@ -23,7 +23,12 @@ export class ContinuousListening {
   readonly controller: SpeechListeningController;
   rawParts: Int16Array[] = [];
   rawStart = 0;
-  rawQueue: { sequence: number; startFrame: number; samples: Int16Array }[] = [];
+  rawQueue: {
+    sequence: number;
+    startFrame: number;
+    samples: Int16Array;
+    capture?: SpeechCapture;
+  }[] = [];
   segments: Pending[] = [];
   captures = new Map<number, SpeechCapture>();
   rawSequence = 0;
@@ -41,9 +46,12 @@ export class ContinuousListening {
   finishTimer: ReturnType<typeof setInterval> | null = null;
   lastErrorAt = 0;
   stoppedAt = 0;
+  startController = new AbortController();
   readonly drained: Promise<void>;
   resolveDrain: (() => void) | null = null;
   readonly options: {
+    remote?: boolean;
+    signal?: AbortSignal;
     sessionId: string;
     track: MediaStreamTrack;
     onLevel: (value: number) => void;
@@ -54,6 +62,8 @@ export class ContinuousListening {
     attachScreen?: (capture: SpeechCapture) => void;
   };
   constructor(options: {
+    remote?: boolean;
+    signal?: AbortSignal;
     sessionId: string;
     track: MediaStreamTrack;
     onLevel: (value: number) => void;
@@ -141,6 +151,27 @@ export class ContinuousListening {
     });
   }
   async start() {
+    const signal = AbortSignal.any([
+      this.startController.signal,
+      ...(this.options.signal ? [this.options.signal] : []),
+    ]);
+    signal.throwIfAborted();
+    if (this.options.remote) {
+      const response = await fetch('/api/native-audio/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+        body: JSON.stringify({
+          sessionId: this.options.sessionId,
+          inputEpoch: this.inputEpoch,
+          startedAt: this.segmenter.wallStartedAt,
+        }),
+        signal,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '원격 원음 연결을 시작하지 못했습니다.');
+      this.segmenter.wallStartedAt = result.startedAt;
+    }
+    signal.throwIfAborted();
     this.disposeCapture = await startContinuousMicrophone({
       track: this.options.track,
       onFrames: (frames) => {
@@ -163,7 +194,8 @@ export class ContinuousListening {
       this.disposeCapture = null;
       return this;
     }
-    this.retryTimer = setInterval(() => this.controller.retryFailed(), 5000);
+    if (!this.options.remote)
+      this.retryTimer = setInterval(() => this.controller.retryFailed(), 5000);
     return this;
   }
   report(message: string) {
@@ -173,7 +205,12 @@ export class ContinuousListening {
   }
   acceptFrames(frames: AudioFrames) {
     if (this.captureStopped) return;
-    const rms = this.segmenter.add(frames);
+    let rms: number | undefined;
+    if (this.options.remote) {
+      let power = 0;
+      for (const sample of frames.samples) power += (sample / 32768) ** 2;
+      rms = frames.samples.length ? Math.sqrt(power / frames.samples.length) : 0;
+    } else rms = this.segmenter.add(frames);
     this.options.onLevel(Math.min(1, (rms || 0) * 8));
     this.rawParts.push(frames.samples.slice());
     const count = this.rawParts.reduce((n, part) => n + part.length, 0);
@@ -189,7 +226,17 @@ export class ContinuousListening {
       offset += part.length;
     }
     this.rawParts = [];
-    const entry = { sequence: ++this.rawSequence, startFrame: this.rawStart, samples };
+    const capture = {
+      startedAt: this.segmenter.wallStartedAt + (this.rawStart / RATE) * 1000,
+      endedAt: this.segmenter.wallStartedAt + ((this.rawStart + count) / RATE) * 1000,
+    };
+    if (this.options.remote) this.options.attachScreen?.(capture);
+    const entry = {
+      sequence: ++this.rawSequence,
+      startFrame: this.rawStart,
+      samples,
+      ...(this.options.remote ? { capture } : {}),
+    };
     this.rawStart += count;
     this.continuity.append({
       sequence: entry.sequence,
@@ -233,8 +280,23 @@ export class ContinuousListening {
               startFrame: entry.startFrame,
               frameCount: entry.samples.length,
               data: bytes,
+              ...(entry.capture ? { capture: entry.capture } : {}),
             });
           } else {
+            if (entry.capture) {
+              const contextResponse = await fetch('/api/native-audio/context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+                body: JSON.stringify({
+                  sessionId: this.options.sessionId,
+                  inputEpoch: this.inputEpoch,
+                  startFrame: entry.startFrame,
+                  capture: entry.capture,
+                }),
+              });
+              if (!contextResponse.ok)
+                this.report('발언 당시 화면 근거를 전달하지 못했습니다. 원음 저장은 계속합니다.');
+            }
             const response = await fetch('/api/audio/raw', {
               method: 'POST',
               headers: {
@@ -300,10 +362,19 @@ export class ContinuousListening {
   stopCapture() {
     if (this.captureStopped || this.stoppingCapture) return;
     this.stoppingCapture = true;
+    this.startController.abort();
     const dispose = this.disposeCapture;
     this.disposeCapture = null;
     dispose?.();
     this.captureStopped = true;
+    if (this.options.remote)
+      void fetch('/api/native-audio/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+        body: JSON.stringify({ inputEpoch: this.inputEpoch }),
+      }).catch(() =>
+        this.report('원격 청취 중단을 확인하지 못했습니다. 방송 종료로 연결을 중단해주세요.'),
+      );
     this.segmenter.finish();
     this.flushRaw();
     this.stoppedAt = Date.now();

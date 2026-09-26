@@ -102,6 +102,7 @@ export class Studio extends EventEmitter {
       }),
       onChange: () => this.publish(),
       onPolicy: (affected, before) => {
+        this.runtime?.onAiPolicy?.(affected);
         const after = this.ai.data.policy;
         if (
           affected.includes('community') ||
@@ -216,7 +217,15 @@ export class Studio extends EventEmitter {
   publish() {
     this.emit('state', this.state());
   }
-  receiveSpeech({ id, sessionId, text, source = 'keyboard', capture }) {
+  receiveSpeech({
+    id,
+    sessionId,
+    text,
+    source = 'keyboard',
+    capture,
+    interpretation = false,
+    capturedHearers,
+  }) {
     this.communityActivity.interrupt();
     if (!this.running || sessionId !== this.sessionId)
       throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
@@ -239,7 +248,9 @@ export class Studio extends EventEmitter {
     if (this.settings.mode === 'live' && !this.ai.allowed('reaction'))
       throw new Error(this.ai.reason('reaction'));
     const hearers = this.presentWitnesses().filter(
-      (id) => !capture || this.audience.data.members[id]?.joinedAt <= capture.startedAt,
+      (id) =>
+        (!capture || this.audience.data.members[id]?.joinedAt <= capture.startedAt) &&
+        (!capturedHearers || capturedHearers.includes(id)),
     );
     const result = this.speechInbox.receive(
       id,
@@ -248,7 +259,9 @@ export class Studio extends EventEmitter {
         this.publishMessage(
           {
             ...this.prepareMessage('streamer', text, 'streamer'),
-            ...(source === 'microphone' ? { transcription: { source: 'microphone' } } : {}),
+            ...(source === 'microphone' && !interpretation
+              ? { transcription: { source: 'microphone' } }
+              : {}),
           },
           { witnesses: hearers, publishState: false },
         ),
@@ -752,7 +765,9 @@ export class Studio extends EventEmitter {
     speech = speechBatch.text;
     const uncertain = this.speechInbox
       .sources(speechBatch.ids)
-      .filter((e) => e.source === 'microphone' && transcriptAnomaly(e.text));
+      .filter(
+        (e) => e.source === 'microphone' && !e.capture?.listening && transcriptAnomaly(e.text),
+      );
     if (uncertain.length) {
       const ids = new Set(uncertain.map((e) => e.messageId));
       this.speechInbox.acknowledge(

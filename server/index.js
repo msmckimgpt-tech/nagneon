@@ -34,6 +34,8 @@ import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
+import { NativeAudio, NativeAudioConfig } from './native-audio.js';
+import { nativeAudioRoutes } from './native-audio-routes.js';
 import {
   CultureLearningData,
   emptyCultureLearning,
@@ -105,6 +107,7 @@ async function startServerImpl(
     openExternalAuth,
     providerFactories,
     providerSwitchAllowed = () => true,
+    nativeAudioProviderFactory,
   } = {},
   onResource = () => {},
 ) {
@@ -300,6 +303,34 @@ async function startServerImpl(
     clipPerception: new ClipPerception(runtime),
     storageStatus,
   });
+  const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
+    mode: persist && !hasPreviousSettings ? 'remote' : 'local',
+    consent: false,
+  }));
+  const nativeAudio = new NativeAudio({
+    studio,
+    recovery: speechRecovery,
+    config: nativeAudioStore.data,
+    save: nativeAudioStore.save,
+    dir: persist ? resolve(dataDir, 'native-audio') : undefined,
+    key: process.env.OPENAI_API_KEY || '',
+    releaseLocal: () => speech.stopWorker?.(),
+    providerFactory: nativeAudioProviderFactory,
+  });
+  onResource(() => nativeAudio.close());
+  const appendSpeechRaw = async (entry) => {
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    try {
+      nativeAudio.capture(entry);
+    } catch {
+      nativeAudio.error =
+        '원격 청취 입력을 확인하지 못해 전송을 중단했습니다. 원음 저장은 계속합니다.';
+      nativeAudio.stop('capture-invalid');
+    }
+    const result = await speechRecovery.append(entry);
+    nativeAudio.stored(entry, result);
+    return result;
+  };
   onResource(() => studio.close());
   onResource(() => studio.culture.close());
   onResource(() => studio.communityActivity.yield());
@@ -400,6 +431,7 @@ async function startServerImpl(
       onboarding: { ...onboardingStore.data },
       tutorial: tutorial.snapshot(),
       connectionProbe: probe.status(),
+      nativeAudio: nativeAudio.snapshot(),
       ...(providerChoice ? { providerChoice: providerChoice.snapshot() } : {}),
       obsInput: obsInput.snapshot(),
       debug: debug.summary(),
@@ -407,16 +439,23 @@ async function startServerImpl(
       ...(runtimeComponents ? { runtimeComponents: runtimeComponents.snapshot() } : {}),
     }),
     beforeStop: [
+      ['원격 원음', () => nativeAudio.stop('broadcast-stop')],
       ['외부 채팅', () => external.disconnect()],
       ['OBS', () => obsInput.disconnect()],
     ],
+    onAiPolicy: (affected) => {
+      if (affected.includes('native-audio')) nativeAudio.stop('policy');
+    },
   });
+  nativeAudioRoutes(app, nativeAudio, studio);
   if (runtimeComponents) runtimeComponents.onChange = () => studio.publish();
   app.post('/api/runtime/prepare', async (req, res) => {
     const { feature } = z
       .object({ feature: z.enum(['microphone', 'sound', 'clips', 'perception']) })
       .strict()
       .parse(req.body);
+    if (feature === 'microphone' && nativeAudio.config.mode === 'remote')
+      return res.json({ ok: true, local: false, nativeAudio: true });
     const controller = new AbortController();
     const disconnect = () => {
       if (!res.writableEnded) controller.abort();
@@ -900,6 +939,10 @@ async function startServerImpl(
   );
   soundRoutes(app, studio, sound);
   app.post('/api/audio/prepare', async (_req, res) => {
+    if (nativeAudio.config.mode === 'remote') {
+      nativeAudio.allowed();
+      return res.json({ ok: true, local: false, nativeAudio: true });
+    }
     if (!localSpeech) return res.json({ ok: true, local: false });
     const controller = new AbortController();
     const disconnect = () => {
@@ -920,6 +963,8 @@ async function startServerImpl(
     async (req, res) => {
       if (!Buffer.isBuffer(req.body) || !req.body.length)
         throw new Error('음성 데이터가 비어 있습니다.');
+      if (nativeAudio.config.mode === 'remote')
+        throw new Error('원격 원음 모드에서는 로컬 전사 경로를 실행하지 않습니다.');
       const controller = new AbortController();
       const disconnect = () => {
         if (!res.writableEnded) controller.abort();
@@ -948,7 +993,7 @@ async function startServerImpl(
     async (req, res) => {
       if (!speechRecovery)
         return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
-      const result = await speechRecovery.append({
+      const result = await appendSpeechRaw({
         sessionId: req.headers['x-speech-session'],
         inputEpoch: req.headers['x-speech-epoch'],
         sequence: Number(req.headers['x-speech-sequence']),
@@ -1053,10 +1098,8 @@ async function startServerImpl(
   return {
     server,
     studio,
-    appendSpeechRaw: (entry) => {
-      if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
-      return speechRecovery.append(entry);
-    },
+    appendSpeechRaw,
+    nativeAudio,
     obsInput,
     url: `http://${expectedHost}`,
     accessToken: access.token,
@@ -1075,6 +1118,7 @@ async function startServerImpl(
         }
       };
       const tasks = [
+        invoke(() => nativeAudio.close()),
         invoke(() => runtimeComponents?.close()),
         requests.close(),
         invoke(() => tutorial.operation),

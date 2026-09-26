@@ -6,6 +6,18 @@ import {
 } from '../shared/speech-listening.js';
 
 const gen = { sessionId: 'session-1', inputEpoch: 'input-1' };
+
+test('long capture compacts durable metadata without inventing recognition progress',()=>{
+  const capture=createCaptureContinuity({sampleRate:16000});
+  for(let sequence=1;sequence<=100000;sequence++){
+    capture.append({sequence,startFrame:(sequence-1)*1600,frameCount:1600});
+    capture.advanceDurable(sequence*1600);
+  }
+  const state=capture.snapshot();assert.equal(state.chunks.length,256);
+  assert.equal(state.durableThrough,160000000);assert.equal(state.recognizedThrough,0);
+  assert.equal(state.backlogFrames,160000000);assert.equal(state.discontinuityCount,0);
+  assert.equal(state.compactedThrough,(100000-256)*1600);
+});
 const utterance = (sequence, frameStart = sequence * 100) => ({
   ...gen,
   sequence,

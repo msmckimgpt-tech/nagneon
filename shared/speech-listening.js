@@ -27,7 +27,9 @@ export function createCaptureContinuity({ sampleRate }) {
   let nextSequence = 1,
     latestCapturedFrame = 0,
     durableThrough = 0,
-    recognizedThrough = 0;
+    recognizedThrough = 0,
+    compactedThrough = 0,
+    discontinuityCount = 0;
   const chunks = new Map(),
     discontinuities = [];
 
@@ -37,6 +39,8 @@ export function createCaptureContinuity({ sampleRate }) {
     latestCapturedFrame,
     durableThrough,
     recognizedThrough,
+    compactedThrough,
+    discontinuityCount,
     backlogFrames: Math.max(0, latestCapturedFrame - recognizedThrough),
     discontinuities: clone(discontinuities),
     chunks: [...chunks.values()].map(clone),
@@ -65,6 +69,8 @@ export function createCaptureContinuity({ sampleRate }) {
           missingFrames: Math.max(0, startFrame - latestCapturedFrame),
           overlapFrames: Math.max(0, latestCapturedFrame - startFrame),
         });
+      if (startFrame !== latestCapturedFrame) discontinuityCount++;
+      if (discontinuities.length > 256) discontinuities.shift();
       chunks.set(sequence, value);
       nextSequence++;
       latestCapturedFrame = Math.max(latestCapturedFrame, value.endFrame);
@@ -76,6 +82,12 @@ export function createCaptureContinuity({ sampleRate }) {
         throw new RangeError('확보하지 않은 오디오까지 저장 완료로 표시할 수 없습니다.');
       if (frame < durableThrough) return false;
       durableThrough = frame;
+      // Keep durable source cursors without unbounded transport metadata.
+      for (const [sequence, chunk] of chunks) {
+        if (chunks.size <= 256 || chunk.endFrame > durableThrough) break;
+        compactedThrough = Math.max(compactedThrough,chunk.endFrame);
+        chunks.delete(sequence);
+      }
       return true;
     },
     advanceRecognized(frame) {

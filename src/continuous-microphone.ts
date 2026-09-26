@@ -42,7 +42,7 @@ export class ContinuousSpeechSegmenter {
   windowStart = 0;
   parts: Int16Array[] = [];
   boundary = new VoiceBoundary(0);
-  readonly wallStartedAt: number;
+  wallStartedAt: number;
   readonly onSegment: (segment: SpeechSegment) => void;
   constructor(wallStartedAt: number, onSegment: (segment: SpeechSegment) => void) {
     this.wallStartedAt = wallStartedAt;
@@ -64,7 +64,9 @@ export class ContinuousSpeechSegmenter {
     return rms;
   }
   finish() {
-    const capture = this.boundary.capture(this.wallStartedAt);
+    const capture = this.boundary.capture(
+      this.wallStartedAt + (this.windowStart / CONTINUOUS_SPEECH_RATE) * 1000,
+    );
     if (this.boundary.hasSpeech && capture && this.parts.length)
       this.onSegment({
         startFrame: this.windowStart,

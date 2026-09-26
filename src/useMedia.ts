@@ -16,7 +16,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   const captureVideo=useRef<HTMLVideoElement|null>(null),wasRunning=useRef(false),captureEpoch=useRef(0),acquiringMic=useRef(false);
   const temporal=useRef(new TemporalFrames());const [captureRevision,setCaptureRevision]=useState(0);
   const [sharing,setSharing]=useState(false),[mic,setMic]=useState(false),[micPreparing,setMicPreparing]=useState(false),[level,setLevel]=useState(0),[transcript,setTranscript]=useState(''),[delivery,setDelivery]=useState('');
-  const micRetryAt=useRef(0),runtimeMicRequested=useRef(false);
+  const micRetryAt=useRef(0),runtimeMicRequested=useRef(false),micFailures=useRef(0);
   const micPreparation=useRef<AbortController|null>(null);
   const capturePreparation=useRef<AbortController|null>(null),[capturePreparing,setCapturePreparing]=useState<CapturePhase|null>(null);
   const recording=useRef(false),listening=useRef<ContinuousListening|null>(null);
@@ -96,6 +96,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
   async function startMic(){
     if(acquiringMic.current||micStream.current)return;
     if(!stateRef.current?.running||stateRef.current.settings.mode!=='live'){errorRef.current('실제 AI 방송을 시작한 뒤 마이크를 켜주세요.');return;}
+    if(!runtimeMicRequested.current)micFailures.current=0;
     runtimeMicRequested.current=true;
     acquiringMic.current=true;const generation=++epoch.current,preparation=new AbortController();micPreparation.current=preparation;setMicPreparing(true);
     try{
@@ -106,7 +107,7 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       if(generation!==epoch.current||!stateRef.current?.running)return;
       for(const track of stream.getAudioTracks())track.onended=()=>{if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+1000;errorRef.current('마이크 연결이 끊겨 다시 연결하고 있습니다.');}};
       const speechSessionId=stateRef.current.sessionId,deliveryGate=priorListeningDrain.current;
-      const listener=await new ContinuousListening({sessionId:speechSessionId,track:stream.getAudioTracks()[0],
+      const listener=await new ContinuousListening({sessionId:speechSessionId,remote:prepared.nativeAudio===true,signal:preparation.signal,track:stream.getAudioTracks()[0],
         onLevel:value=>setLevel(value),
         attachScreen:capture=>{capture.screen=temporal.current.speechWindow(capture.startedAt,capture.endedAt);},
         onTranscript:(text,capture,cues)=>{void deliveryGate.then(()=>{if(stateRef.current?.running&&stateRef.current.sessionId===speechSessionId){setTranscript(text);setDelivery(cues?.delivery||'');say(text,'microphone',capture);}});},
@@ -116,15 +117,19 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       }).start();
       if(generation!==epoch.current||!stateRef.current?.running){listener.stopCapture();return;}
       listening.current=listener;recording.current=true;setMic(true);
-    }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;const components=stateRef.current?.runtimeComponents;const needed=['audio','microphone',...(stateRef.current?.settings.speechDevice==='gpu'?['gpu']:[])];const needsPreparation=components&&needed.some(id=>components.components.find(c=>c.id===id)?.status!=='ready');if(needsPreparation)runtimeMicRequested.current=false;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+(needsPreparation?' 구성을 준비한 뒤 마이크를 다시 켜주세요.':' 자동으로 다시 연결합니다.'));}}
+    }catch(e){if(generation===epoch.current){stopMic();micRetryAt.current=Date.now()+5000;const components=stateRef.current?.runtimeComponents;const needed=['audio','microphone',...(stateRef.current?.settings.speechDevice==='gpu'?['gpu']:[])];const needsPreparation=stateRef.current?.nativeAudio?.mode!=='remote'&&components&&needed.some(id=>components.components.find(c=>c.id===id)?.status!=='ready');const remote=stateRef.current?.nativeAudio;const nativeBlocked=remote?.mode==='remote'&&(!remote.configured||!remote.consent||++micFailures.current>=3);if(needsPreparation||nativeBlocked)runtimeMicRequested.current=false;errorRef.current((e instanceof Error?e.message:'마이크를 시작하지 못했습니다.')+((needsPreparation||nativeBlocked)?' 연결 설정을 확인한 뒤 마이크를 다시 켜주세요.':' 자동으로 다시 연결합니다.'));}}
     finally{acquiringMic.current=false;if(micPreparation.current===preparation){micPreparation.current=null;setMicPreparing(false);}}
   }
   useEffect(()=>{
     if(!state?.running||state.settings.mode!=='live')return;
-    const reconnect=()=>{const current=stateRef.current;if(current?.runtimeComponents){if(!runtimeMicRequested.current)return;const needed=['audio','microphone',...(current.settings.speechDevice==='gpu'?['gpu']:[])];if(needed.some(id=>current.runtimeComponents!.components.find(c=>c.id===id)?.status!=='ready'))return;}if(!recording.current&&Date.now()>=micRetryAt.current)void startMic();};
+    const reconnect=()=>{const current=stateRef.current;if(current?.nativeAudio?.mode==='remote'&&!runtimeMicRequested.current)return;if(current?.runtimeComponents&&current.nativeAudio?.mode!=='remote'){if(!runtimeMicRequested.current)return;const needed=['audio','microphone',...(current.settings.speechDevice==='gpu'?['gpu']:[])];if(needed.some(id=>current.runtimeComponents!.components.find(c=>c.id===id)?.status!=='ready'))return;}if(!recording.current&&Date.now()>=micRetryAt.current)void startMic();};
     reconnect();const timer=setInterval(reconnect,1000);navigator.mediaDevices.addEventListener('devicechange',reconnect);
     return()=>{clearInterval(timer);navigator.mediaDevices.removeEventListener('devicechange',reconnect);};
   },[state?.running,state?.sessionId,state?.settings.mode]);
+  useEffect(()=>{
+    const native=state?.nativeAudio;
+    if(native?.mode==='remote'&&native.inputEpoch===listening.current?.inputEpoch&&!native.active&&!acquiringMic.current){runtimeMicRequested.current=false;stopMic();if(native.error)errorRef.current(native.error);}
+  },[state?.nativeAudio?.active,state?.nativeAudio?.inputEpoch]);
   useEffect(()=>{
     if(!state?.running)return;let disposed=false,inFlight=false,nextAttemptAt=0,speechVersion=0,answeredVersion=0;const session=state.sessionId;
     const tick=async()=>{
@@ -132,9 +137,9 @@ export function useMedia(state:State|null,onError:(s:string)=>void){
       try{await pendingSpeech.current.flush(async(item,signal)=>{const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Backseat-Client':'studio'},body:JSON.stringify(item),signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'발언을 전달하지 못했습니다.');speechVersion++;return result;});}
       catch(e){if(!disposed)errorRef.current(e instanceof Error?e.message:'발언 전달 실패 · 다시 시도하고 있습니다.');}
       const current=stateRef.current;if(disposed||inFlight||!current?.running||current.sessionId!==session||current.busy)return;
-      if(speechVersion===answeredVersion&&Date.now()<nextAttemptAt)return;
+      if(speechVersion+(current.nativeAudio?.applied||0)===answeredVersion&&Date.now()<nextAttemptAt)return;
       inFlight=true;
-      const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion;
+      const window=!current.obsInput?.sourceId&&current.settings.mode==='live'?temporal.current.window(Date.now()):undefined,requestedAt=Date.now(),requestSpeechVersion=speechVersion+(current.nativeAudio?.applied||0);
       try{const result=await api<{ok?:boolean;skipped?:string;transcriptionNeedsReview?:boolean}>('react',{video:window,...(current.settings.mode==='live'&&current.obsInput?.sourceId?{obsSourceId:current.obsInput.sourceId}:{})});
         if(window&&((result.ok&&!result.transcriptionNeedsReview)||['unchanged-input','stale-screen'].includes(result.skipped||'')))temporal.current.acknowledge(window);
         if(result.ok||['unchanged-input','stale-screen'].includes(result.skipped||'')){answeredVersion=requestSpeechVersion;nextAttemptAt=requestedAt+current.settings.intervalSeconds*1000;}
