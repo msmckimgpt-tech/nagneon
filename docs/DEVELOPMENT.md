@@ -37,6 +37,24 @@ npm run check
 
 실제 UI 검사는 `scripts/verify-nagneon.cjs`를 격리 Electron에서 실행한다. 이 검사는 합성 프로필을 사용하며 실제 계정·마이크·OBS 검증을 대신하지 않는다. 결과와 캡처는 작업 worktree의 `artifacts/nagneon/`에 저장된다.
 
+### 개발 저장량 수명 관리
+
+패키징과 실행 구성 생성은 같은 입력을 반복 실행했을 때 새 타임스탬프 사본을 계속 만들지 않아야 한다. `package-windows.mjs`는 소스·lockfile·Electron/Codex·layout/runtime뿐 아니라 패키징 recipe 코드, 아이콘, Codex 실행 파일·관련 라이선스 자산까지 입력 지문에 포함한다. 이 전체 지문이 같고 파일 목록·크기·SHA-256이 다시 검증된 패키지만 재사용한다. 새 패키징은 `artifacts/package-scratch/`에서 트랜잭션으로 조립한 뒤 최종 `release/<run>/app`만 게시한다. 성공한 stage/runtime scratch는 게시 직후 제거하며 실패 scratch는 보존하고 다음 대형 패키징을 차단한다. 검증된 서로 다른 package 후보는 2개까지만 자동 생성하며 그 이후에는 명시적인 저장량 검토가 필요하다.
+
+`build-runtime-packs.mjs`는 `artifacts/runtime-packs/`의 content-addressed pack/cache와 입력 catalog를 재사용한다. 같은 catalog 재실행은 새 디렉터리를 만들지 않으며 서로 다른 검증 catalog는 2개를 넘겨 자동 생성하지 않는다. 실행 전후 여유 공간과 store 크기를 출력하고, 실패 scratch가 남으면 다음 생성은 중단된다. `prepare-speech-runtime.ps1`이 새로 만드는 speech runtime도 소유권 표식을 남기며 완료 후보를 2개로 제한한다. 소유권 표식이 없거나 형식이 다른 기존 산출물은 자동 정리 대상으로 승격하지 않는다.
+
+저장 정리는 기본적으로 조회만 한다.
+
+```powershell
+npm run storage:preview
+node scripts/storage-maintenance.mjs --reserve-package-slot --reserve-runtime-slot --reserve-speech-slot --plan=artifacts/storage-cleanup-plan.json
+node scripts/storage-maintenance.mjs --apply --plan=artifacts/storage-cleanup-plan.json --plan-sha256=<preview가 출력한 SHA-256>
+```
+
+`--apply`는 정확한 plan SHA, 현재 HEAD/origin-main 기준, 소유권 표식, 경로·링크, 실행 중 프로세스를 다시 확인한 뒤에만 계획에 적힌 항목을 제거한다. 계획 이후 상태가 바뀌거나 확인이 불완전하면 중단한다. 설치본·사용자 프로필·원본 `.models`·일반 `artifacts` 증거는 일반 정리 후보가 아니다. 통합 완료 worktree의 재생성 가능한 `node_modules`·`dist` 등은 [병렬 개발](PARALLEL-DEVELOPMENT.md)의 종료 절차에서 별도로 preview한 뒤에만 정리한다.
+
+패키지 manifest의 `storage`와 CLI snapshot은 최종 배포 크기와 transient stage/runtime 크기를 분리해 기록한다. 전후 비교에서는 상위/하위 폴더를 중복 합산하지 않고, 합성 fixture 크기를 실제 디스크 절감량으로 보고하지 않는다.
+
 ## 코드와 설명 규칙
 
 - 사용자 화면과 오류 안내는 한국어로 작성한다. 코드 식별자와 외부 API 이름은 영어를 사용한다.

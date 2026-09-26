@@ -55,6 +55,9 @@ $EmbedSha256     = '791ADA5E20ABA24524F8D939CDEB069976D632A699FE5CB65274B23F4545
 $EmbedSizeBytes  = 11010501
 
 $RequiredModelFiles = @('config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt')
+$StorageOwnerSchema = 'nagneon.storage-owner/1'
+$SpeechRuntimeKeep = 2
+$StorageOwnerFile = '.nagneon-storage.json'
 
 # --- Resolve repo-relative defaults -----------------------------------------------------
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -137,6 +140,29 @@ if (-not (Test-Path -LiteralPath $OutputRootFull -PathType Container)) {
     throw "Output root does not exist: $OutputRootFull"
 }
 
+$ownedSpeechRuntimes = @()
+$unfinishedSpeechRuntimes = @()
+foreach ($candidate in (Get-ChildItem -LiteralPath $OutputRootFull -Directory -Filter 'speech-runtime-*' -ErrorAction Stop)) {
+    if ($candidate.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+    $ownerPath = Join-Path $candidate.FullName $StorageOwnerFile
+    if (-not (Test-Path -LiteralPath $ownerPath -PathType Leaf)) { continue }
+    try {
+        $owner = Get-Content -LiteralPath $ownerPath -Raw | ConvertFrom-Json
+        if ($owner.schema -eq $StorageOwnerSchema -and $owner.kind -eq 'speech-runtime') {
+            if ($owner.state -eq 'complete') { $ownedSpeechRuntimes += $candidate.FullName }
+            else { $unfinishedSpeechRuntimes += $candidate.FullName }
+        }
+    } catch {
+        # Unknown/corrupt legacy output is protected; never treat it as an owned cleanup slot.
+    }
+}
+if ($unfinishedSpeechRuntimes.Count -gt 0) {
+    throw "종료되지 않은 speech runtime 출력이 남아 있습니다. storage:preview에서 상태를 확인하고 명시 정리한 뒤 다시 시도하세요."
+}
+if ($ownedSpeechRuntimes.Count -ge $SpeechRuntimeKeep) {
+    throw "검증된 speech runtime 후보 $SpeechRuntimeKeep 개를 이미 보존 중입니다. node scripts/storage-maintenance.mjs --reserve-speech-slot 로 미리보기 후 명시 정리하세요."
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputName)) {
     $OutputName = 'speech-runtime-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 }
@@ -155,6 +181,15 @@ $ManifestPath    = Join-Path $RuntimeDir 'manifest.json'
 $BuildLogPath    = Join-Path $RuntimeDir 'BUILD-LOG.txt'
 
 New-Item -ItemType Directory -Path $RuntimeDir -Force | Out-Null
+$StorageOwnerPath = Join-Path $RuntimeDir $StorageOwnerFile
+$storageOwner = [ordered]@{
+    schema = $StorageOwnerSchema
+    kind = 'speech-runtime'
+    state = 'building'
+    outputName = $OutputName
+    createdAt = (Get-Date).ToUniversalTime().ToString('o')
+}
+$storageOwner | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StorageOwnerPath -Encoding UTF8
 New-Item -ItemType Directory -Path $ModelDir   -Force | Out-Null
 # $PythonDir is created by the zip extraction; $SitePackagesDir by pip --target.
 Write-Step "Output runtime dir: $RuntimeDir"
@@ -446,6 +481,9 @@ print(payload)
     }
 
     # --- Done -------------------------------------------------------------------------
+    $storageOwner['state'] = 'complete'
+    $storageOwner['updatedAt'] = (Get-Date).ToUniversalTime().ToString('o')
+    $storageOwner | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StorageOwnerPath -Encoding UTF8
     Write-Host ''
     Write-Step "SUCCESS"
     Write-Host  "Runtime : $RuntimeDir"
@@ -453,6 +491,15 @@ print(payload)
     Write-Host  "Model   : Systran/faster-whisper-small @ $snapshotId"
     Write-Host  "Deps    : $($installed.Count) pinned distributions in python\Lib\site-packages"
     Write-Host  "Manifest: $ManifestPath"
+}
+catch {
+    if (Test-Path -LiteralPath $StorageOwnerPath -PathType Leaf) {
+        $storageOwner['state'] = 'failed'
+        $storageOwner['updatedAt'] = (Get-Date).ToUniversalTime().ToString('o')
+        $storageOwner['detail'] = [string]$_.Exception.Message
+        $storageOwner | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StorageOwnerPath -Encoding UTF8
+    }
+    throw
 }
 finally {
     # Remove only our own temp staging (single tree we created); never touch repo/user data.
