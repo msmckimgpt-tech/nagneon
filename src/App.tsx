@@ -57,6 +57,7 @@ import { ChatDisplayToggle } from './ChatDisplayToggle';
 import { ReactionDiagnostics } from './ReactionDiagnostics';
 import { ChatBriefing } from './ChatBriefing';
 import { useMedia } from './useMedia';
+import { createOverlayChatRelay } from './overlay-chat';
 import { useChatFollow } from './useChatFollow';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
@@ -146,6 +147,85 @@ export function App() {
   );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
+  const chatContext = useRef({ state, connected, say: media.say });
+  chatContext.current = { state, connected, say: media.say };
+  const chatRelay = useRef<ReturnType<typeof createOverlayChatRelay> | null>(null);
+  const [sendingChat, setSendingChat] = useState(false);
+  const sendingChatRef = useRef(false);
+  useEffect(() => {
+    const relay = createOverlayChatRelay(
+      new BroadcastChannel('backseat-overlay-chat'),
+      overlay
+        ? {}
+        : {
+            getState: () => (chatContext.current.connected ? chatContext.current.state : null),
+            accept: (value) => chatContext.current.say(value),
+          },
+    );
+    chatRelay.current = relay;
+    return () => {
+      chatRelay.current = null;
+      relay.close();
+    };
+  }, [overlay]);
+  async function submitOverlay() {
+    if (!text.trim() || !state?.running || !connected || sendingChatRef.current) return;
+    const sentText = text;
+    sendingChatRef.current = true;
+    setSendingChat(true);
+    setError('');
+    try {
+      if (!chatRelay.current) throw new Error('방송실에 연결 중입니다. 잠시 후 다시 보내주세요.');
+      await chatRelay.current.send(sentText.trim(), state.sessionId);
+      setText((current) => (current === sentText ? '' : current));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '발언을 보내지 못했습니다.');
+    } finally {
+      sendingChatRef.current = false;
+      setSendingChat(false);
+    }
+  }
+  const [overlayMic, setOverlayMic] = useState({
+    enabled: false,
+    preparing: false,
+    available: false,
+    error: false,
+  });
+  useEffect(() => {
+    if (!overlay) return;
+    const bridge = window.backseat;
+    const unsubscribe = bridge?.onMicrophoneState?.(setOverlayMic);
+    void bridge
+      ?.microphoneState?.()
+      .then(setOverlayMic)
+      .catch(() => {});
+    return unsubscribe;
+  }, [overlay]);
+  useEffect(() => {
+    if (!overlay)
+      window.backseat?.publishMicrophoneState?.({
+        enabled: media.mic,
+        preparing: media.micPreparing,
+        available: !!state?.running && state.settings.mode === 'live',
+        error: media.micError,
+      });
+  }, [
+    overlay,
+    media.mic,
+    media.micPreparing,
+    media.micError,
+    state?.running,
+    state?.settings.mode,
+  ]);
+  const [microphoneShortcut, setMicrophoneShortcut] = useState(false);
+  useEffect(() => {
+    if (!overlay)
+      void window.backseat
+        ?.microphoneShortcut?.()
+        .then(setMicrophoneShortcut)
+        .catch(() => {});
+  }, [overlay]);
+  const microphoneShortcutLabel = /Mac/.test(navigator.platform) ? '⌘⇧M' : 'Ctrl+Shift+M';
   useEffect(() => {
     const timer = overlay ? undefined : setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -199,8 +279,7 @@ export function App() {
   }
   function submit() {
     if (!text.trim() || !state?.running) return;
-    media.say(text.trim());
-    setText('');
+    if (media.say(text.trim())) setText('');
   }
   if (!state || initialGuide === null)
     return (
@@ -246,6 +325,27 @@ export function App() {
             <i className={'dot ' + (state.running ? 'green' : '')} /> NAGNEON · CHAT
           </span>
           <div className="overlay-controls" data-overlay-interactive>
+            {window.backseat?.toggleMicrophone && (
+              <button
+                title={`마이크 켜기/끄기 · ${microphoneShortcutLabel}`}
+                aria-pressed={overlayMic.enabled}
+                disabled={!overlayMic.available}
+                onClick={() =>
+                  void window.backseat!.toggleMicrophone!().catch(() =>
+                    setError('마이크 전환에 실패했습니다. 방송실을 확인해주세요.'),
+                  )
+                }
+              >
+                <Mic size={14} />{' '}
+                {overlayMic.preparing
+                  ? '연결 중'
+                  : overlayMic.enabled
+                    ? '마이크 켜짐'
+                    : overlayMic.error
+                      ? '마이크 오류'
+                      : '마이크 꺼짐'}
+              </button>
+            )}
             <ChatDisplayToggle shown={s.showStreamerMessages !== false} />
             {window.backseat && (
               <button
@@ -273,14 +373,14 @@ export function App() {
           <input
             type="range"
             min={0}
-            max={90}
+            max={100}
             step={5}
             value={overlayTransparency}
             onChange={(e) => {
               setOverlayTransparency(Number(e.target.value));
               if (tutorialActive) void action('tutorial/overlay', { action: 'adjust' });
             }}
-            aria-label="오버레이 투명도"
+            aria-label="오버레이 배경 투명도"
           />
           <output>{overlayTransparency}%</output>
         </label>
@@ -302,6 +402,43 @@ export function App() {
             새 채팅 보기 ↓
           </button>
         )}
+        <form
+          className="overlay-compose"
+          data-overlay-interactive
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitOverlay();
+          }}
+        >
+          <div className="overlay-compose-row">
+            <input
+              aria-label="관객에게 말하기"
+              disabled={!state.running || !connected}
+              placeholder={state.running ? '관객에게 말하기…' : '방송을 먼저 시작해주세요'}
+              value={text}
+              maxLength={3000}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === 'Enter' &&
+                  (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229)
+                )
+                  e.preventDefault();
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!state.running || !connected || !text.trim() || sendingChat}
+            >
+              {sendingChat ? '접수 중' : '보내기'}
+            </button>
+          </div>
+          {error && (
+            <p className="overlay-compose-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
         <div className="overlay-bottom">
           {s.mode === 'rehearsal' ? 'REHEARSAL' : 'AUDIENCE'} ·{' '}
           {present.filter((p) => !p.system).length}명 {!connected && '· 연결 끊김'}
@@ -677,21 +814,24 @@ export function App() {
                         <div>
                           <button
                             className={media.mic ? 'control active' : 'control'}
-                            title="마이크"
-                            disabled={
-                              media.mic || media.micPreparing || !state.running || s.mode !== 'live'
+                            title={
+                              microphoneShortcut
+                                ? `마이크 켜기/끄기 (${microphoneShortcutLabel})`
+                                : '마이크 켜기/끄기'
                             }
-                            onClick={() => void media.startMic()}
+                            disabled={!state.running || s.mode !== 'live'}
+                            onClick={media.toggleMic}
                           >
                             <Mic size={18} />
                             <span>
                               {media.micPreparing
-                                ? '마이크 연결 중'
+                                ? '마이크 연결 중 · 눌러서 취소'
                                 : media.mic
                                   ? '마이크 켜짐'
                                   : state.running && s.mode === 'live'
-                                    ? '마이크 재연결'
-                                    : '방송 시작 시 자동 연결'}
+                                    ? '마이크 꺼짐 · 켜기'
+                                    : '방송 시작 후 연결'}
+                              {microphoneShortcut && ` · ${microphoneShortcutLabel}`}
                             </span>
                           </button>
                           <div className="audio-meter">

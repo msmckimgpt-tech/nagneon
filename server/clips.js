@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync,renameSync,existsSync,unlinkSync,readdirSync,statSync,openSync,fsyncSync,closeSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
+import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,clipRecallCandidates,clipRecallCurrent,captureClipRecallSources,reuseClipMemoryIndex} from './clip-memory.js';
 import {recallArrivalClip} from './arrival-clip-memory.js';
 import {recordActivityRead} from './community-activity-state.js';
 const MAX_STORAGE=500*1024*1024;
@@ -11,7 +11,10 @@ export class Clips {
   change(fn){const next=structuredClone(this.data);const value=fn(next);this.save(next);reuseClipMemoryIndex(this.data,next);this.data=next;return value;}
   get(id){const clip=this.data.find(c=>c.id===id);if(!clip)throw new Error('핫클립을 찾을 수 없습니다.');const {readings,activityReads,...publicClip}=clip;return structuredClone(publicClip);}
   list(){return this.data.map(({comments,messages,readings,activityReads,...clip})=>({...clip,commenters:[...new Map(comments.filter(c=>!c.deleted&&c.personaId!=='streamer').map(c=>[c.personaId,{id:c.personaId,name:c.name}])).values()],commentCount:comments.length,messageCount:messages.length})).reverse();}
-  recall(viewerId,query='',now=this.now()){return recallClips(this.data,viewerId,query,now);}
+  recall(viewerId,query='',now=this.now(),options){return recallClips(this.data,viewerId,query,now,options);}
+  recallCandidates(viewerId,query='',now=this.now()){return clipRecallCandidates(this.data,viewerId,query,now);}
+  recallCandidatesCurrent(viewerId,candidates){return clipRecallCurrent(this.data,viewerId,candidates);}
+  captureRecall(viewerId,rows){return captureClipRecallSources(()=>this.data,viewerId,rows);}
   recallArrival(reading,now=this.now()){return recallArrivalClip(this.data,reading,now);}
   storageUsed(){if(!this.dir||!existsSync(this.dir))return 0;return readdirSync(this.dir).reduce((n,name)=>{const s=statSync(join(this.dir,name));return n+(s.isFile()?s.size:0);},0);}
   file(id,extension){if(!/^[a-f0-9-]{36}$/.test(id)||!['jpg','png','webm','voice.webm'].includes(extension)||!this.dir)throw new Error('미디어 파일 경로가 올바르지 않습니다.');return join(resolve(this.dir),`${id}.${extension}`);}
@@ -83,25 +86,33 @@ export class Clips {
 
 export class ClipFeatures {
   constructor(studio,clips){this.studio=studio;this.clips=clips;}
+  eligiblePick(pick,observation,{image,speech,witnesses,capturedAt,heardByViewer={},liveSpeech=[]}){
+    const s=this.studio;if(!s.running||s.settings.mode!=='live'||!s.settings.autoHighlights)return null;
+      const p=s.settings.personas.find(p=>p.id===pick.personaId&&p.enabled&&!p.system&&p.id!==s.settings.managerId);
+      if(!p||!witnesses.includes(p.id)||s.settings.blockedWords.some(w=>(pick.title+' '+pick.reason).includes(w)))return null;
+      if(pick.soundId&&pick.speechId)return null;
+      const spoken=pick.speechId?liveSpeech.find(e=>e.messageId===pick.speechId):null;
+      if(pick.speechId&&!spoken)return null;
+      const capture=spoken?.source==='microphone'?spoken.capture:null;
+      if(capture&&!spoken.hearers?.includes(p.id))return null;
+      const sound=pick.soundId?(heardByViewer[p.id]||[]).find(e=>e.id===pick.soundId&&e.source==='system-output'&&!e.silent&&Number.isFinite(e.startedAt)&&Number.isFinite(e.endedAt)&&e.endedAt>e.startedAt&&e.endedAt<=capturedAt&&capturedAt-e.endedAt<30000):null;
+      if(pick.soundId&&!sound)return null;
+      if(!sound&&!speech&&(!image||observation.confidence<.55))return null;
+      const pickedAt=sound?Math.round((sound.startedAt+sound.endedAt)/2):capture?Math.round((capture.startedAt+capture.endedAt)/2):capturedAt;
+      const listeners=sound?witnesses.filter(id=>(heardByViewer[id]||[]).some(e=>e.id===sound.id)):capture?witnesses.filter(id=>spoken.hearers.includes(id)):witnesses;
+      if(this.clips.data.some(c=>c.creator&&s.now()-c.createdAt<(c.creator.id===p.id?300000:60000)))return null;
+      const signature=s.sessionId+':'+pick.signature.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu,'');
+      if(this.clips.data.some(c=>c.signature===signature))return null;
+    return {p,sound,capture,spoken,pickedAt,listeners,signature};
+  }
+  eligiblePicks(observation,context){return (observation.clipPicks||[]).slice(0,2).filter(pick=>this.eligiblePick(pick,observation,context));}
   spectatorPicks(observation,{image,speech,witnesses,capturedAt,heardByViewer={},liveSpeech=[]}){
     const s=this.studio;if(!s.running||s.settings.mode!=='live'||!s.settings.autoHighlights)return [];
     const created=[];
     for(const pick of (observation.clipPicks||[]).slice(0,2)){
-      const p=s.settings.personas.find(p=>p.id===pick.personaId&&p.enabled&&!p.system&&p.id!==s.settings.managerId);
-      if(!p||!witnesses.includes(p.id)||s.settings.blockedWords.some(w=>(pick.title+' '+pick.reason).includes(w)))continue;
-      if(pick.soundId&&pick.speechId)continue;
-      const spoken=pick.speechId?liveSpeech.find(e=>e.messageId===pick.speechId):null;
-      if(pick.speechId&&!spoken)continue;
-      const capture=spoken?.source==='microphone'?spoken.capture:null;
-      if(capture&&!spoken.hearers?.includes(p.id))continue;
-      const sound=pick.soundId?(heardByViewer[p.id]||[]).find(e=>e.id===pick.soundId&&e.source==='system-output'&&!e.silent&&Number.isFinite(e.startedAt)&&Number.isFinite(e.endedAt)&&e.endedAt>e.startedAt&&e.endedAt<=capturedAt&&capturedAt-e.endedAt<30000):null;
-      if(pick.soundId&&!sound)continue;
-      if(!sound&&!speech&&(!image||observation.confidence<.55))continue;
-      const pickedAt=sound?Math.round((sound.startedAt+sound.endedAt)/2):capture?Math.round((capture.startedAt+capture.endedAt)/2):capturedAt;
-      const listeners=sound?witnesses.filter(id=>(heardByViewer[id]||[]).some(e=>e.id===sound.id)):capture?witnesses.filter(id=>spoken.hearers.includes(id)):witnesses;
-      if(this.clips.data.some(c=>c.creator&&s.now()-c.createdAt<(c.creator.id===p.id?300000:60000)))continue;
-      const signature=s.sessionId+':'+pick.signature.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu,'');
-      if(this.clips.data.some(c=>c.signature===signature))continue;
+      const candidate=this.eligiblePick(pick,observation,{image,speech,witnesses,capturedAt,heardByViewer,liveSpeech});
+      if(!candidate)continue;
+      const {p,sound,capture,spoken,pickedAt,listeners,signature}=candidate;
       const clip=this.clips.create({title:pick.title,scene:sound||capture?pick.reason:observation.scene,game:observation.game,participants:s.settings.personas.filter(p=>listeners.includes(p.id)&&!p.system).map(p=>({id:p.id,name:p.name})),messages:s.messages.filter(m=>m.time<=pickedAt||m.id===spoken?.messageId),image:sound||capture?undefined:image,audioEligible:!!sound||!!capture,sessionId:s.sessionId,source:'spectator',creator:{id:p.id,name:p.name,reason:pick.reason},signature,startedAt:s.startedAt,observedAt:pickedAt});
       created.push(clip);s.log(`${p.name} 관객이 핫클립을 남겼습니다: ${pick.title}`);
     }if(created.length)s.publish();return created;

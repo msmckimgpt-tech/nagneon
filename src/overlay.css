@@ -1,7 +1,13 @@
-/* Controls remain legible and clickable at every content transparency level. */
+/* Fade surfaces and chrome, never the chat text. Controls return on interaction. */
 :root:has(.overlay-shell),body:has(.overlay-shell){background:transparent}
-.overlay-shell{background:rgb(16 19 24 / calc(.73 * var(--overlay-opacity,1)))}
-.overlay-shell .overlay-chat,.overlay-shell .overlay-bottom,.overlay-shell .donation-toasts{opacity:var(--overlay-opacity,1)}
+.overlay-shell{--overlay-surface-opacity:calc(100% * var(--overlay-opacity,1));background:rgb(16 19 24 / calc(.73 * var(--overlay-opacity,1)));border-color:color-mix(in srgb,var(--ui-overlay-shell-border) var(--overlay-surface-opacity),transparent)}
+.overlay-shell .overlay-grip,.overlay-shell .overlay-opacity,.overlay-shell .overlay-bottom,.overlay-shell .overlay-public-disclosure,.overlay-shell>.muted,.overlay-shell>.chat-jump{opacity:var(--overlay-opacity,1);transition:opacity .15s}
+.overlay-shell:hover .overlay-grip,.overlay-shell:hover .overlay-opacity,.overlay-shell:focus-within .overlay-grip,.overlay-shell:focus-within .overlay-opacity,.overlay-shell:hover>.chat-jump,.overlay-shell:focus-within>.chat-jump{opacity:1}
+.overlay-chat .chat-line,.overlay-shell .donation-toast{text-shadow:0 1px 3px #000,0 0 2px #000}
+.overlay-chat .chat-line.notice{background:color-mix(in srgb,var(--ui-chat-line-notice-background) var(--overlay-surface-opacity),transparent)}
+.overlay-chat .chat-line.streamer{background:color-mix(in srgb,var(--ui-chat-line-streamer-background) var(--overlay-surface-opacity),transparent)}
+.overlay-chat::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ui-scrollbar-thumb) var(--overlay-surface-opacity),transparent)}
+.overlay-shell .donation-toast{background:color-mix(in srgb,var(--donation-surface) var(--overlay-surface-opacity),transparent);border-color:color-mix(in srgb,var(--neon) calc(47% * var(--overlay-opacity,1)),transparent);box-shadow:0 12px 50px color-mix(in srgb,var(--ui-shadow-medium) var(--overlay-surface-opacity),transparent)}
 .overlay-grip{flex-shrink:0;flex-wrap:wrap;gap:10px;background:#151a22}
 .overlay-controls{flex-wrap:wrap}
 .overlay-opacity{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:8px 14px;background:#151a22;color:#c5ceda;font-size:11px;-webkit-app-region:no-drag}
@@ -13,3 +19,26 @@
 .overlay-public-disclosure small{font-size:11px;color:#c5ceda}
 .overlay-shell:has(.overlay-public-disclosure)>.donation-toasts{position:static;flex-shrink:0;max-width:none;margin:16px 10px 8px}
 .overlay-shell:has(.overlay-public-disclosure)>.donation-toasts:empty{display:none}
+
+.overlay-chat .chat-line.donation{background:rgb(248 200 108 / calc(.055 * var(--overlay-opacity,1)));border-color:rgb(178 138 68 / calc(.3 * var(--overlay-opacity,1)));border-left-color:rgb(248 200 108 / var(--overlay-opacity,1))}
+
+/* Crisp glyph outlines stay opaque even over a white desktop. */
+.overlay-shell .overlay-chat .chat-line{font-size:13px;line-height:1.65}
+.overlay-shell .overlay-chat .chat-text,
+.overlay-shell .overlay-chat .chat-line strong,
+.overlay-shell .overlay-chat .chat-time,
+.overlay-shell .donation-toast{
+  -webkit-text-stroke:1px #080b10;
+  paint-order:stroke fill;
+  text-shadow:-1px -1px 0 #080b10,0 -1px 0 #080b10,1px -1px 0 #080b10,-1px 0 0 #080b10,1px 0 0 #080b10,-1px 1px 0 #080b10,0 1px 0 #080b10,1px 1px 0 #080b10,0 2px 3px #000;
+}
+.overlay-shell .overlay-chat .chat-text{color:#fff;font-weight:600}
+.overlay-shell .overlay-chat .chat-line strong{font-size:13px;font-weight:700}
+.overlay-shell .overlay-chat .chat-time{color:#dbe3ef}
+
+.overlay-compose{flex-shrink:0;padding:10px;background:rgb(20 26 37 / .96);-webkit-app-region:no-drag;opacity:var(--overlay-opacity,1);transition:opacity .15s}
+.overlay-compose:hover,.overlay-compose:focus-within{opacity:1}
+.overlay-compose-row{display:flex;gap:6px;align-items:center}
+.overlay-compose input{flex:1;min-width:0;width:0;font-size:13px}
+.overlay-compose button{flex-shrink:0;padding:8px 10px;white-space:nowrap}
+.overlay-compose-error{margin:6px 0 0;font-size:12px;color:#ffb8ae;line-height:1.45}

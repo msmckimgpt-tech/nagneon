@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {ClipMediaReading} from './clip-media-context.js';
+import {ClipMediaReading,clipMediaIdentity} from './clip-media-context.js';
 
 // A URL or media flag never grants experience. Text versions and optional
 // decoded-media receipts belong only to the viewers who actually received them.
@@ -77,7 +77,25 @@ export function reuseClipMemoryIndex(previous,next){
   }
 }
 
-export function recallClips(clips,viewerId,query='',now=Date.now()){
+const recallSources=new WeakMap();
+// Internal only: bind the receipt and its exact current source versions. Unseen
+// additions are not evidence and do not invalidate an already delivered bundle.
+function recallFingerprint(c,viewerId){
+  if(!c)return null;
+  const receipt=c.readings?.find(r=>r.viewerId===viewerId)||null;
+  return digest({metadata:metadata(c),receipt,media:clipMediaIdentity(c),
+    messages:(receipt?.messages||[]).map(ref=>{const row=c.messages.find(m=>m.id===ref.id);return row?clipMessage(row):null;}),
+    comments:(receipt?.comments||[]).map(ref=>{const row=c.comments.find(m=>m.id===ref.id);return row&&!row.deleted?clipComment(row):null;}),
+    own:c.comments.filter(m=>!m.deleted&&m.kind==='ai'&&m.personaId===viewerId).map(clipComment)});
+}
+export function clipRecallCurrent(clips,viewerId,candidates){
+  return candidates.every(candidate=>candidate&&candidate.fingerprint===recallFingerprint(clips.find(c=>c.id===candidate.id),viewerId));
+}
+export function captureClipRecallSources(clips,viewerId,rows){
+  const sources=rows.map(row=>recallSources.get(row));
+  return ()=>sources.every(source=>source?.viewerId===viewerId)&&clipRecallCurrent(clips(),viewerId,sources);
+}
+export function clipRecallCandidates(clips,viewerId,query='',now=Date.now()){
   const candidates=[],parts=queryParts(query);
   for(const c of clips){
     const storedReceipt=c.readings?.find(r=>r.viewerId===viewerId);
@@ -101,14 +119,26 @@ export function recallClips(clips,viewerId,query='',now=Date.now()){
     if(!knownMetadata&&!messages.length&&!comments.length)continue;
     const media=knownMetadata&&receipt?.media?.readAt<=now?receipt.media:null;
     const all=[...messages,...comments],rank=score((knownMetadata?header.normalized:'')+norm(media?.scene||'')+(media?.audio||[]).map(a=>norm(a.transcript)).join('')+all.map(m=>m._normalized).join(''),parts);
-    // Reserve room for a recently read streamer reply/correction as well as a
-    // relevant earlier quote; chronology and authorship remain explicit.
-    const picked=new Map();const add=m=>{if(m)picked.set(m.id,m);};
-    for(const m of comments.filter(m=>m.personaId==='streamer').slice(-2))add(m);
-    for(const {row} of all.map(row=>({row,score:score(row._normalized,parts)})).sort((a,b)=>b.score-a.score||b.row.at-a.row.at)){if(picked.size>=4)break;add(row);}
-    candidates.push({clipId:c.id,fictional:metadata(c).fictional,...(knownMetadata?{title:excerpt(c.title,100),game:excerpt(c.game,100),scene:excerpt(c.scene,240),sceneExcerpt:c.scene.length>240}:{}),
-      encounter:media?'clip-media-samples':'clip-text',...(media?{media:{readAt:media.readAt,frameTimes:[...media.frameTimes],scene:excerpt(media.scene,240),sceneSource:'model-description',audio:media.audio.map(a=>({...a,transcript:excerpt(a.transcript,220),transcriptSource:'local-asr',excerpt:a.transcript.length>220,classes:a.classes.slice(0,3).map(c=>({...c}))}))}}:{}),lastReadAt:receipt?.readAt??null,rank,latest:receipt?.readAt??Math.max(...comments.map(m=>m.at)),
-      items:[...picked.values()].sort((a,b)=>a.at-b.at).map(({_normalized,...m})=>({...m,name:excerpt(m.name,100),kind:excerpt(m.kind,30),text:excerpt(m.text,220),excerpt:m.text.length>220,...(m.donation?{donation:{...m.donation}}:{}),...(m.transcriptionCorrection?{transcriptionCorrection:{...m.transcriptionCorrection,text:excerpt(m.transcriptionCorrection.text,220)}}:{})}))});
+    const fingerprint=recallFingerprint(c,viewerId);
+    candidates.push({id:c.id,fingerprint,rank,latest:receipt?.readAt??Math.max(...comments.map(m=>m.at)),
+      text:excerpt([knownMetadata?c.title+' '+c.scene:'',...all.map(m=>m.text),media?.scene||''].join(' '),320),
+      project:()=>{
+        // Reserve room for a recently read streamer reply/correction as well as a
+        // relevant earlier quote; chronology and authorship remain explicit.
+        const picked=new Map();const add=m=>{if(m)picked.set(m.id,m);};
+        for(const m of comments.filter(m=>m.personaId==='streamer').slice(-2))add(m);
+        for(const {row} of all.map(row=>({row,score:score(row._normalized,parts)})).sort((a,b)=>b.score-a.score||b.row.at-a.row.at)){if(picked.size>=4)break;add(row);}
+        const projected={clipId:c.id,fictional:metadata(c).fictional,...(knownMetadata?{title:excerpt(c.title,100),game:excerpt(c.game,100),scene:excerpt(c.scene,240),sceneExcerpt:c.scene.length>240}:{}),
+          encounter:media?'clip-media-samples':'clip-text',...(media?{media:{readAt:media.readAt,frameTimes:[...media.frameTimes],scene:excerpt(media.scene,240),sceneSource:'model-description',audio:media.audio.map(a=>({...a,transcript:excerpt(a.transcript,220),transcriptSource:'local-asr',excerpt:a.transcript.length>220,classes:a.classes.slice(0,3).map(c=>({...c}))}))}}:{}),lastReadAt:receipt?.readAt??null,
+          items:[...picked.values()].sort((a,b)=>a.at-b.at).map(({_normalized,...m})=>({...m,name:excerpt(m.name,100),kind:excerpt(m.kind,30),text:excerpt(m.text,220),excerpt:m.text.length>220,...(m.donation?{donation:{...m.donation}}:{}),...(m.transcriptionCorrection?{transcriptionCorrection:{...m.transcriptionCorrection,text:excerpt(m.transcriptionCorrection.text,220)}}:{})}))};
+        recallSources.set(projected,{id:c.id,viewerId,fingerprint});
+        return projected;
+    }});
   }
-  return candidates.sort((a,b)=>b.rank-a.rank||b.latest-a.latest).slice(0,2).map(({rank,latest,...c})=>c);
+  return candidates.sort((a,b)=>b.rank-a.rank||b.latest-a.latest);
+}
+
+export function recallClips(clips,viewerId,query='',now=Date.now(),{preferredIds=[]}={}){
+  const candidates=clipRecallCandidates(clips,viewerId,query,now),preferred=new Set(preferredIds);
+  return [...candidates.filter(c=>preferred.has(c.id)),...candidates.filter(c=>!preferred.has(c.id))].slice(0,2).map(c=>c.project());
 }

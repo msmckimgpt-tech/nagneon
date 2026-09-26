@@ -6,6 +6,7 @@ import {Check,Clapperboard,Gamepad2,Plus,Radio,Shield,SlidersHorizontal,Sparkles
 import {api} from './api';
 import {AccessibleDialog} from './AccessibleDialog';
 import {ConnectionPanel} from './ConnectionPanel';
+import {DecisionPanel} from './DecisionPanel';
 import {CrowdPresets} from './CrowdPresets';
 import type {Game,Settings,State} from './types';
 import './settings-dialog.css';
@@ -172,6 +173,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
 
       case 'mood':
         return <><CrowdPresets draft={draft} locked={locked} onChange={patch=>setDraft(previous=>({...previous,...patch}))}/>
+          <label className="set-check"><input type="checkbox" checked={draft.continuousAudienceChat??false} disabled={locked} onChange={e=>update('continuousAudienceChat',e.target.checked)}/><span>관객끼리 계속 수다</span></label>
+          <p className="field-note">내가 말하지 않아도 관객이 서로 이야기하거나 새 화제를 꺼내요. 응답이 끝난 뒤 약 20~30초 간격으로 다시 시도하며, 내 발언과 화면의 중요한 변화에 먼저 반응해요. AI 사용량이 늘어납니다. AI 대시보드의 ‘관객의 자발적 대화’도 켜져 있어야 해요.</p>
           <div className="set-row">
             <label className="set-field">커뮤니티 규모와 리듬
               <select value={draft.crowdStyle} onChange={e=>update('crowdStyle',e.target.value as Settings['crowdStyle'])}>
@@ -232,8 +235,8 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
 
       case 'connection':
         return <>
-          <ConnectionPanel state={state}/>{onDashboard&&<button type="button" className="secondary" onClick={onDashboard}>AI 대시보드에서 전체 사용량·실행 허용 관리</button>}
-          {!['codex','ollama'].includes(state.provider.kind||'')&&<label className="set-field">OpenAI API 키 (앱 종료 시 삭제)
+          <ConnectionPanel state={state}/><DecisionPanel state={state}/>{onDashboard&&<button type="button" className="secondary" onClick={onDashboard}>AI 대시보드에서 전체 사용량·실행 허용 관리</button>}
+          {!['codex','ollama','antigravity'].includes(state.provider.kind||'')&&<label className="set-field">OpenAI API 키 (앱 종료 시 삭제)
             <div className="inline-form">
               <input type="password" autoComplete="off" value={apiKey} placeholder="API 키"
                 onChange={e=>setApiKey(e.target.value)}/>

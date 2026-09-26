@@ -1,3 +1,4 @@
+import { selectCultureDocuments } from '../decision/policies.js';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { collectDomain, domainOrigin } from './source.js';
@@ -94,11 +95,22 @@ export class CultureLearning {
         this.change(d => Object.assign(d.sources.find(v => v.origin === item.origin), { checkedAt: s.now(), error: '', failures: 0 })); return;
       }
       if (s.running || s.busy || s.audioBusy || s.communityActivity?.active || s.autonomy?.waiting) return;
+      const decisionValid=()=>valid()&&!s.running&&!s.busy&&!s.audioBusy&&!s.communityActivity?.active&&!s.autonomy?.waiting&&s.ai.allowed('culture');
+      const selected=s.decision?.enabled('culture-relevance','culture')?await selectCultureDocuments(s,collected.documents,{signal,valid:decisionValid,scope:{epoch:operation.epoch,origin:item.origin,digest:collected.digest}}):{documents:collected.documents};
+      if(!decisionValid())return;
+      if(selected.result){
+        s.decision.assertCurrent(selected.result);
+        if(!selected.documents.length){
+          this.change(d=>Object.assign(d.sources.find(v=>v.origin===item.origin),{digest:collected.digest,checkedAt:s.now(),error:'',failures:0}));
+          s.decision.accepted(selected.result);return;
+        }
+        s.decision.accepted(selected.result);
+      }
       s.reserveCall();
       const result = await s.provider.react({
         aiFeature: 'culture',
         settings: { ...s.settings, personas: [], webSearch: false }, history: [], offStream: true,
-        cultureSource: { origin: item.origin, documents: collected.documents },
+        cultureSource: { origin: item.origin, documents: selected.documents },
       }, signal);
       if (!valid()) return;
       s.ai.assertCurrent(result);

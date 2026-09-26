@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import * as speechFlow from '../src/speech-flow.ts';
+import * as reactionSchedule from '../src/reaction-schedule.ts';
 
 const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
@@ -32,6 +33,7 @@ function harness({fetch,reactApi}){
     './continuous-listening.ts':{ContinuousListening:class{}},
     './temporal-frames':{TemporalFrames},
     './temporal-capture':{startTemporalCapture:()=>()=>{}},
+    './reaction-schedule':reactionSchedule,
     './capture-preparation':{prepareCapture:async()=>{throw new Error('not used');},releaseCapture:()=>{}}
   };
   const module={exports:{}};
@@ -39,7 +41,7 @@ function harness({fetch,reactApi}){
   vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,`unexpected import ${id}`);return imports[id];},fetch,navigator:{mediaDevices},window:{},MediaRecorder:{isTypeSupported:()=>true},AudioContext:class{},AbortController,DOMException,Error,Blob,Float32Array,Date,crypto,structuredClone,setInterval,clearInterval,setTimeout,clearTimeout});
   const state={running:true,sessionId:'live-session',settings:{mode:'live',intervalSeconds:5,autoHighlights:false,clipBufferEnabled:false,speechDevice:'cpu'},busy:false,clips:[]};
   const media=module.exports.useMedia(state,message=>errors.push(message));
-  const deliveryEffect=effects.find(effect=>String(effect).includes('nextAttemptAt')&&String(effect).includes('pendingSpeech'));
+  const deliveryEffect=effects.find(effect=>String(effect).includes('startReactionSchedule')&&String(effect).includes('pendingSpeech'));
   assert.ok(deliveryEffect,'delivery effect not found');
   return {media,deliveryEffect,errors};
 }
