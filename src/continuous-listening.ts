@@ -52,6 +52,7 @@ export class ContinuousListening {
     onCaptureFailure?: () => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
+    recognizeAfter?: Promise<void>;
   };
   constructor(options: {
     sessionId: string;
@@ -62,6 +63,7 @@ export class ContinuousListening {
     onCaptureFailure?: () => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
+    recognizeAfter?: Promise<void>;
   }) {
     this.options = options;
     this.drained = new Promise((resolve) => {
@@ -74,6 +76,10 @@ export class ContinuousListening {
       sessionId: options.sessionId,
       inputEpoch: this.inputEpoch,
       recognize: async (job) => {
+        // The decoder is shared across input epochs. Keep capturing/storing while
+        // the previous microphone drains, without submitting competing jobs.
+        await options.recognizeAfter;
+        if (job.signal.aborted) throw new DOMException('음성 처리 취소', 'AbortError');
         const request = async (signal: AbortSignal) => {
           const path = `/api/audio/raw/${options.sessionId}/${this.inputEpoch}?start=${job.frameStart}&end=${job.frameEnd}`;
           const saved = await fetch(path, { signal });
@@ -93,6 +99,8 @@ export class ContinuousListening {
             throw Object.assign(new Error(result.error || '음성 인식 실패'), {
               needsPreparation: result.needsPreparation === true,
             });
+          if (!result.text?.trim() && result.noSpeech === true)
+            return { status: 'empty' as const };
           if (!result.text?.trim())
             throw new Error('말소리가 감지됐지만 전사되지 않았습니다. 보존된 원음을 재시도합니다.');
           return { status: 'final' as const, text: result.text, cues: result.cues };
@@ -158,10 +166,10 @@ export class ContinuousListening {
         this.options.onCaptureFailure?.();
       },
     });
-    if (this.closed) {
+    if (this.closed || this.captureStopped) {
       this.disposeCapture();
       this.disposeCapture = null;
-      return this;
+      if (this.closed) return this;
     }
     this.retryTimer = setInterval(() => this.controller.retryFailed(), 5000);
     return this;

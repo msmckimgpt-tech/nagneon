@@ -19,6 +19,7 @@ export const defaults = {
   showStreamerMessages: true,
   overlayMode: 'private',
   communityActivityEnabled: true,
+  continuousAudienceChat: false,
   memesEnabled: true, cultureDomains: [],
   speechDevice: 'gpu',
   contextualTranscription: true,

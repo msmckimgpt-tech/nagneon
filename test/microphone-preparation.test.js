@@ -11,17 +11,17 @@ import * as capturePreparation from '../src/capture-preparation.ts';
 const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
 function harness(fetch,getUserMedia){
-  const errors=[],listeners=[],outboxes=[],timers=new Set();let timerId=0;
+  const effects=[],errors=[],listeners=[],outboxes=[],timers=new Set();let timerId=0;
   class Outbox extends speechFlow.SpeechOutbox{constructor(){super();outboxes.push(this);}}
   class Listener{constructor(options){this.options=options;this.drained=new Promise(resolve=>{this.resolveDrain=resolve;});listeners.push(this);}async start(){this.timer=++timerId;timers.add(this.timer);return this;}stopCapture(){timers.delete(this.timer);}}
   const state={running:true,sessionId:'test-session',settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
-  const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:()=>{}};
+  const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:effect=>effects.push(effect)};
   const imports={react,'./useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechOutbox:Outbox},'./continuous-listening.ts':{ContinuousListening:Listener},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
   const module={exports:{}};
   class Recorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.onstop?.();}}
   class Context{resume(){return Promise.resolve();}createMediaStreamSource(){return {connect(){}};}createAnalyser(){return {fftSize:512,getFloatTimeDomainData(){}};}close(){return Promise.resolve();}}
-  vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,id);return imports[id];},fetch,navigator:{mediaDevices:{getUserMedia:async()=>{const stream=await getUserMedia();if(stream&&!stream.getAudioTracks)stream.getAudioTracks=stream.getTracks;return stream;}}},MediaRecorder:Recorder,AudioContext:Context,AbortController,Error,Blob,Float32Array,performance:{now:()=>0},setInterval:()=>{timers.add(++timerId);return timerId;},clearInterval:id=>timers.delete(id),setTimeout:()=>{timers.add(++timerId);return timerId;},clearTimeout:id=>timers.delete(id)});
-  return {media:module.exports.useMedia(state,error=>errors.push(error)),errors,state,timers,listeners,outboxes};
+  vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,id);return imports[id];},fetch,window:{},navigator:{mediaDevices:{addEventListener(){},removeEventListener(){},getUserMedia:async()=>{const stream=await getUserMedia();if(stream&&!stream.getAudioTracks)stream.getAudioTracks=stream.getTracks;return stream;}}},MediaRecorder:Recorder,AudioContext:Context,AbortController,Error,Blob,Float32Array,performance:{now:()=>0},setInterval:()=>{timers.add(++timerId);return timerId;},clearInterval:id=>timers.delete(id),setTimeout:()=>{timers.add(++timerId);return timerId;},clearTimeout:id=>timers.delete(id)});
+  return {media:module.exports.useMedia(state,error=>errors.push(error)),errors,state,timers,listeners,outboxes,effects};
 }
 
 test('microphone device acquisition waits for the recognizer handshake',async()=>{
@@ -78,4 +78,20 @@ test('a capture processor failure releases the device and requests reconnect vis
   let stops=0;const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>({getTracks:()=>[{stop(){stops++;}}]}));
   await h.media.startMic();h.listeners[0].options.onCaptureFailure();
   assert.equal(stops,1);assert.match(h.errors.at(-1),/연속 캡처가 끊겼습니다/);assert.equal(h.timers.size,0);
+});
+
+ test('explicit microphone toggle off remains off through reconnect and can be enabled again',async()=>{
+  let devices=0,stops=0;
+  const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>{devices++;return {getTracks:()=>[{stop(){stops++;}}]};});
+  await h.media.startMic();h.media.toggleMic();assert.equal(stops,1);
+  const reconnect=h.effects.find(effect=>String(effect).includes('const reconnect'));
+  assert.ok(reconnect);const cleanup=reconnect();await turn();assert.equal(devices,1);
+  h.media.toggleMic();await turn();assert.equal(devices,2);
+  h.media.toggleMic();cleanup();assert.equal(stops,2);assert.equal(h.timers.size,0);
+});
+ test('microphone shortcut cancels pending preparation without opening a late device',async()=>{
+  let release,devices=0;
+  const h=harness(async()=>new Promise(resolve=>release=resolve),async()=>{devices++;});
+  const start=h.media.startMic();await turn();h.media.toggleMic();
+  release({ok:true,json:async()=>({ok:true})});await start;assert.equal(devices,0);
 });

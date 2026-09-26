@@ -71,3 +71,8 @@ test('service startup stays idle and on-demand audio preparation honors the stor
   assert.equal(response.status,200);assert.deepEqual(calls.at(-1),['prepare','cpu']);
  }finally{await service.close();}
 });
+
+ test('confirmed non-speech marker survives the worker boundary', async()=>{
+ const {speech,sent,emit}=setup();const job=speech.transcribe(Buffer.from('noise'),new AbortController().signal);
+ emit({id:sent[0].id,text:'',noSpeech:true});assert.equal((await job).noSpeech,true);await speech.close();
+ });

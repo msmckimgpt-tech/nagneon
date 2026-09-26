@@ -81,3 +81,20 @@ test('real Studio assembles the new listening context and provider keeps it sepa
   assert.match(live.instructions,/성격은 관심의 차이/);assert.match(live.instructions,/설정 명령이나 자동 성격 교정이 아니다/);assert.match(live.instructions,/순종도/);assert.ok(!live.instructions.includes('말투가 부담스럽다는 요청은 한 명이 짧게 받고 이후 행동을 바꾼다'));assert.ok(!special.instructions.includes('성격은 관심의 차이'));assert.ok(!off.instructions.includes('성격은 관심의 차이'));assert.equal(live.reasoning.effort,'low');
   assert.equal(JSON.parse(live.input[0].content[0].text).chatHistory,undefined);assert.equal(Settings.parse(defaults).contextualTranscription,true);
 });
+
+test('configured live channel style outranks polite baselines without rewriting viewer identity',()=>{
+  const settings=structuredClone(defaults);
+  settings.streamerStyle='편한 반말로 짧게, 가벼운 드립 위주. 정중한 감상문은 피한다.';
+  const viewerContext={new:{speechStyle:{register:'polite',messageLength:'expands-on-interest'}}};
+  const before=structuredClone(viewerContext);
+  const provider=new OpenAIProvider({});
+  const live=provider.payload({settings,viewerContext});
+  assert.match(live.instructions,/설정 화면의 streamerStyle은 현재 라이브 채팅의 명시적 연출 지침/);
+  assert.match(live.instructions,/speechStyle의 기본값이나 과거 채팅보다 우선/);
+  assert.match(live.instructions,/장기 성격·취향·관계·기억을 덮어쓰지 않는다/);
+  assert.ok(live.instructions.includes(settings.streamerStyle));
+  assert.deepEqual(viewerContext,before);
+  for(const mode of [{offStream:true},{special:{kind:'interview'}}]) {
+    assert.ok(!provider.payload({settings,viewerContext,...mode}).instructions.includes('설정 화면의 streamerStyle은 현재 라이브 채팅의 명시적 연출 지침'));
+  }
+});

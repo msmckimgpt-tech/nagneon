@@ -103,9 +103,28 @@ export function pricingVendor(base) {
 export function priceUsage(row, customRates = []) {
   if (row.status === 'running') return unavailable('running');
   if (row.provider === 'ollama') return { ...unavailable('local'), kind: 'local' };
-  if (!['openai', 'codex'].includes(row.provider) || row.featureId === 'remote-stt')
+  if (!['openai', 'codex', 'jev'].includes(row.provider) || row.featureId === 'remote-stt')
     return unavailable('unsupported');
   const usage = row.usage;
+  if (row.provider === 'jev') {
+    if (!['jev-1.13.0', 'jev-latest'].includes(row.model)) return unavailable('missing-rate');
+    if (usage?.input == null) return unavailable('missing-usage');
+    if (!Number.isFinite(usage.input) || usage.input < 0) return unavailable('invalid-usage');
+    // Fixed official-endpoint JEV estimate, including the currently supported latest alias.
+    // Checked 2026-09-26: https://openrouter.ai/typesafe and
+    // https://typesafe.ai/blog/introducing-system-one-models-and-jev
+    // Input is $0.042/M; output is free, so missing output does not prevent pricing.
+    return {
+      kind: 'api',
+      reason: 'calculated',
+      usd: (usage.input * 0.042) / 1e6,
+      uncertaintyUsd: 0,
+      source: 'official',
+      checkedAt: '2026-09-26',
+      longContext: false,
+      rates: { input: 0.042, cached: 0.042, cacheWrite: 0.042, output: 0 },
+    };
+  }
   if (usage?.input == null || usage?.output == null) return unavailable('missing-usage');
   const valid = (n) => Number.isFinite(n) && n >= 0;
   if (

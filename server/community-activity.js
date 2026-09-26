@@ -1,3 +1,4 @@
+import { communityInterest, communityProjection } from './decision/policies.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {CommunityActivityData,emptyCommunityActivity} from './community-activity-state.js';
 import {clipTextSnapshot,clipMessage} from './clip-memory.js';
@@ -75,6 +76,17 @@ export class CommunityActivity {
     s.busy=true;this.lastError='';s.publish();
     if(operation.social)return s.social.run(target,operation);
     const raw=structuredClone(target.raw),post=kind==='gallery'?publicPost(raw):null,reading=kind==='clip'?clipTextSnapshot(raw):null;
+    // The existing weighted selection and persisted attempt own this decision.
+    // A declined activity is not a reading and cannot create votes or receipts.
+    if(s.decision?.enabled('community-affinity','community')){
+      const valid=()=>!signal.aborted&&s.epoch===operation.epoch&&!this.closed&&s.settings.communityActivityEnabled&&s.ai.allowed('community')&&s.settings.personas.some(p=>p.id===viewer.id&&p.enabled&&!p.system)&&!!s.audience.data.members[viewer.id]?.sessions&&(
+        kind==='review'?raw.every(e=>s.journal.data.entries.some(current=>current.id===e.id&&hash(current)===hash(e))):
+        (kind==='clip'?s.clips.data:s.audience.data.posts).some(current=>current.id===id&&communityRevision(kind,current,viewer.id)===revision));
+      const delivered=kind==='clip'?{title:reading.title.slice(0,160),text:reading.scene.slice(0,1200)}:kind==='gallery'?{title:post.title.slice(0,160),text:post.text.slice(0,1200)}:{text:raw.slice(-6).map(e=>e.text.slice(0,180)).join('\n')};
+      const interest=await communityInterest(s,{state:communityProjection(viewer,delivered),scope:{epoch:operation.epoch,kind,id,viewerId:viewer.id,revision},signal,valid});
+      if(!valid())return;
+      if(interest?.interested===false){s.decision.accepted(interest.result);return;}
+    }
     const media=kind==='clip'&&(raw.video||raw.audio)?await s.clipPerception.read(s.clips,raw,signal):null;
     if(signal.aborted||s.epoch!==operation.epoch||this.closed)return;
     s.reserveCall();

@@ -1,5 +1,10 @@
 // Wire optimization only: no generated response, screen or remembered fact is
 // cached. A new connection always receives the entire current public snapshot.
+export const projectState = (state, surface) => {
+  if (surface !== 'overlay') return state;
+  const { decision: _decision, ...overlay } = state;
+  return overlay;
+};
 export class StateStream {
   constructor() {
     this.previous = null;
@@ -63,9 +68,10 @@ export class StateStream {
 // A stalled window gets the latest snapshot after drain, not an unbounded
 // backlog of historical snapshots. The last accepted frame remains the base.
 export class StateFeed {
-  constructor(response, { patches = false, currentState }) {
+  constructor(response, { patches = false, currentState, surface }) {
     this.response = response;
     this.currentState = currentState;
+    this.surface = surface;
     this.encoder = patches ? new StateStream() : null;
     this.blocked = false;
     this.dirty = false;
@@ -93,7 +99,10 @@ export class StateFeed {
       this.dirty = true;
       return;
     }
-    this.write(this.encoder ? this.encoder.encode(state) : `data: ${JSON.stringify(state)}\n\n`);
+    const projected = projectState(state, this.surface);
+    this.write(
+      this.encoder ? this.encoder.encode(projected) : `data: ${JSON.stringify(projected)}\n\n`,
+    );
   }
   display(value) {
     this.write(`event: chat-display\ndata: ${JSON.stringify(value)}\n\n`);

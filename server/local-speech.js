@@ -43,7 +43,7 @@ export class LocalSpeech {
         }else if(data.error&&!data.id){this.retire(String(data.error).slice(0,1000));return;}
         else if(this.jobs.has(data.id)){
           const job=this.jobs.get(data.id);
-          this.finishJob(job,data.error?Error(String(data.error).slice(0,1000)):null,{text:data.text,cues:data.cues,...(data.timing?{timing:data.timing}:{})});
+          this.finishJob(job,data.error?Error(String(data.error).slice(0,1000)):null,{text:data.text,cues:data.cues,...(data.noSpeech===true?{noSpeech:true}:{}),...(data.timing?{timing:data.timing}:{})});
         }
       }
     });

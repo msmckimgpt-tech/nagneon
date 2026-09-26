@@ -216,6 +216,7 @@ export class Audience {
     {
       hearers = null,
       company = false,
+      continuousCompany = false,
       reactive = false,
       addressViewers = this.addressing(settings),
     } = {},
@@ -257,8 +258,10 @@ export class Audience {
     // Watching quietly does not mean unable to speak. With fresh witnessed
     // input or a company opportunity, one lurker may volunteer without changing their presence,
     // affinity or visit. The model can still choose silence or current gameplay.
-    const volunteer = lurkers.sort((a, b) => b.score - a.score)[0];
-    if (volunteer) candidates.push(volunteer);
+    const volunteers = lurkers
+      .sort((a, b) => b.score - a.score)
+      .slice(0, company && continuousCompany ? 2 : 1);
+    candidates.push(...volunteers);
     const eligible = candidates
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(settings.chatPace + 1, settings.personas.length))

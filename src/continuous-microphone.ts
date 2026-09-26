@@ -147,12 +147,14 @@ export async function startContinuousMicrophone(options: {
 }) {
   const Constructor = (
     globalThis as typeof globalThis & {
-      MediaStreamTrackProcessor?: new (options: { track: MediaStreamTrack }) => TrackProcessor;
+      MediaStreamTrackProcessor?: new (options: { track: MediaStreamTrack; maxBufferSize: number }) => TrackProcessor;
     }
   ).MediaStreamTrackProcessor;
   if (!Constructor) throw new Error('연속 마이크 입력을 지원하지 않는 실행 환경입니다.');
   const clone = options.track.clone(),
-    processor = new Constructor({ track: clone }),
+    // The default ten audio packets cover only about 100 ms. Screen capture
+    // and UI work can exceed that and discard real microphone frames.
+    processor = new Constructor({ track: clone, maxBufferSize: 100 }),
     reader = processor.readable.getReader();
   const encoder = new ContinuousPcmEncoder();
   let stopped = false,

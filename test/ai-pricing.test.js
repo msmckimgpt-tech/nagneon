@@ -167,6 +167,119 @@ test('Codex is a separate Standard-token reference and never a billed API sum', 
   near(price.usd, 1.801);
 });
 
+test('JEV aliases price reported input as API usage with free or unreported output', () => {
+  for (const model of ['jev-1.13.0', 'jev-latest']) {
+    for (const reported of [
+      { input: 1000000, output: 100000, cached: 200000, cacheWrite: 300000 },
+      normalizeUsage({ input_tokens: 1000000 }),
+    ]) {
+      const price = priceUsage(
+        row({ provider: 'jev', pricingVendor: 'custom', model, usage: reported }),
+        [{ connection: '', model, input: 10, cached: 1, output: 50 }],
+      );
+      assert.equal(price.kind, 'api');
+      assert.equal(price.reason, 'calculated');
+      near(price.usd, 0.042);
+      assert.equal(price.uncertaintyUsd, 0);
+      assert.equal(price.source, 'official');
+      assert.equal(price.longContext, false);
+    }
+  }
+  assert.equal(
+    priceUsage(row({ provider: 'jev', model: 'jev-latest', usage: { input: 0 } })).usd,
+    0,
+  );
+});
+
+test('JEV pricing rejects unknown models and missing or invalid input without borrowing rates', () => {
+  const jev = row({ provider: 'jev', model: 'jev-1.13.0' });
+  for (const model of ['jev-1.13', 'jev-2', 'gpt-6-sol']) {
+    const price = priceUsage({ ...jev, model }, [
+      { connection: '', model, input: 1, cached: 1, output: 1 },
+    ]);
+    assert.equal(price.reason, 'missing-rate');
+    assert.equal(price.usd, null);
+  }
+  for (const reported of [null, { input: null, output: 3 }, { total: 100 }]) {
+    const price = priceUsage({ ...jev, usage: reported });
+    assert.equal(price.reason, 'missing-usage');
+    assert.equal(price.usd, null);
+  }
+  for (const input of [-1, Infinity, NaN]) {
+    const price = priceUsage({ ...jev, usage: { input, output: 0 } });
+    assert.equal(price.reason, 'invalid-usage');
+    assert.equal(price.usd, null);
+  }
+  assert.equal(priceUsage({ ...jev, status: 'running' }).reason, 'running');
+  assert.equal(priceUsage({ ...jev, featureId: 'remote-stt' }).reason, 'unsupported');
+  assert.equal(priceUsage(row({ model: 'jev-1.13.0' })).reason, 'missing-rate');
+});
+
+test('JEV API receipts and day/session aggregates survive restart without repricing', async () => {
+  const ai = new AiControl({ now: () => at });
+  const binding = {
+    context: () => ({ sessionId: 'jev-session' }),
+    onChange: () => {},
+    onPolicy: () => {},
+  };
+  ai.bind(binding);
+  ai.startSession('jev-session');
+  for (const model of ['jev-1.13.0', 'jev-latest'])
+    await call(ai, backend({ model, base: undefined, status: () => ({ kind: 'jev' }) }));
+  assert.equal(sum(ai).priced, 2);
+  near(sum(ai).estimatedUsd, 0.0084);
+  assert.equal(sum(ai).apiUncertaintyUsd, 0);
+  assert.equal(sum(ai).referencePriced, 0);
+  assert.deepEqual(sum(ai, 'session'), sum(ai));
+  for (const receipt of ai.data.recent) {
+    assert.equal(receipt.pricing.kind, 'api');
+    near(receipt.estimatedUsd, 0.0042);
+  }
+  const restored = new AiControl({ data: JSON.parse(JSON.stringify(ai.data)), now: () => at });
+  restored.bind(binding);
+  assert.deepEqual(restored.data.recent, ai.data.recent);
+  assert.deepEqual(sum(restored), sum(ai));
+  assert.deepEqual(sum(restored, 'session'), sum(ai, 'session'));
+});
+
+test('unpriced JEV history backfills retained costs once while preserving aggregate history', async () => {
+  const ai = new AiControl({ now: () => at });
+  ai.bind({
+    context: () => ({ sessionId: 'jev-session' }),
+    onChange: () => {},
+    onPolicy: () => {},
+  });
+  ai.startSession('jev-session');
+  await call(ai, backend({ model: 'jev-latest', status: () => ({ kind: 'jev' }) }));
+  const old = structuredClone(ai.data);
+  delete old.recent[0].pricing;
+  old.recent[0].estimatedUsd = null;
+  for (const bucket of [...old.days, ...old.sessions])
+    Object.assign(bucket.features.probe, {
+      calls: 8,
+      estimatedUsd: 8,
+      priced: 7,
+      apiUncertaintyUsd: 0.5,
+    });
+  const before = JSON.stringify(old);
+  const restored = new AiControl({ data: old, now: () => at });
+  assert.equal(restored.data.recent[0].pricing.backfilled, true);
+  assert.equal(restored.data.recent[0].pricing.kind, 'api');
+  for (const bucket of [...restored.data.days, ...restored.data.sessions]) {
+    assert.equal(bucket.features.probe.calls, 8);
+    assert.equal(bucket.features.probe.priced, 8);
+    near(bucket.features.probe.estimatedUsd, 8.0042);
+    assert.equal(bucket.features.probe.apiUncertaintyUsd, 0.5);
+  }
+  assert.equal(JSON.stringify(old), before);
+  assert.deepEqual(new AiControl({ data: restored.data, now: () => at }).data, restored.data);
+  old.days = [];
+  old.sessions = [];
+  const expired = new AiControl({ data: old, now: () => at });
+  assert.deepEqual(expired.data.days, []);
+  assert.deepEqual(expired.data.sessions, []);
+});
+
 test('unknown total-only usage, unsupported audio, and local execution remain distinct', () => {
   assert.equal(
     priceUsage(row({ usage: normalizeUsage({ total_tokens: 1000 }) })).reason,

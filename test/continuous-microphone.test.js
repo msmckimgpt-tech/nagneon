@@ -66,7 +66,8 @@ test('track processor keeps the PCM source contiguous and closes the cloned trac
   let clonedStopped = false,
     streamController;
   globalThis.MediaStreamTrackProcessor = class {
-    constructor() {
+    constructor(options) {
+      assert.equal(options.maxBufferSize, 100);
       this.readable = new ReadableStream({
         start(controller) {
           streamController = controller;

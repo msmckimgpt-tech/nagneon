@@ -11,7 +11,9 @@ import {
 
 const safeCode = (error) => {
   const code = typeof error?.code === 'string' ? error.code : 'error';
-  return new Set(['auth', 'usage', 'network', 'invalid_response', 'unavailable']).has(code)
+  return new Set(['auth', 'credits', 'usage', 'network', 'invalid_response', 'unavailable']).has(
+    code,
+  )
     ? code
     : 'error';
 };

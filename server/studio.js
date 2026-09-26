@@ -1,3 +1,8 @@
+import {
+  prepareLiveDecision,
+  checkLiveDecision,
+  liveDecisionEnabled,
+} from './decision/policies.js';
 import { SocialRuntime } from './social-runtime.js';
 import { SpeechCapture, witnessedSpeech } from './speech-screen.js';
 import { EventEmitter } from 'node:events';
@@ -6,7 +11,11 @@ import { defaults } from '../shared/defaults.js';
 import { Settings, Observation } from './schema.js';
 import { Knowledge } from './knowledge.js';
 import { Audience } from './audience.js';
-import { viewerKnowledgeByPersona, liveViewerContext } from './viewer-context.js';
+import {
+  viewerKnowledgeByPersona,
+  liveViewerContext,
+  captureLiveRecallSources,
+} from './viewer-context.js';
 import { Economy } from './economy.js';
 import { SpecialFeatures } from './special-features.js';
 import { Clips, ClipFeatures } from './clips.js';
@@ -48,11 +57,13 @@ export class Studio extends EventEmitter {
     clipPerception,
     cultureLearning,
     aiControl,
+    decisionAssistant,
     storageStatus = () => ({ warnings: [], recovered: [] }),
   } = {}) {
     super();
     this.runtime = { snapshot: () => ({}), beforeStop: [] };
     this.ai = aiControl || new AiControl({ now: () => this.now() });
+    this.decision = decisionAssistant;
     this.provider = this.ai.wrap(provider);
     this.settings = Settings.parse(settings);
     this.persist = persist;
@@ -201,6 +212,7 @@ export class Studio extends EventEmitter {
       events: this.events,
       observation: this.observation,
       ai: this.ai.snapshot(),
+      ...(this.decision ? { decision: this.decision.snapshot() } : {}),
       calls: this.calls,
       tokens: this.tokens,
       busy: this.busy && !this.communityActivity?.active,
@@ -405,12 +417,14 @@ export class Studio extends EventEmitter {
     this.publish();
   }
   close() {
+    const decisionClose = this.decision?.close();
     this.ai.close();
     void this.culture.close();
     this.communityActivity.close();
     void this.clipPerception.close();
     this.stop();
     clearInterval(this.timer);
+    return decisionClose;
   }
   prepareMessage(personaId, text, kind = 'chat') {
     const p = this.settings.personas.find((p) => p.id === personaId);
@@ -767,7 +781,8 @@ export class Studio extends EventEmitter {
     if (
       this.now() - Math.max(this.lastRequest, this.viewing.checkedAt) <
         this.settings.intervalSeconds * 1000 &&
-      !speech
+      !speech &&
+      !this.ambient.continuousDue()
     )
       return { skipped: 'interval' };
     if (speech && this.now() - this.lastRequest < 2000) return { skipped: 'interval' };
@@ -809,7 +824,7 @@ export class Studio extends EventEmitter {
         const rehearsal = this.reactRehearsal(speech);
         if (rehearsal) return rehearsal;
       } else {
-        const context = this.prepareLiveReaction({
+        let context = this.prepareLiveReaction({
           speech,
           speechBatch,
           speechHearers,
@@ -819,18 +834,7 @@ export class Studio extends EventEmitter {
           watchingCompany,
           operation,
         });
-        const {
-          eligiblePersonas,
-          eligibleSettings,
-          witnesses,
-          personalContext,
-          transcriptCandidates,
-          viewerKnowledge,
-          liveSpeech,
-          adviceRequested,
-          advicePolicy,
-          ambient,
-        } = context;
+        const { eligiblePersonas, witnesses } = context;
         this.reserveCall();
         diagnosticId = this.reactions.begin({
           hasSpeech: !!speech,
@@ -847,31 +851,101 @@ export class Studio extends EventEmitter {
           latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
         });
         const responseStartedAt = this.now();
-        const result = await this.provider.react(
-          {
-            aiFeature,
-            settings: eligibleSettings,
-            history: [],
-            previous: null,
-            image: idleConversation ? undefined : image,
-            frames: idleConversation ? [] : frames,
-            screenTimeline: idleConversation ? undefined : screenTimeline,
+        const providerArgs = (prepared) => ({
+          aiFeature,
+          settings: prepared.eligibleSettings,
+          history: [],
+          previous: null,
+          image: idleConversation ? undefined : image,
+          frames: idleConversation ? [] : frames,
+          screenTimeline: idleConversation ? undefined : screenTimeline,
+          speech,
+          viewerKnowledge: prepared.viewerKnowledge,
+          adviceRequested: prepared.adviceRequested,
+          advicePolicy: prepared.advicePolicy,
+          ...prepared.personalContext,
+          liveSpeech: prepared.liveSpeech,
+          transcriptCandidates: prepared.transcriptCandidates,
+          ambient: prepared.ambient,
+          voiceCues:
+            !idleConversation && this.voiceCues && this.now() - this.voiceCues.at < 30000
+              ? this.voiceCues
+              : null,
+        });
+        let args = providerArgs(context);
+        const journalRevision = this.journal.data.revision;
+        let preflightCurrent = () => true;
+        let baselineRecallCurrent = () => true;
+        if (liveDecisionEnabled(this, 'before', aiFeature)) {
+          baselineRecallCurrent = captureLiveRecallSources(this, args.viewerContext);
+          preflightCurrent =
+            (await prepareLiveDecision(this, context, args, { signal, epoch, operation })) ||
+            preflightCurrent;
+        }
+        signal.throwIfAborted();
+        if (epoch !== this.epoch || !this.running || operation.superseded)
+          return { skipped: 'stopped' };
+        if (
+          !baselineRecallCurrent() ||
+          !preflightCurrent() ||
+          journalRevision !== this.journal.data.revision ||
+          context.eligiblePersonas.some(
+            (p) =>
+              context.visits.get(p.id) !== this.audience.data.members[p.id]?.joinedAt ||
+              !this.settings.personas.some((v) => v.id === p.id && v.enabled),
+          )
+        ) {
+          context = this.prepareLiveReaction({
             speech,
-            viewerKnowledge,
-            adviceRequested,
-            advicePolicy,
-            ...personalContext,
-            liveSpeech,
-            transcriptCandidates,
-            ambient,
-            voiceCues:
-              !idleConversation && this.voiceCues && this.now() - this.voiceCues.at < 30000
-                ? this.voiceCues
-                : null,
-          },
-          signal,
-        );
+            speechBatch,
+            speechHearers,
+            viewing,
+            screenTimeline,
+            idleConversation,
+            watchingCompany,
+            operation,
+          });
+          args = providerArgs(context);
+        }
+        // Fingerprint exactly the final prompt before any generation await.
+        // This guard also owns the no-JEV and no-postflight-question paths.
+        const recallCurrent = captureLiveRecallSources(this, args.viewerContext);
+        let result = await this.provider.react(args, signal);
         this.ai.assertCurrent(result);
+        context.generatedCount = result.observation.messages.length;
+        if (!recallCurrent()) {
+          this.reactions.generated(diagnosticId, context.generatedCount);
+          diagnosticOutcome = 'superseded';
+          return { skipped: 'superseded' };
+        }
+        if (liveDecisionEnabled(this, 'after', aiFeature))
+          result = await checkLiveDecision(this, context, result, {
+            speech,
+            signal,
+            epoch,
+            operation,
+            aiFeature,
+            clipContext: () => ({
+              image,
+              speech,
+              witnesses: context.witnesses,
+              capturedAt: context.capturedAt,
+              liveSpeech: this.speechInbox.sources(speechBatch.ids),
+              heardByViewer: Object.fromEntries(
+                Object.entries(context.personalContext.viewerContext).map(([id, p]) => [
+                  id,
+                  p.heardSounds,
+                ]),
+              ),
+            }),
+          });
+        signal.throwIfAborted();
+        this.ai.assertCurrent(result);
+        if (!recallCurrent()) {
+          this.reactions.generated(diagnosticId, context.generatedCount);
+          diagnosticOutcome = 'superseded';
+          return { skipped: 'superseded' };
+        }
         const previousQueue = new Set(this.queue);
         const accepted = this.acceptLiveReaction({
           context,
@@ -927,6 +1001,8 @@ export class Studio extends EventEmitter {
       this.reactions.finish(diagnosticId, diagnosticOutcome);
       if (this.liveReaction === operation) this.liveReaction = null;
       if (epoch === this.epoch) {
+        if (idleConversation?.continuous || watchingCompany?.continuous)
+          this.ambient.completeContinuous();
         this.busy = false;
         this.publish();
       }
@@ -1006,16 +1082,20 @@ export class Studio extends EventEmitter {
       });
       if (!image) this.knowledge.lastSeen = null;
       const ambient = this.autonomy ? this.ambient.snapshot() : null;
-      if (!speech.trim() && !ambient?.active) {
+      if (!speech.trim() && (!ambient?.active || this.settings.continuousAudienceChat)) {
         // Animated menus and repeated music change samples without necessarily
         // changing the conversation. Offer company without dropping fresh input.
-        if (this.viewing.unchanged(viewing)) idleConversation = this.ambient.idle(witnesses);
+        // A current static photo is still visual input, even when its pixels
+        // match the previous sample. Continuous viewers should keep seeing it.
+        if (this.viewing.unchanged(viewing) && !(this.settings.continuousAudienceChat && image))
+          idleConversation = this.ambient.idle(witnesses);
         else watchingCompany = this.ambient.idle(witnesses, { observing: true });
       }
       if (
         !speech.trim() &&
         !ambient?.active &&
         !idleConversation &&
+        !watchingCompany &&
         this.viewing.unchanged(viewing)
       ) {
         // Identical current pixels still count as watching. Do not resurrect a
@@ -1128,6 +1208,7 @@ export class Studio extends EventEmitter {
       {
         hearers: speechHearers,
         company: ambient?.id === 'quiet-company',
+        continuousCompany: ambient?.continuous === true,
         reactive,
         addressViewers,
       },
@@ -1237,7 +1318,19 @@ export class Studio extends EventEmitter {
       personalContext,
       game,
     } = context;
-    this.reactions.generated(diagnosticId, result.observation.messages.length);
+    this.reactions.generated(
+      diagnosticId,
+      context.generatedCount ?? result.observation.messages.length,
+    );
+    this.reactions.reject(
+      diagnosticId,
+      'duplicate',
+      Math.max(
+        0,
+        (context.generatedCount ?? result.observation.messages.length) -
+          result.observation.messages.length,
+      ),
+    );
     if (epoch !== this.epoch || !this.running) {
       return { outcome: 'stopped', result: { skipped: 'stopped' } };
     }
@@ -1272,9 +1365,14 @@ export class Studio extends EventEmitter {
     if (idleConversation) {
       // A chat opportunity is not a fresh visual observation, achievement,
       // donation trigger, clip pick or evidence of changed preferences.
-      this.reactions.reject(diagnosticId, 'pace', Math.max(0, eligibleMessages.length - 1));
+      const companyLimit = idleConversation.continuous ? Math.min(2, this.settings.chatPace) : 1;
+      this.reactions.reject(
+        diagnosticId,
+        'pace',
+        Math.max(0, eligibleMessages.length - companyLimit),
+      );
       this.accept(
-        { ...observation, messages: eligibleMessages.slice(0, 1) },
+        { ...observation, messages: eligibleMessages.slice(0, companyLimit) },
         capturedAt,
         true,
         'live',

@@ -43,7 +43,7 @@ export class ConversationJournal {
     const needle=normalize(query).trim();const matches=this.data.entries.filter(e=>(!viewerId||e.witnesses.includes(viewerId))&&(!pinned||e.pinned)&&(!needle||normalize(memoryText(e)+' '+e.name+' '+e.title).includes(needle))).slice().reverse();
     return {entries:structuredClone(matches.slice(offset,offset+limit)),total:matches.length,offset,...this.summary()};
   }
-  recall(viewerId,query='',excludeIds=[]){
+  recallSelection(viewerId,query='',excludeIds=[],extended=false){
     const excluded=new Set(excludeIds);let topic=query;for(const name of new Set(this.data.entries.map(e=>e.name)))if(name)topic=topic.replaceAll(name,' ');const words=terms(topic);
     for(const word of [...words]){const root=word.replace(/(?:빌드|조합|전략|공략)$/,'');if(root!==word&&root.length>=2&&!words.includes(root))words.push(root);}
     const candidates=this.data.entries.filter(e=>e.witnesses.includes(viewerId)&&!excluded.has(e.id)&&!(e.transcription?.source==='microphone'&&transcriptAnomaly(e.text)));
@@ -78,7 +78,37 @@ export class ConversationJournal {
       // and do not add this fallback to frame-only requests with no speech.
       if(query.trim())take(scored.slice(-3).reverse(),3);
     }
-    const continued=recallContinuations([...selected.values()],this.data.entries,candidates);
+    const seeds=[...selected.values()],continued=recallContinuations(seeds,this.data.entries,candidates);
+    if(!extended)return {baseline:continued};
+    // Protect the baseline's pinned/correction/continuation groups. A semantic
+    // preference may only replace optional lexical slots, never these quotes.
+    const protectedIds=new Set();
+    for(const seed of seeds){
+      const group=recallContinuations([seed],this.data.entries,candidates);
+      if(seed.pinned||seed.transcription?.correction||/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(seed.text)||group.length>1)
+        for(const entry of group)protectedIds.add(entry.id);
+    }
+    const protectedEntries=continued.filter(e=>protectedIds.has(e.id));
+    const optional=[...scored].sort((a,b)=>b.relevance-a.relevance||b.index-a.index).slice(0,16);
+    for(const row of scored.slice(-16))if(!optional.includes(row))optional.push(row);
+    return {baseline:continued,protectedEntries,candidates,optional:optional.filter(r=>!protectedIds.has(r.entry.id)).slice(0,24).map(r=>r.entry)};
+  }
+  recallCandidates(viewerId,query='',excludeIds=[]){
+    const plan=this.recallSelection(viewerId,query,excludeIds,true);
+    return {revision:this.data.revision,optional:plan.optional.map(e=>({id:e.id,text:e.text.slice(0,240),speakerId:e.personaId,fictional:e.fictional})),protectedIds:plan.protectedEntries.map(e=>e.id)};
+  }
+  recall(viewerId,query='',excludeIds=[],{preferredIds=[]}={}){
+    const plan=this.recallSelection(viewerId,query,excludeIds,preferredIds.length>0);
+    let continued=plan.baseline;
+    const preferred=preferredIds.map(id=>plan.optional?.find(e=>e.id===id)).filter(Boolean).slice(0,3);
+    if(preferred.length){
+      const selected=new Map(plan.protectedEntries.map(e=>[e.id,e]));
+      for(const seed of [...preferred,...plan.baseline]){
+        const group=recallContinuations([seed],this.data.entries,plan.candidates).filter(e=>!selected.has(e.id));
+        if(selected.size+group.length<=8)for(const entry of group)selected.set(entry.id,entry);
+      }
+      continued=[...selected.values()];
+    }
     if(this.normalized.size>JOURNAL_LIMIT){const active=new Set(this.data.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
     let remaining=1800;const chosen=continued.sort((a,b)=>a.at-b.at);
     return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title,...(e.kind?{kind:e.kind}:{}),...(e.donation?{donation:{...e.donation}}:{}),...(e.transcription?.correction?{transcriptionCorrection:{text:e.transcription.correction.text.slice(0,600),confidence:e.transcription.correction.confidence,source:"contextual-stt"}}:{})};});

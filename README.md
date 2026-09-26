@@ -5,6 +5,8 @@
 <p align="center">Windows 데스크톱 · 한국어 대화 · AI 관객 · 로컬 기록</p>
 <p align="center"><a href="#시작하기">시작하기</a> · <a href="docs/USER-GUIDE.md">사용 안내</a> · <a href="docs/DISTRIBUTION.md">배포 현황</a> · <a href="CONTRIBUTING.md">기여하기</a></p>
 
+macOS에서 소스를 직접 실행해 보려면 [macOS 소스 미리보기](docs/MACOS-PREVIEW.md)를 참고하세요. 공식 배포는 현재 Windows용입니다.
+
 ---
 
 **Nagneon = 나그네 + On-air.** 우연히 들른 나그네가 어느새 익숙한 단골이 됩니다. 게임 한 판, 늦은 밤 수다, 기억에 남는 실수까지. 나그네온에서는 각자의 성격을 가진 AI 관객들과 내 방송을 만들어갑니다.
