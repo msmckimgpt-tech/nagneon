@@ -1,4 +1,5 @@
 import { CommunitySpace } from './CommunitySpace';
+import { version as appVersion } from '../package.json';
 import { AiDashboard } from './AiDashboard';
 import { CommunityLore } from './CommunityLore';
 import { RuntimeDownloads } from './RuntimeDownloads';
@@ -1223,7 +1224,8 @@ export function App() {
                 <span className="dot green" /> 내 방송에 머무는, 반가운 얼굴들.
               </span>
               <span>
-                NAGNEON · 0.1 <span className="divider" /> 나그네온 방송실
+                NAGNEON · <span aria-label="앱 버전">{appVersion}</span>{' '}
+                <span className="divider" /> 나그네온 방송실
               </span>
             </footer>
           </main>

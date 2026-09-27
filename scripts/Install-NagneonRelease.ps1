@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
+. (Join-Path $PSScriptRoot 'Register-NagneonShortcut.ps1')
 if ($Register) {
     Assert-NagneonNativeStorageView -Profile (Join-Path $env:APPDATA 'Nagneon')
     Assert-NagneonNativeStorageView -Profile (Join-Path $env:LOCALAPPDATA 'Nagneon')
@@ -88,15 +89,8 @@ try {
         $registration = Join-Path $env:LOCALAPPDATA 'Nagneon'
         New-Item -ItemType Directory -Path $registration -Force | Out-Null
         Write-JsonAtomic (Join-Path $registration 'installation.json') @{installRoot=$InstallRoot}
-        $shell = New-Object -ComObject WScript.Shell
-        $linkPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nagneon.lnk'
-        if (Test-Path -LiteralPath $linkPath) { Copy-Item -LiteralPath $linkPath -Destination (Join-Path $backup 'Nagneon.lnk') }
-        $link = $shell.CreateShortcut($linkPath)
-        $link.TargetPath = Join-Path $InstallRoot 'Start-Nagneon.cmd'
-        $link.Arguments = ''
-        $link.WorkingDirectory = $InstallRoot
-        $link.IconLocation = (Join-Path $destination 'Nagneon.exe') + ',0'
-        $link.Save()
+        Register-NagneonShortcut -LinkPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nagneon.lnk') -BackupPath (Join-Path $backup 'Nagneon.lnk') -InstallRoot $InstallRoot -Executable (Join-Path $destination 'Nagneon.exe')
+        Register-NagneonShortcut -LinkPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'Nagneon.lnk') -BackupPath (Join-Path $backup 'StartMenu-Nagneon.lnk') -InstallRoot $InstallRoot -Executable (Join-Path $destination 'Nagneon.exe')
     }
     Get-Content -LiteralPath $configPath
 } finally { $lock.Dispose() }

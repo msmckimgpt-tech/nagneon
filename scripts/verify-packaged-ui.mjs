@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import { get } from 'node:http';
+import { extractFile } from '@electron/asar';
 
 const option = (name) =>
   process.argv.find((value) => value.startsWith('--' + name + '='))?.slice(name.length + 3);
@@ -34,6 +35,9 @@ const debuggerPages = (port) => new Promise((done, fail) => {
 const folder = resolve(
   option('folder') || JSON.parse(await readFile('artifacts/latest-package.json', 'utf8')).folder,
 );
+const { version: packageVersion } = JSON.parse(
+  extractFile(join(folder, 'resources/app.asar'), 'package.json').toString('utf8'),
+);
 await mkdir('artifacts/packaged-ui', { recursive: true });
 const output = await mkdtemp(resolve('artifacts/packaged-ui/run-'));
 const profile = resolve(option('profile') || join(output, 'profile'));
@@ -48,6 +52,7 @@ await unlink(join(profile, 'DevToolsActivePort')).catch((error) => {
 });
 const report = {
   folder,
+  packageVersion,
   profile,
   output,
   synthetic: true,
@@ -203,6 +208,11 @@ try {
     await click('나중에 계속하기');
   if (!legacy)
     assert.equal(await evaluate("document.body.innerText.includes('방송 놀이터')"), false);
+  report.displayedVersion = await evaluate(
+    `document.querySelector('[aria-label="앱 버전"]')?.textContent`,
+  );
+  assert.equal(report.displayedVersion, packageVersion, 'Delivered UI version matches its ASAR package');
+  report.checks.push('visible app version matches delivered package.json');
   const seed = option('seed'),
     expected = option('expect');
   if (seed) {

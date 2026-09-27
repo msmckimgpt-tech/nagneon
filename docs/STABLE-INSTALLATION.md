@@ -10,7 +10,9 @@ PowerShell의 별도 복구 구현은 제거했으며, 0.1.6 이상 실행기는
 
 메인의 `Start-Nagneon.cmd`와 `Start-Backseat.cmd`는 로컬 설치 등록을 읽어 배포 앱을 실행한다. 개발 빌드는 `npm run desktop`을 사용한다. 개발 실행도 기본적으로 Windows 사용자 프로필을 쓰므로 검증은 반드시 `--backseat-profile=<격리 경로>`를 지정한다.
 
-이 PC의 고정 진입점은 `G:\dev\ai\Nagneon\Start-Nagneon.cmd`다. 바탕 화면 Nagneon 바로가기도 이 진입점을 사용한다. 버전별 실행 파일은 `versions/`에 두고 `current.json`만 원자적으로 바꾼다. 최신 폴더를 자동 추측하거나 worktree 실행본을 연결하지 않는다.
+이 PC의 고정 진입점은 `G:\dev\ai\Nagneon\Start-Nagneon.cmd`다. 0.1.11 이후 설치 도구의 `-Register`는 바탕 화면과 사용자 시작 메뉴의 `Nagneon.lnk`를 이 진입점으로 갱신한다. 기존 바로가기는 업데이트 백업의 `Nagneon.lnk`와 `StartMenu-Nagneon.lnk`에 각각 보존한다. 과거 EXE나 명시 프로필 인자를 바로가기에 유지하지 않고 등록된 저장 위치를 사용하며, 옛 프로필 자체는 삭제하거나 병합하지 않는다. 버전별 실행 파일은 `versions/`에 두고 `current.json`만 원자적으로 바꾼다. 최신 폴더를 자동 추측하거나 worktree 실행본을 연결하지 않는다.
+
+시작 메뉴에 고정한 항목도 실제로 실행해 하단의 전체 버전과 실행 파일을 확인한다. Windows가 과거 EXE를 별도로 고정해 갱신을 반영하지 않으면 해당 고정 항목을 해제하고 시작 메뉴의 갱신된 Nagneon을 다시 고정한다. Windows 고정 항목의 내부 저장소를 직접 편집하지 않는다.
 
 ## 데이터
 
@@ -32,7 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Install-NagneonRelea
 
 호환되는 버전으로 복귀할 때만 해당 백업의 `current.json`을 설치 루트에 복원한다. 데이터는 자동으로 과거 버전으로 되돌리지 않는다. 0.1.4 기록은 0.1.3 스키마와 호환되지 않는다. 복구가 필요하면 업데이트 전 `data` 백업을 **별도 프로필 폴더**에 복사하고, 구버전 실행 파일에 `--backseat-profile="<별도 프로필 절대 경로>"`를 지정한다. 현재 기록은 덮어쓰지 않는다.
 
-새 설치·실행 도구는 `Profile-Compatibility.ps1`을 함께 배포한다. 실행 파일의 실제 버전과 저장 형식을 읽어 알려진 0.1.4→구버전 비호환을 설치·실행 전에 거절한다. 버전 표시 문자열만 변경해도 통과하지 않는다. 과거 실행 파일을 직접 여는 경로에는 이 검사가 없으므로 업데이트된 프로필을 구버전 EXE에 직접 연결하지 않는다. 이는 모든 미래 버전의 역호환을 보장하는 검사는 아니다. JSON은 Windows PowerShell 5.1에서도 UTF-8로 읽는다.
+새 설치·실행 도구는 `Profile-Compatibility.ps1`과 `Register-NagneonShortcut.ps1`을 함께 배포한다. 실행 파일의 실제 버전과 저장 형식을 읽어 알려진 0.1.4→구버전 비호환을 설치·실행 전에 거절한다. 버전 표시 문자열만 변경해도 통과하지 않는다. 과거 실행 파일을 직접 여는 경로에는 이 검사가 없으므로 업데이트된 프로필을 구버전 EXE에 직접 연결하지 않는다. 이는 모든 미래 버전의 역호환을 보장하는 검사는 아니다. JSON은 Windows PowerShell 5.1에서도 UTF-8로 읽는다.
 
 현재 설치 경로 확인: `powershell -File scripts/Start-InstalledNagneon.ps1 -Inspect`.
 

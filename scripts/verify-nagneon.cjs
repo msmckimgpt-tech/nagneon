@@ -4,6 +4,7 @@ const {resolve,join}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const fs=require('node:fs');
 const assert=require('node:assert/strict');
+const {version:appVersion}=require('../package.json');
 const {createStudioSession}=require('../desktop/session.cjs');
 const out=resolve('artifacts/nagneon');fs.mkdirSync(out,{recursive:true});
 app.setPath('userData',join(out,'renderer-profile'));
@@ -27,6 +28,8 @@ app.whenReady().then(async()=>{
   assert.equal(service.studio.running,false);assert.equal(service.studio.state().tutorial.status,'active');
   await click('나중에 계속하기');await until(`![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='나중에 계속하기')`);
   checks.push('three-step onboarding enters guided tutorial without starting broadcast; pause works');
+  assert.equal(await js(`document.querySelector('[aria-label="앱 버전"]')?.textContent`),appVersion);
+  checks.push('visible app version matches package.json');
   // Remaining assertions exercise rehearsal layout, independently of account setup.
   service.studio.configure({...service.studio.settings,mode:'rehearsal'});
   await until(`document.body.innerText.includes('리허설 시작')`);
