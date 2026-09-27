@@ -1,5 +1,16 @@
 import {createHash} from 'node:crypto';
 
+function consecutiveSubscriptionSpeech(previous, next) {
+  const before=previous?.capture?.voice,after=next.capture?.voice;
+  return before?.provider==='chatgpt-subscription'&&after?.provider==='chatgpt-subscription'
+    &&before.kind==='transcript'&&after.kind==='transcript'
+    &&before.sourceInputEpoch===after.sourceInputEpoch&&before.recovered===after.recovered
+    &&previous.capture.screen?.sourceId===next.capture.screen?.sourceId
+    &&Number.isFinite(before.sourceFrameEnd)&&Number.isFinite(after.sourceFrameStart)
+    &&after.sourceFrameStart>=before.sourceFrameEnd
+    &&after.sourceFrameStart-before.sourceFrameEnd<=8*16000;
+}
+
 // Per-broadcast transport receipts. A retry has the same identity even after
 // its text has left the pending model batch; it must not repeat in chat.
 export class SpeechInbox {
@@ -20,7 +31,10 @@ export class SpeechInbox {
       // Keep arrival boundaries between utterances. A later question for a
       // returnee must not be lost merely because an older question is pending.
       const nativeBatch=item.capture?.listening&&items[0]?.capture?.listening;
-      if(size+next>3000||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch))))break;
+      // Preserve each fragment's frozen screen and source clock while allowing
+      // the slower audience model to consume a bounded continuous utterance.
+      const subscriptionBatch=consecutiveSubscriptionSpeech(items.at(-1),item);
+      if(size+next>3000||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch&&!subscriptionBatch))))break;
       audience=key;size+=next;items.push(item);
     }
     return {text:items.map(e=>e.text).join('\n'),ids:items.map(e=>e.id)};

@@ -146,6 +146,13 @@ export function App() {
   );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
+  const subscriptionStartPending = useRef(false);
+  useEffect(() => {
+    if (!overlay && state?.running && subscriptionStartPending.current) {
+      subscriptionStartPending.current = false;
+      void media.startMic();
+    }
+  }, [overlay, state?.running, state?.sessionId]);
   useEffect(() => {
     const timer = overlay ? undefined : setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -732,9 +739,21 @@ export function App() {
                           disabled={!connected}
                           onClick={async () => {
                             if (state.running) {
+                              subscriptionStartPending.current = false;
                               media.stopAll();
                               await action('stop');
-                            } else await action(tutorialActive ? 'tutorial/rehearsal' : 'start');
+                            } else {
+                              subscriptionStartPending.current =
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                state.nativeAudio?.mode === 'remote' &&
+                                state.nativeAudio.transport === 'subscription' &&
+                                state.nativeAudio.consent;
+                              const result = await action(
+                                tutorialActive ? 'tutorial/rehearsal' : 'start',
+                              );
+                              if (!result) subscriptionStartPending.current = false;
+                            }
                           }}
                         >
                           {state.running ? (

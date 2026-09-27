@@ -1,13 +1,11 @@
-// Isolated application UI. No user profile, microphone, screen capture or model
-// call is used by this check. --interactive-key keeps the window open for an
-// authorized API key entry; the key remains exclusively in application memory.
+// Isolated subscription settings check. No microphone, screen or model call.
 const { app, BrowserWindow, session } = require('electron');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { createStudioSession } = require('../desktop/session.cjs');
-const interactive = process.argv.includes('--interactive-key');
+
 const out = resolve('artifacts/remote-native-audio/ui');
 fs.mkdirSync(out, { recursive: true });
 app.setPath('userData', join(out, 'profile'));
@@ -37,7 +35,7 @@ app.whenReady().then(async () => {
       },
     });
     service.studio.ai.update({ background: false });
-    service.nativeAudio.configure({ mode: 'remote', consent: false });
+    service.nativeAudio.configure({ mode: 'remote', transport: 'subscription', consent: false });
     const headers = {
       Authorization: 'Bearer ' + service.accessToken,
       'X-Backseat-Client': 'studio',
@@ -51,10 +49,10 @@ app.whenReady().then(async () => {
     win = new BrowserWindow({
       width: 1100,
       height: 900,
-      show: interactive,
+      show: false,
       title: 'Nagneon 원격 음성 검증 · 격리 프로필',
       webPreferences: {
-        offscreen: !interactive,
+        offscreen: true,
         backgroundThrottling: false,
         session: createStudioSession(session, service),
         contextIsolation: true,
@@ -82,8 +80,12 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('[aria-label="모델 연결 시험 화면으로 이동"]').click()`);
     await until(`!!document.querySelector('[aria-label="마이크 원음 이해"]')`);
     assert.equal(
-      await js(`document.querySelector('[aria-label="원음 이해용 OpenAI API 키"]').type`),
-      'password',
+      await js(`document.querySelector('[aria-label="원음 이해용 OpenAI API 키"]')===null`),
+      true,
+    );
+    assert.equal(
+      await js(`document.querySelector('[aria-label="음성 전달 방식"]').value`),
+      'remote',
     );
     assert.equal(
       await js(`document.querySelector('[aria-label="마이크 원음 이해"] button').disabled`),
@@ -91,9 +93,9 @@ app.whenReady().then(async () => {
     );
     assert.equal(service.nativeAudio.snapshot().consent, false);
     result.checks.push(
-      'password input; no automatic consent; apply disabled before consent; no remote connection',
+      'subscription mode; no API key input; no automatic consent; apply disabled before consent; no connection',
     );
-    if (!interactive) {
+    {
       for (const width of [1100, 850, 420]) {
         win.setSize(width, 900);
         await new Promise((r) => setTimeout(r, 150));
@@ -103,50 +105,36 @@ app.whenReady().then(async () => {
           (await win.webContents.capturePage()).toPNG(),
         );
       }
+      service.nativeAudio.configure({ mode: 'remote', transport: 'subscription', consent: true });
+      service.studio.settings.mode = 'live';
+      service.studio.publish();
+      await js(`document.querySelector('[aria-label="방송 설정 창 닫기"]').click()`);
+      await js(
+        `window.micRequestCount=0;void Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{window.micRequestCount++;throw new DOMException('Synthetic permission denial','NotAllowedError');}})`,
+      );
+      await js(
+        `(()=>{const button=[...document.querySelectorAll('nav button')].find(b=>b.textContent.trim()==='방송실');if(!button)throw Error('studio navigation');button.click();})()`,
+      );
+      await until(`!!document.querySelector('[data-tutorial="start"]')`);
+      await new Promise((r) => setTimeout(r, 200));
+      await js(`document.querySelector('[data-tutorial="start"]').click()`);
+      await until(`window.micRequestCount===1`);
+      assert.equal(service.studio.running, true);
+      await js(`document.querySelector('[data-tutorial="start"]').click()`);
+      await until(
+        `document.querySelector('[data-tutorial="start"]').textContent.includes('방송 시작')`,
+      );
+      assert.equal(service.studio.running, false);
+      assert.equal(await js('window.micRequestCount'), 1);
+      result.checks.push(
+        'one broadcast click requests subscription microphone; stop cancels it; physical permission remains denied',
+      );
       result.passed = true;
       fs.writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2));
       console.log(JSON.stringify(result));
       await finish();
       return;
     }
-    console.log(
-      JSON.stringify({
-        state: 'awaiting-user-key',
-        window: 'Nagneon 원격 음성 검증 · 격리 프로필',
-        paidCalls: 0,
-      }),
-    );
-    const timer = setInterval(() => {
-      if (!service.nativeAudio.snapshot().configured) return;
-      clearInterval(timer);
-      fs.writeFileSync(
-        join(out, 'key-ready.json'),
-        JSON.stringify({ configured: true, keyPersisted: false, paidCalls: 0 }),
-      );
-      console.log(JSON.stringify({ state: 'key-configured-in-memory', paidCalls: 0 }));
-    }, 1000);
-    let busy = false,
-      lastCommand = '';
-    setInterval(async () => {
-      if (busy || finishing) return;
-      const commandFile = join(out, 'command.json');
-      if (!fs.existsSync(commandFile)) return;
-      let command;
-      try {
-        command = JSON.parse(fs.readFileSync(commandFile, 'utf8'));
-      } catch {
-        return;
-      }
-      if (typeof command.id !== 'string' || command.id === lastCommand) return;
-      if (command.action !== 'close') return;
-      lastCommand = command.id;
-      busy = true;
-      try {
-        await finish();
-      } finally {
-        busy = false;
-      }
-    }, 500);
   } catch (error) {
     result.passed = false;
     result.error = error.message;

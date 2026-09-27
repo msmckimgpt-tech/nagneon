@@ -149,12 +149,17 @@ export async function startContinuousMicrophone(options: {
 }) {
   const Constructor = (
     globalThis as typeof globalThis & {
-      MediaStreamTrackProcessor?: new (options: { track: MediaStreamTrack }) => TrackProcessor;
+      MediaStreamTrackProcessor?: new (options: {
+        track: MediaStreamTrack;
+        maxBufferSize?: number;
+      }) => TrackProcessor;
     }
   ).MediaStreamTrackProcessor;
   if (!Constructor) throw new Error('연속 마이크 입력을 지원하지 않는 실행 환경입니다.');
   const clone = options.track.clone(),
-    processor = new Constructor({ track: clone }),
+    // Bound roughly one second of 10 ms audio blocks so brief renderer work
+    // cannot discard source frames before the reader resumes. Gaps still fail.
+    processor = new Constructor({ track: clone, maxBufferSize: 100 }),
     reader = processor.readable.getReader();
   const encoder = new ContinuousPcmEncoder();
   let stopped = false,

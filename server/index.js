@@ -305,6 +305,7 @@ async function startServerImpl(
   });
   const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
     mode: persist && !hasPreviousSettings ? 'remote' : 'local',
+    transport: 'subscription',
     consent: false,
   }));
   const nativeAudio = new NativeAudio({
@@ -313,7 +314,9 @@ async function startServerImpl(
     config: nativeAudioStore.data,
     save: nativeAudioStore.save,
     dir: persist ? resolve(dataDir, 'native-audio') : undefined,
-    key: process.env.OPENAI_API_KEY || '',
+    key: nativeAudioStore.data.transport === 'subscription' ? '' : process.env.OPENAI_API_KEY || '',
+    subscriptionBin: provider.bin || provider.codex?.bin,
+    subscriptionEnv: provider.env || provider.codex?.env,
     releaseLocal: () => speech.stopWorker?.(),
     providerFactory: nativeAudioProviderFactory,
   });
@@ -328,7 +331,7 @@ async function startServerImpl(
       nativeAudio.stop('capture-invalid');
     }
     const result = await speechRecovery.append(entry);
-    nativeAudio.stored(entry, result);
+    await nativeAudio.stored(entry, result);
     return result;
   };
   onResource(() => studio.close());

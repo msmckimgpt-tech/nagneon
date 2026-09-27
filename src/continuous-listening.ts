@@ -1,3 +1,4 @@
+import { SubscriptionVoiceStream } from './subscription-voice.ts';
 import { createCaptureContinuity } from '../shared/speech-listening.js';
 import { SpeechListeningController } from '../server/speech-listening-controller.js';
 import {
@@ -42,6 +43,7 @@ export class ContinuousListening {
   backlogExceeded = false;
   storageError = false;
   disposeCapture: (() => void) | null = null;
+  subscription: SubscriptionVoiceStream | null = null;
   retryTimer: ReturnType<typeof setInterval> | null = null;
   finishTimer: ReturnType<typeof setInterval> | null = null;
   lastErrorAt = 0;
@@ -170,13 +172,38 @@ export class ContinuousListening {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || '원격 원음 연결을 시작하지 못했습니다.');
       this.segmenter.wallStartedAt = result.startedAt;
+      if (result.transport === 'subscription') {
+        this.subscription = new SubscriptionVoiceStream({
+          inputEpoch: this.inputEpoch,
+          signal,
+          onRecoveryError: (message) => this.report(message),
+          onError: (message) => {
+            this.report(message);
+            this.stopCapture();
+            this.options.onCaptureFailure?.();
+          },
+        });
+        try {
+          await this.subscription.connect();
+        } catch (error) {
+          this.subscription.close();
+          throw error;
+        }
+      }
     }
     signal.throwIfAborted();
+    let captureReady = !this.subscription;
+    const startingFrames: AudioFrames[] = [];
+    if (this.subscription) this.segmenter.wallStartedAt = Date.now();
     this.disposeCapture = await startContinuousMicrophone({
       track: this.options.track,
       onFrames: (frames) => {
         try {
-          this.acceptFrames(frames);
+          if (!captureReady) {
+            startingFrames.push(frames);
+            if (startingFrames.reduce((n, part) => n + part.samples.length, 0) > 32000)
+              throw new Error('마이크 시작 시각 등록이 지연되어 중지했습니다.');
+          } else this.acceptFrames(frames);
         } catch (error) {
           this.report(error instanceof Error ? error.message : '마이크 연속 캡처 오류');
           this.stopCapture();
@@ -189,6 +216,19 @@ export class ContinuousListening {
         this.options.onCaptureFailure?.();
       },
     });
+    if (this.subscription) {
+      try {
+        await this.subscription.attach(this.options.track);
+        await this.subscription.registerClock(this.segmenter.wallStartedAt);
+        captureReady = true;
+        for (const frames of startingFrames) this.acceptFrames(frames);
+        startingFrames.length = 0;
+        void this.subscription.recover();
+      } catch (error) {
+        this.stopCapture();
+        throw error;
+      }
+    }
     if (this.closed) {
       this.disposeCapture();
       this.disposeCapture = null;
@@ -363,6 +403,7 @@ export class ContinuousListening {
     if (this.captureStopped || this.stoppingCapture) return;
     this.stoppingCapture = true;
     this.startController.abort();
+    this.subscription?.close();
     const dispose = this.disposeCapture;
     this.disposeCapture = null;
     dispose?.();

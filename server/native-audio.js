@@ -8,9 +8,14 @@ import {
   ListeningResult,
 } from './native-audio-provider.js';
 import { SpeechCapture } from './speech-screen.js';
+import { SubscriptionVoice } from './subscription-voice.js';
 
 export const NativeAudioConfig = z
-  .object({ mode: z.enum(['local', 'remote']), consent: z.boolean() })
+  .object({
+    mode: z.enum(['local', 'remote']),
+    consent: z.boolean(),
+    transport: z.enum(['subscription', 'api']).optional(),
+  })
   .strict();
 const Start = z
   .object({
@@ -98,6 +103,9 @@ export class NativeAudio {
     now = Date.now,
     operationTimeoutMs = 45000,
     releaseLocal = async () => {},
+    subscriptionBin,
+    subscriptionEnv,
+    subscriptionHostFactory,
   } = {}) {
     this.studio = studio;
     this.recovery = recovery;
@@ -117,6 +125,17 @@ export class NativeAudio {
     this.error = '';
     this.writes = Promise.resolve();
     this.closed = false;
+    this.subscription = new SubscriptionVoice({
+      studio,
+      recovery,
+      dir: dir ? join(dir, 'subscription') : undefined,
+      bin: subscriptionBin,
+      env: subscriptionEnv,
+      config: () => this.config,
+      releaseLocal,
+      hostFactory: subscriptionHostFactory,
+      now,
+    });
     this.applied = 0;
     this.lastSweep = 0;
     this.timer = setInterval(() => {
@@ -137,11 +156,14 @@ export class NativeAudio {
     const { apiKey, ...config } = z
       .object({
         mode: z.enum(['local', 'remote']),
+        transport: z.enum(['subscription', 'api']).optional(),
         consent: z.boolean(),
         apiKey: z.string().trim().max(500).optional(),
       })
       .strict()
       .parse(value);
+    if (config.transport === 'subscription' && apiKey)
+      throw fault('구독 음성에는 API 키를 사용하지 않습니다.');
     this.save(config);
     this.config = config;
     if (
@@ -151,11 +173,13 @@ export class NativeAudio {
     )
       this.studio.ai.update({ features: { 'native-audio': true } });
     if (apiKey !== undefined) this.key = apiKey;
-    if (config.mode === 'local' || !config.consent) this.key = '';
+    if (config.mode === 'local' || !config.consent || config.transport === 'subscription')
+      this.key = '';
     this.error = '';
     return this.snapshot();
   }
   allowed() {
+    if (this.subscription.selected()) return this.subscription.allowed();
     if (this.closed) throw fault('앱이 종료 중입니다.');
     if (this.ledgerFailed) throw fault('청취 처리 기록 저장 실패로 원격 처리를 중단했습니다.');
     if (this.config.mode !== 'remote' || !this.config.consent)
@@ -166,6 +190,7 @@ export class NativeAudio {
     this.studio.ai.assertAllowed('native-audio');
   }
   async start(value, signal) {
+    if (this.subscription.selected()) return this.subscription.start(value, signal);
     this.allowed();
     const input = Start.parse(value);
     if (input.sessionId !== this.studio.sessionId || Math.abs(this.now() - input.startedAt) > 15000)
@@ -263,6 +288,7 @@ export class NativeAudio {
     return provider;
   }
   capture(entry) {
+    if (this.subscription.inputs.has(entry.inputEpoch)) return this.subscription.capture(entry);
     const s = this.inputs.get(entry.inputEpoch);
     if (!s || s.sessionId !== entry.sessionId || this.closed) return;
     if (
@@ -310,6 +336,8 @@ export class NativeAudio {
     void this.pump();
   }
   attachContext(value) {
+    if (this.subscription.inputs.has(value?.inputEpoch))
+      return this.subscription.attachContext(value);
     const entry = z
       .object({
         sessionId: z.string().uuid(),
@@ -326,6 +354,8 @@ export class NativeAudio {
     s.contexts.set(entry.startFrame, entry.capture);
   }
   stored(entry, result) {
+    if (this.subscription.inputs.has(entry.inputEpoch))
+      return this.subscription.stored(entry, result);
     const s = this.inputs.get(entry.inputEpoch);
     if (!s || s.sessionId !== entry.sessionId) return;
     s.durable = Math.max(s.durable, result.durableThrough);
@@ -633,6 +663,7 @@ export class NativeAudio {
       });
   }
   stop(reason = 'microphone-off') {
+    const subscriptionStop = this.subscription.stop(reason);
     const s = this.session;
     if (s && !s.stopped) {
       this.finishWindow(s);
@@ -650,8 +681,10 @@ export class NativeAudio {
     this.context = null;
     context?.controller.abort();
     context?.provider?.close();
+    return subscriptionStop;
   }
   snapshot() {
+    if (this.subscription.selected()) return this.subscription.snapshot();
     const s = this.session,
       inputs = [...this.inputs.values()];
     let pending = 0,
@@ -709,7 +742,8 @@ export class NativeAudio {
   }
   async close() {
     if (this.closed) return;
-    this.stop('app-close');
+    await this.stop('app-close');
+    await this.subscription.close();
     this.closed = true;
     this.key = '';
     clearInterval(this.timer);

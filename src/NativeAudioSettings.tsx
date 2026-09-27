@@ -5,16 +5,17 @@ import type { State } from './types';
 export function NativeAudioSettings({ state, disabled }: { state: State; disabled: boolean }) {
   const current = state.nativeAudio;
   const [mode, setMode] = useState<'local' | 'remote'>(current?.mode || 'remote');
-  const [consent, setConsent] = useState(current?.consent || false);
-  const [key, setKey] = useState(''),
-    [pending, setPending] = useState(false),
+  const [consent, setConsent] = useState(
+    (current?.transport === 'subscription' && current.consent) || false,
+  );
+  const [pending, setPending] = useState(false),
     [message, setMessage] = useState('');
   useEffect(() => {
     if (current) {
       setMode(current.mode);
-      setConsent(current.consent);
+      setConsent(current.transport === 'subscription' && current.consent);
     }
-  }, [current?.mode, current?.consent]);
+  }, [current?.mode, current?.consent, current?.transport]);
   if (!current) return null;
   async function save() {
     setPending(true);
@@ -22,94 +23,72 @@ export function NativeAudioSettings({ state, disabled }: { state: State; disable
     try {
       await api('native-audio/config', {
         mode,
+        transport: 'subscription',
         consent: mode === 'remote' && consent,
-        ...(key ? { apiKey: key } : {}),
       });
-      setKey('');
-      setMessage('음성 연결 설정을 저장했습니다. 마이크를 켜면 적용됩니다.');
+      setMessage('음성 연결 설정을 저장했습니다. 방송에서 마이크를 켜면 적용됩니다.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '음성 연결을 저장하지 못했습니다.');
     } finally {
       setPending(false);
     }
   }
+  const stages = {
+    preparing: '구독 음성 연결 준비 중',
+    connected: '마이크 입력 준비 중',
+    listening: '구독 음성 청취 중',
+    received: '발언 접수 · 계속 청취 중',
+    stopped: '마이크 꺼짐',
+  };
   return (
     <fieldset
       className="provider-picker-fields"
       disabled={disabled || pending}
       aria-label="마이크 원음 이해"
     >
-      <legend>마이크 원음 이해</legend>
+      <legend>마이크 음성 연결</legend>
       <label>
         음성 전달 방식{' '}
         <select
           aria-label="음성 전달 방식"
           value={mode}
-          onChange={(e) => setMode(e.target.value as typeof mode)}
+          onChange={(event) => setMode(event.target.value as typeof mode)}
         >
-          <option value="remote">원격 원음 이해 · GPT-Realtime-2.1</option>
+          <option value="remote">ChatGPT 구독 음성</option>
           <option value="local">기존 로컬 음성 인식</option>
         </select>
       </label>
       {mode === 'remote' && (
         <>
           <p>
-            마이크 원음을 OpenAI에 전송해 직접 이해합니다. 게임 PC에서 마이크 음성 추론을 실행하지
-            않으며, 연결이 끊겨도 로컬 STT로 자동 전환하지 않습니다.
+            이 설정을 적용하면 나그네온의 방송 시작 버튼으로 마이크와 전용 음성 연결이 함께
+            시작됩니다. 방송 중에는 마이크 연결 버튼으로 다시 켤 수 있습니다. ChatGPT 앱을 직접
+            조작하거나 전달 명령을 말할 필요가 없습니다. GPT의 답변 소리는 재생하지 않습니다.
           </p>
           <p className="field-note">
-            ChatGPT 구독과 별도로 API 요금이 발생합니다. 관객 반응에는 선택한 관객 모델을
-            사용합니다. 시스템 소리·핫클립의 기존 로컬 분석은 별도이며, 이 동의로 원음을 외부에
-            보내지 않습니다.
-          </p>
-          <label>
-            원음 이해용 OpenAI API 키{' '}
-            <input
-              aria-label="원음 이해용 OpenAI API 키"
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={500}
-              placeholder={
-                current.configured ? '이 실행에서 연결됨 · 변경할 때만 입력' : 'API 키 입력'
-              }
-            />
-          </label>
-          <p className="field-note">
-            키는 현재 앱의 메모리에만 유지하며 저장 파일·로그에 기록하지 않습니다. 앱을 다시
-            시작하면 다시 입력해야 합니다.
+            기존 ChatGPT 구독 포함량을 사용합니다. API 키와 별도 결제는 필요하지 않습니다. 연결이나
+            한도에 문제가 생기면 중지하며 유료 API 또는 로컬 음성 인식으로 자동 전환하지 않습니다.
           </p>
           <p className="field-note">
-            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
-              공식 API 키 발급
-            </a>{' '}
-            ·{' '}
-            <a
-              href="https://platform.openai.com/settings/organization/billing/overview"
-              target="_blank"
-              rel="noreferrer"
-            >
-              API 결제 설정
-            </a>
+            관객은 접수한 발언과 선택한 게임 화면을 함께 참고합니다. 시스템 소리와 다른 창은 이 음성
+            연결로 전송하지 않습니다.
           </p>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <input
               style={{ width: 'auto', flexShrink: 0 }}
               type="checkbox"
               checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
+              onChange={(event) => setConsent(event.target.checked)}
             />
             <span>
-              켠 마이크의 원음과 주변 발언이 OpenAI로 전송되고 API 사용량이 발생함을 확인했습니다.
+              켠 마이크의 원음과 주변 발언이 OpenAI로 전송되고, ChatGPT 구독 포함량을 사용함을
+              확인했습니다.
             </span>
           </label>
           <p className="field-note">
-            마이크·방송을 끄거나 AI 대시보드에서 원음 이해를 차단하면 새 원음 송신과 결과 반영을
-            중단합니다. 원음과 청취 복구 기록은 이 PC에 보관하며, 앱 실행 중 24시간이 지난 기록을
-            자동 정리합니다. 이미 전송된 데이터는 회수할 수 없으며 제공처의 데이터 처리 조건이
-            적용됩니다.
+            마이크·방송을 끄거나 AI 대시보드에서 원음 이해를 차단하면 전송과 관객 반영을 중단합니다.
+            복구용 원음은 이 PC에 보관하며, 앱 실행 중 24시간이 지난 기록을 정리합니다. 이미 전송된
+            데이터는 회수할 수 없으며 제공처의 데이터 처리 조건이 적용됩니다.
           </p>
         </>
       )}
@@ -124,15 +103,15 @@ export function NativeAudioSettings({ state, disabled }: { state: State; disable
         {message ||
           current.error ||
           (current.active
-            ? `원격 청취 중 · 미처리 ${current.pending || 0}구간`
-            : current.configured
-              ? '원음 이해 API 키 연결됨'
-              : '원음 이해 API 키 미연결')}
+            ? stages[current.stage || 'listening']
+            : mode === 'remote'
+              ? '방송에서 마이크를 켜면 구독 연결을 확인합니다.'
+              : '기존 로컬 음성 인식 사용')}
       </p>
-      {!!current.pending && !current.active && (
+      {!!current.pending && (
         <p className="field-note">
-          중지된 미처리 원음 {current.pending}구간이 남아 있습니다. 같은 방송에서 마이크를 다시 켜면
-          남은 시도 범위 안에서 복구합니다. 새 방송에는 과거 원음을 자동 전달하지 않습니다.
+          확인이 끝나지 않은 원음 {current.pending}구간을 보존하고 있습니다. 조용했던 구간도 포함될
+          수 있습니다. 지난 방송의 원음은 새 방송에 자동 전달하지 않습니다.
         </p>
       )}
     </fieldset>

@@ -105,6 +105,8 @@ export type State = BroadcastSessionState & {
     inputEpoch?: string;
     startedAt?: number;
     mode: 'local' | 'remote';
+    transport?: 'subscription' | 'api';
+    stage?: 'preparing' | 'connected' | 'listening' | 'received' | 'stopped';
     consent: boolean;
     configured: boolean;
     model: string;
