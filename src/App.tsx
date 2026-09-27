@@ -5,6 +5,8 @@ import { RuntimeDownloads } from './RuntimeDownloads';
 import { GuidedTutorial, FirstViewerStatus } from './GuidedTutorial';
 import { TextReactions } from './TextReactions';
 import { Brand } from './Brand';
+import { useChatReceipt } from './useChatReceipt';
+import { InputLatencyDiagnostics } from './InputLatencyDiagnostics';
 import { ExternalChatPanel } from './ExternalChatPanel';
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
@@ -146,7 +148,13 @@ export function App() {
   );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
+  useChatReceipt(
+    state?.sessionId || null,
+    state?.messages.slice(-100).map((message) => message.id) || [],
+    !overlay && tab === 'studio' && !!state?.running,
+  );
   const subscriptionStartPending = useRef(false);
+  const broadcastAfterCapture = useRef(false);
   useEffect(() => {
     if (!overlay && state?.running && subscriptionStartPending.current) {
       subscriptionStartPending.current = false;
@@ -178,6 +186,24 @@ export function App() {
       setError(e instanceof Error ? e.message : '요청 실패');
     }
   }, []);
+  useEffect(() => {
+    if (
+      overlay ||
+      !broadcastAfterCapture.current ||
+      !media.soundSharing ||
+      media.capturePreparing ||
+      state?.running
+    )
+      return;
+    broadcastAfterCapture.current = false;
+    subscriptionStartPending.current =
+      state?.nativeAudio?.mode === 'remote' &&
+      state.nativeAudio.transport === 'subscription' &&
+      state.nativeAudio.consent;
+    void action('start').then((result) => {
+      if (!result) subscriptionStartPending.current = false;
+    });
+  }, [overlay, media.soundSharing, media.capturePreparing, state?.running, action]);
   const moderate = useCallback(
     (actionName: string, id: string) => void action('moderate', { action: actionName, id }),
     [action],
@@ -195,10 +221,10 @@ export function App() {
     setDraft(structuredClone(state.settings));
     setModal(true);
   }
-  async function screen(withSound = false) {
+  async function screen(_withSound = true) {
     if (media.capturePreparing) return;
-    if (window.backseat) setCaptureSound(withSound);
-    else await media.share(undefined, { systemAudio: withSound, picture: true });
+    if (window.backseat) setCaptureSound(true);
+    else await media.share(undefined, { systemAudio: true, picture: true });
   }
   async function openOverlay() {
     if (window.backseat) await window.backseat.openOverlay();
@@ -660,7 +686,7 @@ export function App() {
                         {media.sharing && (
                           <div className="preview-caption">
                             <span className="dot green" /> 선택한 화면 미리보기{' '}
-                            <button onClick={media.stopScreen}>연결 해제</button>
+                            <button onClick={media.stopPicture}>화면 공유 중지</button>
                           </div>
                         )}
                       </div>
@@ -683,7 +709,11 @@ export function App() {
                       <div className="stage-controls">
                         <div>
                           <button
-                            className={media.mic ? 'control active' : 'control'}
+                            className={
+                              media.mic && !media.micStatus.includes('신호 중단')
+                                ? 'control active'
+                                : 'control'
+                            }
                             title="마이크"
                             disabled={
                               media.mic || media.micPreparing || !state.running || s.mode !== 'live'
@@ -695,7 +725,9 @@ export function App() {
                               {media.micPreparing
                                 ? '마이크 연결 중'
                                 : media.mic
-                                  ? '마이크 켜짐'
+                                  ? media.micStatus.includes('신호 중단')
+                                    ? '마이크 신호 중단'
+                                    : '마이크 켜짐'
                                   : state.running && s.mode === 'live'
                                     ? '마이크 재연결'
                                     : '방송 시작 시 자동 연결'}
@@ -712,16 +744,27 @@ export function App() {
                               />
                             ))}
                           </div>
+                          <span role="status" className="field-note">
+                            {media.micStatus}
+                          </span>
                           <button
-                            className={media.soundSharing ? 'control active' : 'control'}
-                            title="시스템 출력 소리"
-                            disabled={!!media.capturePreparing && !media.soundSharing}
-                            onClick={() =>
-                              media.soundSharing ? media.stopSound() : void screen(true)
+                            className={
+                              media.soundSharing &&
+                              !media.soundProblem &&
+                              ['구독 소리 연결됨', '듣는 중'].includes(media.soundStatus)
+                                ? 'control active'
+                                : 'control'
                             }
+                            title="게임·시스템 소리는 방송과 함께 공유합니다"
+                            disabled={!!media.capturePreparing && !media.soundSharing}
+                            onClick={() => void screen(true)}
                           >
                             <Volume2 size={18} />
-                            <span>{media.soundSharing ? '소리 공유 중' : '소리 연결'}</span>
+                            <span>
+                              {media.soundProblem || media.soundSharing
+                                ? '게임·시스템 소리 · ' + media.soundStatus
+                                : '게임·시스템 소리 연결'}
+                            </span>
                           </button>
                           <button
                             className="icon"
@@ -740,9 +783,30 @@ export function App() {
                           onClick={async () => {
                             if (state.running) {
                               subscriptionStartPending.current = false;
+                              broadcastAfterCapture.current = false;
                               media.stopAll();
                               await action('stop');
                             } else {
+                              if (
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                state.nativeAudio?.mode === 'remote' &&
+                                (!state.nativeAudio.consent ||
+                                  state.nativeAudio.consentVersion !== 2)
+                              ) {
+                                setSettingsTab('connection');
+                                setDraft(structuredClone(state.settings));
+                                setModal(true);
+                                setError(
+                                  '방송 전에 마이크와 게임·시스템 소리의 전송 범위를 확인해주세요.',
+                                );
+                                return;
+                              }
+                              if (!tutorialActive && s.mode === 'live' && !media.soundSharing) {
+                                broadcastAfterCapture.current = true;
+                                await screen(true);
+                                return;
+                              }
                               subscriptionStartPending.current =
                                 !tutorialActive &&
                                 s.mode === 'live' &&
@@ -771,7 +835,7 @@ export function App() {
                         </button>
                       </div>
                     </section>
-                    <ObsPanel state={state} onSelected={media.stopScreen} onError={setError} />
+                    <ObsPanel state={state} onSelected={media.stopPicture} onError={setError} />
                     <ExternalChatPanel state={state} onError={setError} />
                     {starter && !tutorialActive && (
                       <section className="studio-starter">
@@ -858,6 +922,8 @@ export function App() {
                         sound={state.sound}
                         enabled={media.soundSharing}
                         status={media.soundStatus}
+                        problem={media.soundProblem}
+                        remote={state.nativeAudio?.mode === 'remote'}
                         level={media.soundLevel}
                       />
                     </section>
@@ -1133,6 +1199,7 @@ export function App() {
                       </div>
                     ))}
                   <ReactionDiagnostics />
+                  <InputLatencyDiagnostics />
                 </section>
               </div>
             )}
@@ -1164,10 +1231,15 @@ export function App() {
         {captureSound !== null && (
           <CapturePicker
             initialSound={captureSound}
-            onClose={() => setCaptureSound(null)}
+            onClose={() => {
+              broadcastAfterCapture.current = false;
+              setCaptureSound(null);
+            }}
             onSelect={(id, options) => {
               setCaptureSound(null);
-              void media.share(id, options);
+              void media.share(id, options).then((ready) => {
+                if (!ready) broadcastAfterCapture.current = false;
+              });
             }}
           />
         )}

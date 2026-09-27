@@ -32,6 +32,7 @@ test('negation and correction fragments retain spaces and source order despite d
   assert.equal(group.text, 'left, no, right');
   assert.equal(group.startMs, 500);
   assert.equal(group.observedAt, 2200);
+  assert.equal(group.observedThroughAt, 2300);
   state.acknowledge(group.ids);
   assert.equal(state.ready(), null);
 });
@@ -105,16 +106,19 @@ test('a final-only provider turn remains deliverable and late fragments do not d
   transcript.acknowledge(group.ids, group.providerTurnId);
   assert.equal(transcript.ready(2300), null);
   assert.equal(
-    transcript.accept({
-      type: 'turn.done',
-      turn: {
-        id: 'final_only',
-        role: 'user',
-        start_ms: 100,
-        end_ms: 300,
-        transcript: 'not left, right',
+    transcript.accept(
+      {
+        type: 'turn.done',
+        turn: {
+          id: 'final_only',
+          role: 'user',
+          start_ms: 100,
+          end_ms: 300,
+          transcript: 'not left, right',
+        },
       },
-    }, 2400).duplicate,
+      2400,
+    ).duplicate,
     true,
   );
   assert.equal(transcript.ready(3500), null);

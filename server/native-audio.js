@@ -14,6 +14,7 @@ export const NativeAudioConfig = z
   .object({
     mode: z.enum(['local', 'remote']),
     consent: z.boolean(),
+    consentVersion: z.literal(2).optional(),
     transport: z.enum(['subscription', 'api']).optional(),
   })
   .strict();
@@ -158,6 +159,7 @@ export class NativeAudio {
         mode: z.enum(['local', 'remote']),
         transport: z.enum(['subscription', 'api']).optional(),
         consent: z.boolean(),
+        consentVersion: z.literal(2).optional(),
         apiKey: z.string().trim().max(500).optional(),
       })
       .strict()

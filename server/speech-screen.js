@@ -22,6 +22,18 @@ export const SpeechCapture = z
     voice: z
       .object({
         provider: z.literal('chatgpt-subscription'),
+        inputSource: z.enum(['microphone', 'system-output']).optional(),
+        amplitude: z
+          .object({
+            measurement: z.literal('pcm-amplitude'),
+            rmsDb: z.number().min(-120).max(0),
+            peakDb: z.number().min(-120).max(0),
+            clippedFraction: z.number().min(0).max(1),
+            frameStart: z.number().int().nonnegative(),
+            frameEnd: z.number().int().positive(),
+          })
+          .strict()
+          .optional(),
         kind: z.enum(['transcript', 'correction']),
         runId: z.string().uuid(),
         fragmentCount: z.number().int().min(0).max(64),
@@ -30,6 +42,8 @@ export const SpeechCapture = z
         sourceFrameEnd: z.number().int().positive(),
         timing: z.literal('approximate-provider-interval'),
         receivedAt: z.number().finite().nonnegative(),
+        transcriptObservedAt: z.number().finite().nonnegative().optional(),
+        sourceEndedAt: z.number().finite().nonnegative().optional(),
         providerTurnId: z.string().max(180).optional(),
         revises: z.array(z.string().uuid()).max(64).optional(),
         recovered: z.boolean(),

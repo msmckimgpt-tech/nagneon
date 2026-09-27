@@ -25,6 +25,8 @@ import { LocalSound } from './local-sound.js';
 import { soundRoutes } from './sound-routes.js';
 import { LocalSpeech } from './local-speech.js';
 import { SpeechRecoveryStore } from './speech-recovery-store.js';
+import { MicrophoneConfig, defaultMicrophoneConfig } from '../shared/microphone-config.js';
+import { SpeechRetentionConfig, defaultSpeechRetention } from '../shared/speech-retention.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
 import { Clips } from './clips.js';
@@ -36,6 +38,7 @@ import { Studio } from './studio.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
 import { NativeAudio, NativeAudioConfig } from './native-audio.js';
 import { nativeAudioRoutes } from './native-audio-routes.js';
+import { SubscriptionSound, subscriptionSoundRoutes } from './subscription-sound.js';
 import {
   CultureLearningData,
   emptyCultureLearning,
@@ -238,6 +241,12 @@ async function startServerImpl(
     return value;
   });
   const clipsStore = useStore('clips', ClipsData, () => []);
+  const microphoneStore = useStore('microphone', MicrophoneConfig, defaultMicrophoneConfig);
+  const speechRetentionStore = useStore(
+    'speech-retention',
+    SpeechRetentionConfig,
+    defaultSpeechRetention,
+  );
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
   const journalStorage = persist ? new JournalStore(dataDir) : null;
@@ -257,7 +266,10 @@ async function startServerImpl(
   if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);
   const world = new World(worldStore.data, worldStore.save);
   const speechRecovery = persist
-    ? new SpeechRecoveryStore(resolve(dataDir, 'speech-recovery'))
+    ? new SpeechRecoveryStore(resolve(dataDir, 'speech-recovery'), {
+        policy: () => speechRetentionStore.data,
+        isActive: (sessionId) => studio.running && studio.sessionId === sessionId,
+      })
     : null;
   if (
     stores.some(
@@ -321,17 +333,43 @@ async function startServerImpl(
     providerFactory: nativeAudioProviderFactory,
   });
   onResource(() => nativeAudio.close());
+  const subscriptionSound = new SubscriptionSound({
+    studio,
+    recovery: speechRecovery,
+    dir: persist ? resolve(dataDir, 'native-audio', 'system-subscription') : undefined,
+    bin: provider.bin || provider.codex?.bin,
+    env: provider.env || provider.codex?.env,
+    config: () => nativeAudio.config,
+    releaseLocal: () => sound.close?.(),
+  });
+  onResource(() => subscriptionSound.close());
   const appendSpeechRaw = async (entry) => {
     if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
     try {
-      nativeAudio.capture(entry);
+      if (subscriptionSound.inputs.has(entry.inputEpoch)) subscriptionSound.capture(entry);
+      else nativeAudio.capture(entry);
     } catch {
       nativeAudio.error =
         '원격 청취 입력을 확인하지 못해 전송을 중단했습니다. 원음 저장은 계속합니다.';
       nativeAudio.stop('capture-invalid');
+      void subscriptionSound.stop('capture-invalid');
     }
-    const result = await speechRecovery.append(entry);
-    await nativeAudio.stored(entry, result);
+    let result;
+    try {
+      result = await speechRecovery.append({
+        ...entry,
+        source: subscriptionSound.inputs.has(entry.inputEpoch) ? 'system-output' : 'microphone',
+      });
+    } catch (error) {
+      nativeAudio.error = error.message;
+      await nativeAudio.stop('storage-error');
+      await subscriptionSound.stop('storage-error');
+      studio.publish();
+      throw error;
+    }
+    if (subscriptionSound.inputs.has(entry.inputEpoch))
+      await subscriptionSound.stored(entry, result);
+    else await nativeAudio.stored(entry, result);
     return result;
   };
   onResource(() => studio.close());
@@ -435,6 +473,8 @@ async function startServerImpl(
       tutorial: tutorial.snapshot(),
       connectionProbe: probe.status(),
       nativeAudio: nativeAudio.snapshot(),
+      microphone: microphoneStore.data,
+      subscriptionSound: subscriptionSound.snapshot(),
       ...(providerChoice ? { providerChoice: providerChoice.snapshot() } : {}),
       obsInput: obsInput.snapshot(),
       debug: debug.summary(),
@@ -443,21 +483,26 @@ async function startServerImpl(
     }),
     beforeStop: [
       ['원격 원음', () => nativeAudio.stop('broadcast-stop')],
+      ['게임·시스템 소리', () => subscriptionSound.stop('broadcast-stop')],
       ['외부 채팅', () => external.disconnect()],
       ['OBS', () => obsInput.disconnect()],
     ],
     onAiPolicy: (affected) => {
-      if (affected.includes('native-audio')) nativeAudio.stop('policy');
+      if (affected.includes('native-audio')) {
+        nativeAudio.stop('policy');
+        void subscriptionSound.stop('policy');
+      }
     },
   });
   nativeAudioRoutes(app, nativeAudio, studio);
+  subscriptionSoundRoutes(app, subscriptionSound, studio);
   if (runtimeComponents) runtimeComponents.onChange = () => studio.publish();
   app.post('/api/runtime/prepare', async (req, res) => {
     const { feature } = z
       .object({ feature: z.enum(['microphone', 'sound', 'clips', 'perception']) })
       .strict()
       .parse(req.body);
-    if (feature === 'microphone' && nativeAudio.config.mode === 'remote')
+    if (['microphone', 'sound'].includes(feature) && nativeAudio.config.mode === 'remote')
       return res.json({ ok: true, local: false, nativeAudio: true });
     const controller = new AbortController();
     const disconnect = () => {
@@ -940,7 +985,7 @@ async function startServerImpl(
       ),
     ),
   );
-  soundRoutes(app, studio, sound);
+  soundRoutes(app, studio, sound, subscriptionSound);
   app.post('/api/audio/prepare', async (_req, res) => {
     if (nativeAudio.config.mode === 'remote') {
       nativeAudio.allowed();
@@ -1007,6 +1052,65 @@ async function startServerImpl(
       res.json({ ok: true, ...result });
     },
   );
+  app.get('/api/audio/storage', async (_req, res) => {
+    if (!speechRecovery)
+      return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+    res.set('Cache-Control', 'no-store').json(await speechRecovery.status());
+  });
+  app.get('/api/microphone/config', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json(microphoneStore.data);
+  });
+  app.post('/api/microphone/config', (req, res) => {
+    const config = MicrophoneConfig.parse(req.body);
+    if (!config.deviceId) throw new Error('사용할 마이크를 선택해주세요.');
+    microphoneStore.save(config);
+    microphoneStore.data = config;
+    studio.publish();
+    res.json(config);
+  });
+  app.post('/api/audio/storage/config', async (req, res) => {
+    if (studio.running) throw new Error('방송을 중지한 뒤 원음 보관 설정을 바꿔주세요.');
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const config = SpeechRetentionConfig.parse(req.body);
+    speechRetentionStore.save(config);
+    speechRetentionStore.data = config;
+    await speechRecovery.sweep();
+    await nativeAudio.subscription.refreshRetainedAudio();
+    await subscriptionSound.refreshRetainedAudio();
+    studio.publish();
+    res.json(await speechRecovery.status());
+  });
+  app.post('/api/audio/storage/delete', async (req, res) => {
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const value = z
+      .object({
+        sessionId: z.string().uuid(),
+        inputEpoch: z.string().uuid(),
+        confirm: z.literal(true),
+      })
+      .strict()
+      .parse(req.body);
+    await speechRecovery.remove(value.sessionId, value.inputEpoch);
+    await nativeAudio.subscription.refreshRetainedAudio();
+    await subscriptionSound.refreshRetainedAudio();
+    studio.publish();
+    res.json(await speechRecovery.status());
+  });
+  app.get('/api/audio/storage/:sessionId/:inputEpoch', async (req, res) => {
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const ids = z
+      .object({ sessionId: z.string().uuid(), inputEpoch: z.string().uuid() })
+      .parse(req.params);
+    const audio = await speechRecovery.download(ids.sessionId, ids.inputEpoch);
+    if (!audio)
+      return res.status(404).json({ error: '보관된 원음이 없거나 보관 기간이 지났습니다.' });
+    res.attachment('nagneon-original-audio.wav').type('audio/wav');
+    res.set('Cache-Control', 'no-store');
+    res.set('Content-Length', String(audio.bytes));
+    res.once('close', () => audio.stream.destroy());
+    audio.stream.once('error', () => res.destroy());
+    audio.stream.pipe(res);
+  });
   app.get('/api/audio/raw/:sessionId/:inputEpoch', async (req, res) => {
     if (!speechRecovery)
       return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
@@ -1061,6 +1165,23 @@ async function startServerImpl(
     if (req.query.download === 'true') res.attachment('nagneon-reaction-diagnostics.json');
     res.set('Cache-Control', 'no-store').json(studio.reactions.snapshot(studio.queue));
   });
+  app.get('/api/diagnostics/input-latency', (req, res) => {
+    if (req.query.download === 'true') res.attachment('nagneon-input-latency.json');
+    res.set('Cache-Control', 'no-store').json(studio.inputLatency.snapshot());
+  });
+  app.post('/api/diagnostics/input-latency/rendered', (req, res) => {
+    const value = z
+      .object({
+        sessionId: z.string().uuid(),
+        ids: z.array(z.string().min(1).max(100)).max(100),
+        at: z.number().finite(),
+      })
+      .strict()
+      .parse(req.body);
+    if (value.sessionId !== studio.sessionId) throw new Error('이미 끝난 방송의 표시 기록입니다.');
+    studio.inputLatency.rendered(value.ids, value.at);
+    res.json({ ok: true });
+  });
   app.get('/api/export', (_req, res) => {
     res.attachment(`nagneon-${studio.sessionId || 'session'}.json`).json({
       exportedAt: new Date().toISOString(),
@@ -1071,7 +1192,9 @@ async function startServerImpl(
     });
   });
   app.use(express.static(resolve(root, 'dist')));
-  app.get(['/', '/overlay'], (_req, res) => res.sendFile(resolve(root, 'dist/index.html')));
+  app.get(['/', '/overlay'], (_req, res) =>
+    res.sendFile('index.html', { root: resolve(root, 'dist') }),
+  );
   app.use((error, _req, res, _next) =>
     res.status(error instanceof z.ZodError ? 400 : 409).json({
       error:
@@ -1103,6 +1226,7 @@ async function startServerImpl(
     studio,
     appendSpeechRaw,
     nativeAudio,
+    subscriptionSound,
     obsInput,
     url: `http://${expectedHost}`,
     accessToken: access.token,
@@ -1122,6 +1246,7 @@ async function startServerImpl(
       };
       const tasks = [
         invoke(() => nativeAudio.close()),
+        invoke(() => subscriptionSound.close()),
         invoke(() => runtimeComponents?.close()),
         requests.close(),
         invoke(() => tutorial.operation),

@@ -101,6 +101,7 @@ export type SoundState = {
 export type BroadcastSessionState =
   { running: true; sessionId: string } | { running: false; sessionId: string | null };
 export type State = BroadcastSessionState & {
+  microphone?: { deviceId: string; label: string };
   nativeAudio?: {
     inputEpoch?: string;
     startedAt?: number;
@@ -108,6 +109,7 @@ export type State = BroadcastSessionState & {
     transport?: 'subscription' | 'api';
     stage?: 'preparing' | 'connected' | 'listening' | 'received' | 'stopped';
     consent: boolean;
+    consentVersion?: 2;
     configured: boolean;
     model: string;
     active: boolean;
@@ -118,6 +120,15 @@ export type State = BroadcastSessionState & {
     applied?: number;
     uncertain?: number;
     expired?: number;
+  };
+  subscriptionSound?: {
+    active: boolean;
+    stage?: string;
+    error: string;
+    captured: number;
+    durable: number;
+    applied: number;
+    pending: number;
   };
   social?: {
     revision: number;
@@ -299,7 +310,7 @@ declare global {
         frameCount: number;
         data: Uint8Array;
         capture?: import('./speech-flow').SpeechCapture;
-      }) => Promise<{ duplicate: boolean; durableThrough: number }>;
+      }) => Promise<{ duplicate: boolean; durableThrough: number; storageNearlyFull?: boolean }>;
       sources: () => Promise<Source[]>;
       sourcePreviews?: (type: 'screen' | 'window') => Promise<Source[]>;
       selectSource: (id: string, systemAudio?: boolean) => Promise<void>;

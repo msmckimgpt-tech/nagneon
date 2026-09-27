@@ -147,7 +147,7 @@ test('an HTTP retry cannot publish the same source event twice', async (t) => {
 test('stop cancels host and records late input without audience publication', async (t) => {
   const p = await setup(t);
   p.audio.capture(p.entry);
-  await p.audio.stored(p.entry, { durableThrough: 16000 });
+  await p.audio.stored(p.entry, await p.options.recovery.append(p.entry));
   await p.audio.stop();
   await p.audio.events({
     inputEpoch: p.inputEpoch,
@@ -160,6 +160,18 @@ test('stop cancels host and records late input without audience publication', as
   assert.equal(p.calls.length, 0);
   assert.equal(p.hosts[0].closed, true);
   assert.equal(p.audio.snapshot().unresolved[0].frameEnd, 16000);
+});
+
+test('a raw chunk saved after stopping becomes recoverable after an empty retention scan', async (t) => {
+  const p = await setup(t);
+  p.audio.capture(p.entry);
+  await p.audio.stop();
+  await p.audio.refreshRetainedAudio();
+  assert.equal(p.audio.snapshot().pending, 0);
+  await p.audio.stored(p.entry, await p.options.recovery.append(p.entry));
+  assert.equal(p.audio.snapshot().unresolved[0].frameEnd, 16000);
+  assert.equal(p.audio.snapshot().active, false);
+  assert.equal(p.calls.length, 0);
 });
 test('stopping while the delivery plan is saved prevents a late audience side effect', async (t) => {
   const p = await setup(t);
@@ -197,7 +209,7 @@ test('stopping while the delivery plan is saved prevents a late audience side ef
 test('journal restoration preserves source clock and unresolved ranges without activating a device or connection', async (t) => {
   const p = await setup(t);
   p.audio.capture(p.entry);
-  await p.audio.stored(p.entry, { durableThrough: 16000 });
+  await p.audio.stored(p.entry, await p.options.recovery.append(p.entry));
   await p.audio.stop();
   await p.audio.close();
   const restored = new SubscriptionVoice(p.options);
@@ -207,6 +219,17 @@ test('journal restoration preserves source clock and unresolved ranges without a
   assert.equal(restored.snapshot().active, false);
   assert.equal(restored.snapshot().unresolved[0].frameEnd, 16000);
   assert.equal(p.hosts.length, 1);
+  await restored.close();
+});
+
+test('deleted raw audio is not advertised as recoverable after a restart',async t=>{
+  const p=await setup(t);
+  p.audio.capture(p.entry);await p.audio.stored(p.entry,await p.options.recovery.append(p.entry));
+  await p.audio.stop();await p.audio.close();
+  await p.options.recovery.remove(p.entry.sessionId,p.inputEpoch);
+  const restored=new SubscriptionVoice(p.options);await restored.ready;
+  assert.equal(restored.error,'');assert.equal(restored.snapshot().pending,0);
+  assert.equal(restored.snapshot().active,false);assert.equal(p.hosts.length,1);
   await restored.close();
 });
 test('damaged journal fails closed and preserves the original file', async (t) => {

@@ -8,6 +8,7 @@ type Recovery = {
   leadMs: number;
 };
 type Options = {
+  endpoint?: 'native-audio' | 'subscription-sound';
   inputEpoch: string;
   signal: AbortSignal;
   onError: (message: string) => void;
@@ -50,7 +51,7 @@ export class SubscriptionVoiceStream {
       AbortSignal.timeout(timeoutMs),
     ]);
     signal.throwIfAborted();
-    const response = await fetch('/api/native-audio/' + path, {
+    const response = await fetch('/api/' + (this.options.endpoint || 'native-audio') + '/' + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
       body: JSON.stringify(body),
@@ -143,6 +144,7 @@ export class SubscriptionVoiceStream {
         });
         if (!recovery || this.closed) return;
         const replay = new SubscriptionVoiceStream({
+          endpoint: this.options.endpoint,
           inputEpoch: recovery.inputEpoch,
           ownerEpoch: this.options.inputEpoch,
           recovery,
@@ -332,19 +334,25 @@ export class SubscriptionVoiceStream {
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.queue = [];
     this.queueBytes = 0;
-    void fetch('/api/native-audio/' + (this.options.recovery ? 'recovery/finish' : 'stop'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
-      body: JSON.stringify(
-        this.options.recovery
-          ? {
-              inputEpoch: this.options.ownerEpoch,
-              runId: this.runId || this.options.recovery.runId,
-            }
-          : { inputEpoch: this.options.inputEpoch },
-      ),
-      signal: AbortSignal.timeout(2000),
-      keepalive: true,
-    }).catch(() => {});
+    void fetch(
+      '/api/' +
+        (this.options.endpoint || 'native-audio') +
+        '/' +
+        (this.options.recovery ? 'recovery/finish' : 'stop'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+        body: JSON.stringify(
+          this.options.recovery
+            ? {
+                inputEpoch: this.options.ownerEpoch,
+                runId: this.runId || this.options.recovery.runId,
+              }
+            : { inputEpoch: this.options.inputEpoch },
+        ),
+        signal: AbortSignal.timeout(2000),
+        keepalive: true,
+      },
+    ).catch(() => {});
   }
 }

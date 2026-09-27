@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { SubscriptionVoiceHost } from './subscription-voice-host.js';
 import { SubscriptionInputEvent, SubscriptionTranscript } from '../shared/subscription-voice.js';
 import { SpeechCapture } from './speech-screen.js';
+import { observePcmAmplitude } from '../shared/audio-observation.js';
 
 const RATE = 16000,
   RETENTION = 86400000,
@@ -54,6 +55,7 @@ export class SubscriptionVoice {
     releaseLocal = async () => {},
     hostFactory = (options) => new SubscriptionVoiceHost(options),
     now = Date.now,
+    inputSource = 'microphone',
   } = {}) {
     Object.assign(this, {
       studio,
@@ -65,6 +67,7 @@ export class SubscriptionVoice {
       releaseLocal,
       hostFactory,
       now,
+      inputSource,
     });
     this.inputs = new Map();
     this.runs = new Map();
@@ -279,6 +282,7 @@ export class SubscriptionVoice {
       frameCount: entry.frameCount,
       capture,
       sha256: digest(entry.data),
+      amplitude: observePcmAmplitude(entry.data),
       hearers: (this.studio.presentWitnesses?.() || []).filter(
         (id) => this.studio.audience.data.members[id]?.joinedAt <= capture.startedAt,
       ),
@@ -314,7 +318,10 @@ export class SubscriptionVoice {
     await this.record(s, { type: 'raw', ...persisted, durableThrough: result.durableThrough });
     s.durable = Math.max(s.durable, result.durableThrough);
     s.storedSequence = entry.sequence;
-    if (!s.active) this.markTail(s);
+    if (!s.active) {
+      await this.refreshRetainedAudio(s);
+      this.markTail(s);
+    }
     void this.pump();
   }
   isRunActive(run) {
@@ -470,14 +477,8 @@ export class SubscriptionVoice {
       if (plan.nextAt && this.now() < plan.nextAt) return;
       this.allowed();
       if (!this.isRunActive(run)) return;
-      this.studio.receiveSpeech({
-        id: plan.id,
-        sessionId: s.sessionId,
-        text: plan.text,
-        source: 'microphone',
-        capture: plan.capture,
-        capturedHearers: plan.hearers,
-      });
+      await this.receivePlan(plan, s);
+      if (!this.isRunActive(run)) return;
       await this.record(s, {
         type: 'published',
         runId: run.id,
@@ -530,6 +531,16 @@ export class SubscriptionVoice {
       } else if (run.kind === 'recovery') await this.finishRun(run, 'recovery-processing-failed');
       else if (s.active) await this.stop('processing-failed');
     }
+  }
+  receivePlan(plan, s) {
+    return this.studio.receiveSpeech({
+      id: plan.id,
+      sessionId: s.sessionId,
+      text: plan.text,
+      source: 'microphone',
+      capture: plan.capture,
+      capturedHearers: plan.hearers,
+    });
   }
   async prepareRecovery(value) {
     await this.ready;
@@ -771,6 +782,38 @@ export class SubscriptionVoice {
             contexts[0].hearers,
           )
       : [];
+    const measured = contexts.filter(
+      (context) =>
+        context.startFrame < frameEnd && context.startFrame + context.frameCount > frameStart,
+    );
+    const totalFrames = measured.reduce((sum, context) => sum + context.frameCount, 0);
+    const amplitude =
+      measured.length && measured.every((context) => context.amplitude)
+        ? {
+            measurement: 'pcm-amplitude',
+            rmsDb: Math.max(
+              -120,
+              10 *
+                Math.log10(
+                  measured.reduce(
+                    (sum, context) =>
+                      sum + 10 ** (context.amplitude.rmsDb / 10) * context.frameCount,
+                    0,
+                  ) / totalFrames,
+                ),
+            ),
+            peakDb: Math.max(...measured.map((context) => context.amplitude.peakDb)),
+            clippedFraction:
+              measured.reduce(
+                (sum, context) => sum + context.amplitude.clippedFraction * context.frameCount,
+                0,
+              ) / totalFrames,
+            frameStart: Math.min(...measured.map((context) => context.startFrame)),
+            frameEnd: Math.max(
+              ...measured.map((context) => context.startFrame + context.frameCount),
+            ),
+          }
+        : undefined;
     const id = randomUUID();
     const capture = {
       startedAt,
@@ -778,6 +821,8 @@ export class SubscriptionVoice {
       ...(screen ? { screen } : {}),
       voice: {
         provider: 'chatgpt-subscription',
+        inputSource: this.inputSource,
+        ...(amplitude ? { amplitude } : {}),
         kind: correction ? 'correction' : 'transcript',
         runId: run.id,
         fragmentCount: group.ids.length,
@@ -786,6 +831,8 @@ export class SubscriptionVoice {
         sourceFrameEnd: frameEnd,
         timing: 'approximate-provider-interval',
         receivedAt: group.observedAt || this.now(),
+        transcriptObservedAt: group.observedThroughAt ?? this.now(),
+        sourceEndedAt: s.startedAt + (frameEnd / RATE) * 1000,
         ...(group.providerTurnId ? { providerTurnId: group.providerTurnId } : {}),
         ...(correction ? { revises: group.revises } : {}),
         recovered: run.kind === 'recovery',
@@ -902,7 +949,39 @@ export class SubscriptionVoice {
         last.frameEnd = frameEnd;
       else ranges.push(next);
     }
-    s.unresolved = ranges;
+    s.unresolved = s.retainedRanges
+      ? ranges.flatMap((range) =>
+          s.retainedRanges
+            .map((saved) => ({
+              ...range,
+              frameStart: Math.max(range.frameStart, saved.frameStart),
+              frameEnd: Math.min(range.frameEnd, saved.frameEnd),
+            }))
+            .filter((range) => range.frameEnd > range.frameStart),
+        )
+      : ranges;
+  }
+  async refreshRetainedAudio(input) {
+    if (typeof this.recovery?.entries !== 'function') return;
+    for (const s of input ? [input] : this.inputs.values()) {
+      if (s.active) continue;
+      const durable = s.durable;
+      const entries = (await this.recovery.entries(s.sessionId, s.inputEpoch)).filter((entry) =>
+        this.recovery.retained(entry, s.sessionId),
+      );
+      // A final raw chunk can finish saving while an expiry scan is reading.
+      // Its stored() call refreshes again; an older scan must not hide that tail.
+      if (s.active || s.durable !== durable) continue;
+      const ranges = [];
+      for (const entry of entries) {
+        const end = entry.startFrame + entry.frameCount,
+          last = ranges.at(-1);
+        if (last && last.frameEnd === entry.startFrame) last.frameEnd = end;
+        else ranges.push({ frameStart: entry.startFrame, frameEnd: end });
+      }
+      s.retainedRanges = ranges;
+      this.markTail(s);
+    }
   }
   stop(reason = 'microphone-off') {
     const s = this.session;
@@ -951,6 +1030,7 @@ export class SubscriptionVoice {
       mode: 'remote',
       transport: 'subscription',
       consent: this.config().consent,
+      ...(this.config().consentVersion ? { consentVersion: this.config().consentVersion } : {}),
       configured: !!this.bin,
       model: 'ChatGPT Voice',
       active: !!s?.active,
@@ -1073,6 +1153,7 @@ export class SubscriptionVoice {
         s.stage = 'stopped';
         this.markTail(s);
       }
+      await this.refreshRetainedAudio();
     } catch {
       this.ledgerFailed = true;
       this.error = '보존된 구독 음성 기록을 읽지 못했습니다. 원본 파일은 보존했습니다.';
@@ -1083,6 +1164,7 @@ export class SubscriptionVoice {
     this.sweeping = true;
     this.lastSweep = this.now();
     try {
+      await this.refreshRetainedAudio();
       for (const [key, s] of this.inputs) {
         if (!s.active && this.now() - s.startedAt > RETENTION) this.inputs.delete(key);
         for (const [frame, context] of s.contexts)

@@ -133,6 +133,7 @@ export class SubscriptionTranscript {
             startMs: final.startMs,
             endMs: final.endMs,
             observedAt: final.receivedAt,
+            observedThroughAt: final.receivedAt,
             final: true,
             providerTurnId: final.id,
             finalFallback: true,
@@ -170,6 +171,7 @@ export class SubscriptionTranscript {
       startMs: first.startMs,
       endMs: last.endMs,
       observedAt: Math.min(...group.map((item) => item.receivedAt)),
+      observedThroughAt: Math.max(...group.map((item) => item.receivedAt)),
       final: !!finalTurn,
       providerTurnId: finalTurn?.id,
     };
@@ -205,6 +207,8 @@ export class SubscriptionTranscript {
         .map((item) => item.id);
       changes.push({
         text: turn.text,
+        observedAt: turn.receivedAt,
+        observedThroughAt: turn.receivedAt,
         startMs: turn.startMs,
         endMs: turn.endMs,
         providerTurnId: turn.id,

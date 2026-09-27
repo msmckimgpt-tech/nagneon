@@ -16,6 +16,7 @@ import { AudienceAutonomy } from './audience-autonomy.js';
 import { Ambient } from './ambient.js';
 import { requestsAdvice, adviceIntent, liveAdvicePolicy } from './advice-intent.js';
 import { SpeechInbox } from './speech-inbox.js';
+import { InputLatency } from './input-latency.js';
 import { repeatedChat } from './chat-quality.js';
 import { admitTranscriptCorrection, transcriptAnomaly } from './transcript-correction.js';
 import { revisesLiveSituation } from './streamer-expression.js';
@@ -76,6 +77,7 @@ export class Studio extends EventEmitter {
     this.sound = new SoundScene(this);
     this.viewing = new ViewingContinuity();
     this.reactions = new ReactionDiagnostics(now);
+    this.inputLatency = new InputLatency(now);
     this.resetCounters();
     this.timer = setInterval(() => this.pump(), 250);
     this.timer.unref();
@@ -132,6 +134,7 @@ export class Studio extends EventEmitter {
   }
   resetCounters() {
     this.reactions.reset();
+    this.inputLatency.reset();
     this.speechInbox = new SpeechInbox();
     this.liveReaction = null;
     this.endedVideoSources = new Map();
@@ -270,6 +273,7 @@ export class Studio extends EventEmitter {
       hearers,
     );
     if (!result.duplicate) {
+      this.inputLatency.receive(id, capture);
       this.queue = this.queue.filter((m) => m.origin !== 'live');
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
@@ -692,7 +696,7 @@ export class Studio extends EventEmitter {
     }
     this.lastSpeaker.set(m.personaId, now);
     try {
-      this.publishMessage({
+      const delivered = this.publishMessage({
         ...this.prepareMessage(m.personaId, m.text, m.kind),
         ...(m.meme ? { meme: true } : {}),
         ...(m.advice
@@ -701,6 +705,7 @@ export class Studio extends EventEmitter {
         ...(m.chatDriven ? { chatDriven: true } : {}),
       });
       this.reactions.delivered(m.diagnosticId);
+      this.inputLatency.publish(m.diagnosticId, delivered.id);
     } catch (error) {
       this.reactions.drop(m.diagnosticId, 'delivery-error');
       this.lastError = error.message;
@@ -860,6 +865,9 @@ export class Studio extends EventEmitter {
           ).length,
           company: idleConversation ? 'idle' : watchingCompany ? 'watching' : null,
           latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
+        });
+        this.inputLatency.request(diagnosticId, speechBatch.ids, {
+          screenThrough: screenTimeline?.through,
         });
         const responseStartedAt = this.now();
         const result = await this.provider.react(
@@ -1253,6 +1261,7 @@ export class Studio extends EventEmitter {
       game,
     } = context;
     this.reactions.generated(diagnosticId, result.observation.messages.length);
+    this.inputLatency.response(diagnosticId);
     if (epoch !== this.epoch || !this.running) {
       return { outcome: 'stopped', result: { skipped: 'stopped' } };
     }

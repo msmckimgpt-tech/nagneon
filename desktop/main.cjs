@@ -2,6 +2,7 @@ const {app,BrowserWindow,desktopCapturer,session,ipcMain,globalShortcut,screen,d
 const {join}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {createStudioSession}=require('./session.cjs');
+const {startStableStudio}=require('./studio-port.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
@@ -55,7 +56,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
-    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}});
+    startingService=startStableStudio({profile:app.getPath('userData'),start:port=>startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}})});
     service=await startingService;
     service.studio.on('state',syncOverlayPrivacy);
     if(shutdown.quitting)return;

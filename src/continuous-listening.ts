@@ -39,9 +39,11 @@ export class ContinuousListening {
   uploading = false;
   captureStopped = false;
   stoppingCapture = false;
+  captureFailure: Error | null = null;
   closed = false;
   backlogExceeded = false;
   storageError = false;
+  storageFull = false;
   disposeCapture: (() => void) | null = null;
   subscription: SubscriptionVoiceStream | null = null;
   retryTimer: ReturnType<typeof setInterval> | null = null;
@@ -52,6 +54,7 @@ export class ContinuousListening {
   readonly drained: Promise<void>;
   resolveDrain: (() => void) | null = null;
   readonly options: {
+    inputSource?: 'microphone' | 'system-output';
     remote?: boolean;
     signal?: AbortSignal;
     sessionId: string;
@@ -59,11 +62,12 @@ export class ContinuousListening {
     onLevel: (value: number) => void;
     onTranscript: (text: string, capture: SpeechCapture, cues?: { delivery?: string }) => void;
     onError: (message: string) => void;
-    onCaptureFailure?: () => void;
+    onCaptureFailure?: (error?: Error) => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
   };
   constructor(options: {
+    inputSource?: 'microphone' | 'system-output';
     remote?: boolean;
     signal?: AbortSignal;
     sessionId: string;
@@ -71,7 +75,7 @@ export class ContinuousListening {
     onLevel: (value: number) => void;
     onTranscript: (text: string, capture: SpeechCapture, cues?: { delivery?: string }) => void;
     onError: (message: string) => void;
-    onCaptureFailure?: () => void;
+    onCaptureFailure?: (error?: Error) => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
   }) {
@@ -152,6 +156,9 @@ export class ContinuousListening {
       },
     });
   }
+  get endpoint(): 'native-audio' | 'subscription-sound' {
+    return this.options.inputSource === 'system-output' ? 'subscription-sound' : 'native-audio';
+  }
   async start() {
     const signal = AbortSignal.any([
       this.startController.signal,
@@ -159,7 +166,7 @@ export class ContinuousListening {
     ]);
     signal.throwIfAborted();
     if (this.options.remote) {
-      const response = await fetch('/api/native-audio/start', {
+      const response = await fetch(`/api/${this.endpoint}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
         body: JSON.stringify({
@@ -174,13 +181,15 @@ export class ContinuousListening {
       this.segmenter.wallStartedAt = result.startedAt;
       if (result.transport === 'subscription') {
         this.subscription = new SubscriptionVoiceStream({
+          endpoint: this.endpoint,
           inputEpoch: this.inputEpoch,
           signal,
           onRecoveryError: (message) => this.report(message),
           onError: (message) => {
+            this.captureFailure = new Error(message);
             this.report(message);
             this.stopCapture();
-            this.options.onCaptureFailure?.();
+            this.options.onCaptureFailure?.(this.captureFailure);
           },
         });
         try {
@@ -205,17 +214,27 @@ export class ContinuousListening {
               throw new Error('마이크 시작 시각 등록이 지연되어 중지했습니다.');
           } else this.acceptFrames(frames);
         } catch (error) {
+          this.captureFailure =
+            error instanceof Error ? error : new Error('연속 입력을 시작하지 못했습니다.');
           this.report(error instanceof Error ? error.message : '마이크 연속 캡처 오류');
           this.stopCapture();
-          this.options.onCaptureFailure?.();
+          this.options.onCaptureFailure?.(this.captureFailure);
         }
       },
       onFailure: (error) => {
+        this.captureFailure = error;
         this.report(error.message);
         this.stopCapture();
-        this.options.onCaptureFailure?.();
+        this.options.onCaptureFailure?.(error);
       },
     });
+    // A reader can fail before its asynchronously returned disposer is assigned.
+    // Release it here as well and preserve that cause instead of a later RTP error.
+    if (this.captureStopped || this.closed || signal.aborted) {
+      this.disposeCapture?.();
+      this.disposeCapture = null;
+      throw this.captureFailure || new Error('음성 입력 시작을 취소했습니다.');
+    }
     if (this.subscription) {
       try {
         await this.subscription.attach(this.options.track);
@@ -297,7 +316,7 @@ export class ContinuousListening {
     }
   }
   async uploadRaw() {
-    if (this.uploading || this.closed) return;
+    if (this.uploading || this.closed || this.storageFull) return;
     this.uploading = true;
     let delay = 1000;
     try {
@@ -306,7 +325,7 @@ export class ContinuousListening {
         try {
           const append =
             typeof window === 'undefined' ? undefined : window.backseat?.appendSpeechRaw;
-          let result: { durableThrough: number };
+          let result: { durableThrough: number; storageNearlyFull?: boolean };
           if (append) {
             const bytes = new Uint8Array(
               entry.samples.buffer,
@@ -324,7 +343,7 @@ export class ContinuousListening {
             });
           } else {
             if (entry.capture) {
-              const contextResponse = await fetch('/api/native-audio/context', {
+              const contextResponse = await fetch(`/api/${this.endpoint}/context`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
                 body: JSON.stringify({
@@ -361,8 +380,24 @@ export class ContinuousListening {
           this.storageError = false;
           this.releaseSegments();
           delay = 1000;
+          if (result.storageNearlyFull && !this.captureStopped) {
+            this.options.onError(
+              '원음 보관 용량이 거의 가득 차서 음성 입력을 중지했습니다. 마지막 원음을 보존하고 있습니다. 지난 원음을 정리하거나 보관 용량을 늘려주세요.',
+            );
+            this.stopCapture();
+            this.options.onStorageFailure?.();
+          }
         } catch (error) {
           this.storageError = true;
+          if (error instanceof Error && /원음 보관 용량이 가득/.test(error.message)) {
+            this.storageFull = true;
+            this.stopCapture();
+            this.options.onStorageFailure?.();
+            this.options.onError(
+              error.message + ' 아직 저장하지 못한 마지막 원음이 메모리에 남아 있습니다.',
+            );
+            return;
+          }
           this.report(
             (error instanceof Error ? error.message : '마이크 원음 저장 실패') +
               ' 원음을 메모리에 유지하며 다시 시도합니다.',
@@ -409,7 +444,7 @@ export class ContinuousListening {
     dispose?.();
     this.captureStopped = true;
     if (this.options.remote)
-      void fetch('/api/native-audio/stop', {
+      void fetch(`/api/${this.endpoint}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
         body: JSON.stringify({ inputEpoch: this.inputEpoch }),

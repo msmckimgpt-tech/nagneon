@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as speechFlow from '../src/speech-flow.ts';
 import {TemporalFrames} from '../src/temporal-frames.ts';
 import * as capturePreparation from '../src/capture-preparation.ts';
+import * as microphoneDevice from '../src/microphone-device.ts';
 // Execute the shipped hook handlers with controlled transport/devices. This is
 // file-based sequencing coverage, not a React renderer or native device test.
 const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -14,10 +15,12 @@ function harness(fetch,getUserMedia){
   const errors=[],listeners=[],outboxes=[],timers=new Set();let timerId=0;
   class Outbox extends speechFlow.SpeechOutbox{constructor(){super();outboxes.push(this);}}
   class Listener{constructor(options){this.options=options;this.drained=new Promise(resolve=>{this.resolveDrain=resolve;});listeners.push(this);}async start(){this.timer=++timerId;timers.add(this.timer);return this;}stopCapture(){timers.delete(this.timer);}}
-  const state={running:true,sessionId:'test-session',settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
+  const state={running:true,sessionId:'test-session',microphone:{deviceId:'fixture-mic',label:'Fixture'},settings:{mode:'live',maxCalls:50,intervalSeconds:5},calls:0};
+  const mediaDevices={getUserMedia:async()=>{const stream=await getUserMedia();if(stream){const tracks=stream.getTracks();for(const track of tracks){track.readyState??='live';track.label??='Fixture';track.getSettings??=()=>({deviceId:'fixture-mic'});}stream.getAudioTracks=()=>tracks;stream.getTracks=()=>tracks;}return stream;},enumerateDevices:async()=>[]};
   const react={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:()=>{}};
   const imports={react,'./useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},'./useSystemSound':{useSystemSound:()=>({})},'./useClipBuffer':{useClipBuffer:()=>({})},'./clip-uploads':{},'./api':{api:async()=>({ok:true})},'./speech-flow':{...speechFlow,SpeechOutbox:Outbox},'./continuous-listening.ts':{ContinuousListening:Listener},'./temporal-frames':{TemporalFrames},'./temporal-capture':{},'./capture-preparation':capturePreparation};
   const module={exports:{}};
+  imports['./microphone-device']={...microphoneDevice,acquireMicrophone:options=>microphoneDevice.acquireMicrophone({...options,mediaDevices})};
   class Recorder{static isTypeSupported(){return true;}constructor(){this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.onstop?.();}}
   class Context{resume(){return Promise.resolve();}createMediaStreamSource(){return {connect(){}};}createAnalyser(){return {fftSize:512,getFloatTimeDomainData(){}};}close(){return Promise.resolve();}}
   vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,id);return imports[id];},fetch,navigator:{mediaDevices:{getUserMedia:async()=>{const stream=await getUserMedia();if(stream&&!stream.getAudioTracks)stream.getAudioTracks=stream.getTracks;return stream;}}},MediaRecorder:Recorder,AudioContext:Context,AbortController,Error,Blob,Float32Array,performance:{now:()=>0},setInterval:()=>{timers.add(++timerId);return timerId;},clearInterval:id=>timers.delete(id),setTimeout:()=>{timers.add(++timerId);return timerId;},clearTimeout:id=>timers.delete(id)});
@@ -33,7 +36,7 @@ test('microphone device acquisition waits for the recognizer handshake',async()=
 
 test('failed preparation never opens a device and the same microphone control can retry',async()=>{
   let attempts=0,devices=0;const h=harness(async()=>({ok:++attempts!==1,json:async()=>({error:'준비 실패'})}),async()=>{devices++;return {getTracks:()=>[{stop(){}}]};});
-  await h.media.startMic();assert.equal(devices,0);assert.match(h.errors[0],/준비 실패.*자동으로 다시 연결/);
+  await h.media.startMic();assert.equal(devices,0);assert.match(h.errors[0],/준비 실패.*선택한 장치로 다시 연결/);
   await h.media.startMic();assert.equal(devices,1);h.media.stopMic();assert.equal(h.timers.size,0);
 });
 
@@ -77,5 +80,5 @@ test('speech captured before reconnect is delivered before the new microphone ep
 test('a capture processor failure releases the device and requests reconnect visibly',async()=>{
   let stops=0;const h=harness(async()=>({ok:true,json:async()=>({ok:true})}),async()=>({getTracks:()=>[{stop(){stops++;}}]}));
   await h.media.startMic();h.listeners[0].options.onCaptureFailure();
-  assert.equal(stops,1);assert.match(h.errors.at(-1),/연속 캡처가 끊겼습니다/);assert.equal(h.timers.size,0);
+  assert.equal(stops,1);assert.match(h.errors.at(-1),/연속 입력이 끊겼습니다/);assert.equal(h.timers.size,0);
 });
