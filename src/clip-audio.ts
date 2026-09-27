@@ -2,6 +2,13 @@
 export function mixClipAudio(sources:MediaStream[]){
   const tracks=[...new Set(sources.flatMap(s=>s.getAudioTracks()))].filter(t=>t.readyState==='live');
   if(!tracks.length)return {tracks:[] as MediaStreamTrack[],close:()=>{}};
+  // Separated microphone/system recordings each have one input. Keep its
+  // native clock and channels instead of creating a Web Audio mixer for gain 1.
+  // The recorder owns only this clone; closing it must leave capture running.
+  if(tracks.length===1){
+    const clone=tracks[0].clone();let closed=false;
+    return {tracks:[clone],close:()=>{if(closed)return;closed=true;clone.stop();}};
+  }
   const context=new AudioContext(),clones:MediaStreamTrack[]=[];
   let destination:MediaStreamAudioDestinationNode|undefined,closed=false;
   const close=()=>{if(closed)return;closed=true;clones.forEach(t=>t.stop());destination?.stream.getTracks().forEach(t=>t.stop());void context.close().catch(()=>{});};
