@@ -157,9 +157,11 @@ export async function startContinuousMicrophone(options: {
   ).MediaStreamTrackProcessor;
   if (!Constructor) throw new Error('연속 마이크 입력을 지원하지 않는 실행 환경입니다.');
   const clone = options.track.clone(),
-    // Bound roughly one second of 10 ms audio blocks so brief renderer work
-    // cannot discard source frames before the reader resumes. Gaps still fail.
-    processor = new Constructor({ track: clone, maxBufferSize: 100 }),
+    // Retain up to five seconds of 10 ms blocks during a renderer stall. The
+    // reader still consumes immediately, so this adds capacity, not latency.
+    // Two 48 kHz stereo inputs need at most about 3.7 MiB for these native
+    // queues. Longer stalls still fail the unchanged source-clock check.
+    processor = new Constructor({ track: clone, maxBufferSize: 500 }),
     reader = processor.readable.getReader();
   const encoder = new ContinuousPcmEncoder();
   let stopped = false,
