@@ -1,7 +1,8 @@
 // Real Electron renderer and authenticated server; synthetic chat, no devices or model calls.
 const { app, BrowserWindow, session } = require('electron');
 const { resolve, join } = require('node:path');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const assert = require('node:assert/strict');
 const base = resolve('artifacts/chat-history-ui-' + Date.now());
@@ -29,8 +30,25 @@ setTimeout(() => {
 }, 90000).unref();
 app.whenReady().then(async () => {
   try {
-    const { startServer } = await import(pathToFileURL(resolve('server/index.js')));
-    const { createStudioSession } = require('../desktop/session.cjs');
+    let sourceRoot = resolve('.');
+    const delivered = process.argv.find((arg) => arg.startsWith('--package='))?.slice(10);
+    if (delivered) {
+      const folder = resolve(delivered);
+      const archive = join(folder, 'resources/app.asar');
+      const manifest = JSON.parse(readFileSync(resolve(folder, '../../manifest.json'), 'utf8'));
+      const { verifyPackageSources } = await import('./lib/package-sources.mjs');
+      report.sourceCheck = await verifyPackageSources(sourceRoot, folder, manifest.sourceManifest);
+      assert.equal(report.sourceCheck.passed, true);
+      report.package = folder;
+      report.archiveSha256 = createHash('sha256')
+        .update(require('original-fs').readFileSync(archive))
+        .digest('hex');
+      report.deliveredExecutable = false;
+      sourceRoot = join(base, 'delivered-source');
+      require('@electron/asar').extractAll(archive, sourceRoot);
+    }
+    const { startServer } = await import(pathToFileURL(join(sourceRoot, 'server/index.js')));
+    const { createStudioSession } = require(join(sourceRoot, 'desktop/session.cjs'));
     service = await startServer({
       port: 0,
       persist: false,
@@ -99,7 +117,7 @@ app.whenReady().then(async () => {
     // The chat-only fixture has no scene input. Keep the renderer's unrelated
     // idle observation loop from invoking even the throwing provider stub.
     await js(
-      `window.fixtureFetch=window.fetch;window.fetch=(url,...args)=>String(url).endsWith('/api/react')?Promise.resolve(new Response(JSON.stringify({skipped:'fixture-no-input'}),{headers:{'Content-Type':'application/json'}})):fixtureFetch(url,...args);void 0`,
+      `window.fixtureFetch=window.fetch;window.chatReceipts=[];window.fetch=(url,...args)=>{if(String(url).endsWith('/api/diagnostics/input-latency/rendered'))chatReceipts.push(...JSON.parse(args[0].body).ids);return String(url).endsWith('/api/react')?Promise.resolve(new Response(JSON.stringify({skipped:'fixture-no-input'}),{headers:{'Content-Type':'application/json'}})):fixtureFetch(url,...args);};void 0`,
     );
     s.start();
     const all = [];
@@ -250,6 +268,19 @@ app.whenReady().then(async () => {
       [newSession.id],
     );
     mark('a late previous-session page cannot reappear after starting a new broadcast');
+    await js(`document.querySelector('.chat-panel .chat-display-control input').click()`);
+    await until(`!document.querySelector('.chat-panel .chat-display-control input').checked`);
+    const hidden = s.addMessage('streamer', '숨긴 발언 표시 확인');
+    s.settings.title = '숨긴 발언 검증';
+    s.publish();
+    await until(`document.body.innerText.includes('숨긴 발언 검증')`);
+    await frames();
+    await count(1);
+    assert.equal(await js(`chatReceipts.includes(${JSON.stringify(hidden.id)})`), false);
+    await js(`document.querySelector('.chat-panel .chat-display-control input').click()`);
+    await count(2);
+    await until(`chatReceipts.includes(${JSON.stringify(hidden.id)})`);
+    mark('hidden streamer lines are acknowledged only after they are actually rendered');
     s.stop();
     s.configure({ ...s.settings, mode: 'rehearsal' });
     s.start();
@@ -268,9 +299,19 @@ app.whenReady().then(async () => {
       oldest.id,
     );
     const latest = s.messages.at(-1);
+    s.settings.title = '대량 채팅 검증 완료';
+    s.publish();
+    await until(`document.body.innerText.includes('대량 채팅 검증 완료')`);
+    await frames();
+    assert.equal(
+      await js(`chatReceipts.includes(${JSON.stringify(latest.id)})`),
+      false,
+      'held-back new chat is not a render receipt',
+    );
     await button('새 채팅 보기 ↓');
     await count(100);
     await frames();
+    await until(`chatReceipts.includes(${JSON.stringify(latest.id)})`);
     assert.equal(
       await js(
         `Array.from(document.querySelectorAll('.chat-scroll .chat-line')).at(-1).dataset.messageId`,

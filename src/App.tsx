@@ -150,11 +150,6 @@ export function App() {
   );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
-  useChatReceipt(
-    state?.sessionId || null,
-    state?.messages.slice(-100).map((message) => message.id) || [],
-    !overlay && tab === 'studio' && !!state?.running,
-  );
   const subscriptionStartPending = useRef(false);
   const broadcastAfterCapture = useRef(false);
   useEffect(() => {
@@ -173,6 +168,18 @@ export function App() {
     state?.sessionId || '',
   );
   const chatHistory = useChatHistory(state, !overlay, chatFollow.preserve);
+  useChatReceipt(
+    state?.sessionId || null,
+    chatHistory.messages
+      .filter(
+        (message) =>
+          state?.settings.showStreamerMessages !== false ||
+          (message.kind !== 'streamer' && message.personaId !== 'streamer'),
+      )
+      .slice(-100)
+      .map((message) => message.id),
+    !overlay && tab === 'studio' && !!state?.running,
+  );
   useEffect(() => {
     if (state && initialGuide === null) setInitialGuide(state.onboarding?.status === 'new');
   }, [state, initialGuide]);
