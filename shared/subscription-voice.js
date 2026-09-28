@@ -39,6 +39,20 @@ const Turn = z.object({
     .superRefine(interval),
 });
 export const SubscriptionInputEvent = z.union([Fragment, Turn]);
+export const SubscriptionStopRequest = z
+  .object({
+    inputEpoch: z.string().uuid(),
+    reason: z
+      .enum([
+        'capture-stopped',
+        'capture-failed',
+        'source-ended',
+        'transport-failed',
+        'controller-aborted',
+      ])
+      .default('capture-stopped'),
+  })
+  .strict();
 export const normalizedTranscript = (text) =>
   text.normalize('NFC').replace(/[\s.,!?…。，！？]+/gu, '');
 
@@ -158,22 +172,40 @@ export class SubscriptionTranscript {
     const finalTurn = [...this.turns.values()].find(
       (turn) => turn.final && turn.startMs <= first.startMs && turn.endMs >= last.endMs,
     );
+    const completeTurn =
+      finalTurn &&
+      finalTurn.text.trim() &&
+      finalTurn.text.length <= 2800 &&
+      finalTurn.endMs - finalTurn.startMs <= 6000 &&
+      [...this.fragments.values()]
+        .filter((item) => item.startMs >= finalTurn.startMs && item.endMs <= finalTurn.endMs)
+        .every((item) => group.some((pending) => pending.id === item.id));
+    const unfinished = /[가-힣]$|\[[^\]]*$/u.test(
+      group
+        .map((item) => item.text)
+        .join('')
+        .trim(),
+    );
     if (
       group.length === this.pending.length &&
       !finalTurn &&
-      at - last.receivedAt < 1000 &&
+      at - last.receivedAt < (unfinished ? 2000 : 1000) &&
       last.endMs - first.startMs < 4000
     )
       return null;
     return {
       ids: group.map((item) => item.id),
-      text: group.map((item) => item.text).join(''),
-      startMs: first.startMs,
-      endMs: last.endMs,
+      text: completeTurn ? finalTurn.text : group.map((item) => item.text).join(''),
+      startMs: completeTurn ? finalTurn.startMs : first.startMs,
+      endMs: completeTurn ? finalTurn.endMs : last.endMs,
       observedAt: Math.min(...group.map((item) => item.receivedAt)),
-      observedThroughAt: Math.max(...group.map((item) => item.receivedAt)),
+      observedThroughAt: Math.max(
+        ...group.map((item) => item.receivedAt),
+        completeTurn ? finalTurn.receivedAt : 0,
+      ),
       final: !!finalTurn,
       providerTurnId: finalTurn?.id,
+      ...(completeTurn ? { finalFallback: true } : {}),
     };
   }
   acknowledge(ids, finalTurnId) {

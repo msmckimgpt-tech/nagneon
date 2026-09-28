@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {assembleSpeech} from '../shared/speech-content.js';
 
 function consecutiveSubscriptionSpeech(previous, next) {
   const before=previous?.capture?.voice,after=next.capture?.voice;
@@ -37,7 +38,7 @@ export class SpeechInbox {
       if(size+next>3000||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch&&!subscriptionBatch))))break;
       audience=key;size+=next;items.push(item);
     }
-    return {text:items.map(e=>e.text).join('\n'),ids:items.map(e=>e.id)};
+    return {...assembleSpeech(items),ids:items.map(e=>e.id)};
   }
   acknowledge(ids){const done=new Set(ids);this.pending=this.pending.filter(e=>!done.has(e.id));}
   sources(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)).map(({messageId,text,source,capture,hearers})=>({messageId,text,source,hearers:[...hearers],...(capture?{capture:structuredClone(capture)}:{})}));}

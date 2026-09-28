@@ -288,6 +288,7 @@ export class SubscriptionVoice {
       ),
     });
     s.frame += entry.frameCount;
+    s.lastInputAt = this.now();
     for (const [frame, context] of s.contexts)
       if (context.capture.endedAt < this.now() - SCREEN_RETENTION) s.contexts.delete(frame);
   }
@@ -479,6 +480,7 @@ export class SubscriptionVoice {
       if (!this.isRunActive(run)) return;
       await this.receivePlan(plan, s);
       if (!this.isRunActive(run)) return;
+      s.lastMeaningAt = this.now();
       await this.record(s, {
         type: 'published',
         runId: run.id,
@@ -1036,7 +1038,11 @@ export class SubscriptionVoice {
       active: !!s?.active,
       stage: s?.stage || 'stopped',
       error: this.error,
-      ...(s ? { inputEpoch: s.inputEpoch, startedAt: s.startedAt } : {}),
+      ...(s ? { inputEpoch: s.inputEpoch, startedAt: s.startedAt,
+        ...(s.stopReason ? { stopReason: s.stopReason, stoppedAt: s.stoppedAt } : {}),
+        ...(s.lastMeaningAt ? { lastMeaningAt: s.lastMeaningAt } : {}),
+        ...(s.lastInputAt ? { lastInputAt: s.lastInputAt } : {}),
+      } : {}),
       captured: s?.frame || 0,
       durable: s?.durable || 0,
       pending: unresolved.length,

@@ -183,14 +183,38 @@ test('signals require a recent accepted witness of this visit, not stale or seco
   apply([f.id], before.lastSignalAt); assert.equal(f.state().lastGame, '');
 });
 
-test('stale high excitement decays and cannot permanently agitate viewers', () => {
+test('enjoyable excitement supports engagement without becoming overload or cancelling schedules', () => {
   const f = fixture();
-  f.a.observePresence({ excitement: 1 }, [f.id], f.at(), f.at());
+  f.a.observePresence({ excitement: 1, positiveMoment: { positive: true, supporters: [f.id] } }, [f.id], f.at(), f.at());
+  assert.equal(f.state().signalStimulation, 0); assert.equal(f.state().engagement, 1);
+  const plain = departureRates(f.state().traits, { seconds: 5000 }), happy = departureRates(f.state().traits, { seconds: 5000, engagement: 1 });
+  assert.equal(happy['personal-schedule'], plain['personal-schedule']);
+  assert.ok(happy.rest < plain.rest);
+});
+
+test('stale delivered chat pressure decays and cannot permanently agitate viewers', () => {
+  const f = fixture();
+  f.a.observePresence({ excitement: 1 }, [f.id], f.at(), f.at(), { chatActivity: Array.from({ length: 20 }, () => ({ kind: 'chat', time: f.at() })) });
   for (let i = 0; i < 40; i++) f.advance();
   const stimulated = f.state().stimulation; assert.ok(stimulated > .2);
   f.state().target = Infinity;
   for (let i = 0; i < 180; i++) f.advance();
   assert.ok(f.state().stimulation < stimulated / 3);
+});
+
+test('four-hour scene excitement alone does not force more departures and visits preserve records', () => {
+  const quiet = fixture({ id: 'long-watch' }), excited = fixture({ id: 'long-watch' });
+  for (let i = 0; i < 4 * 60 * 12; i++) {
+    for (const [f, excitement] of [[quiet, 0], [excited, 1]]) {
+      f.a.observePresence({ excitement }, [f.id], f.at(), f.at());
+      f.advance(5);
+    }
+  }
+  assert.deepEqual(excited.member().presenceMemory, quiet.member().presenceMemory);
+  assert.deepEqual(excited.member().memories, ['합성 기억']);
+  assert.equal(excited.member().note, '합성 메모');
+  if (excited.member().presenceMemory.lastDeparture.reason === 'personal-schedule')
+    assert.equal(excited.member().presenceMemory.lastDeparture.mayReturn, false);
 });
 
 test('a returned viewer cannot emit queued social actions of an earlier visit', () => {

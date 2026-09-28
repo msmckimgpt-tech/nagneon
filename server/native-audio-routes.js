@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SubscriptionStopRequest } from '../shared/subscription-voice.js';
 
 export function nativeAudioRoutes(app, audio, studio) {
   app.post('/api/native-audio/config', async (req, res) => {
@@ -64,12 +65,12 @@ export function nativeAudioRoutes(app, audio, studio) {
     res.json({ ok: true });
   });
   app.post('/api/native-audio/stop', (req, res) => {
-    const { inputEpoch } = z.object({ inputEpoch: z.string().uuid() }).strict().parse(req.body);
+    const { inputEpoch, reason } = SubscriptionStopRequest.parse(req.body);
     if (
       audio.session?.inputEpoch === inputEpoch ||
       audio.subscription.session?.inputEpoch === inputEpoch
     )
-      void audio.stop();
+      void audio.stop(reason);
     res.json(audio.snapshot());
     studio.publish();
   });

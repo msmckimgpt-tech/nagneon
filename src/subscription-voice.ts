@@ -7,6 +7,8 @@ type Recovery = {
   startedAt: number;
   leadMs: number;
 };
+type StopReason =
+  'capture-stopped' | 'capture-failed' | 'source-ended' | 'transport-failed' | 'controller-aborted';
 type Options = {
   endpoint?: 'native-audio' | 'subscription-sound';
   inputEpoch: string;
@@ -20,6 +22,7 @@ type Options = {
 // The provider uses a bidirectional RTP session. Incoming tracks are disabled
 // and stopped, and no audio element or speaker destination is ever created.
 export class SubscriptionVoiceStream {
+  stopReason: StopReason | null = null;
   private pc: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
   private sender: RTCRtpSender | null = null;
@@ -41,7 +44,7 @@ export class SubscriptionVoiceStream {
   private options: Options;
   constructor(options: Options) {
     this.options = options;
-    this.abort = () => this.close();
+    this.abort = () => this.close('controller-aborted');
     options.signal.addEventListener('abort', this.abort, { once: true });
   }
   private async request<T>(path: string, body: unknown, timeoutMs = 5000): Promise<T> {
@@ -130,6 +133,7 @@ export class SubscriptionVoiceStream {
   async attach(track: MediaStreamTrack) {
     if (this.closed || !this.sender) throw new Error('구독 음성 연결이 종료됐습니다.');
     this.track = track.clone();
+    this.track.onended = () => this.fail('음성 입력 장치가 종료됐습니다.', 'source-ended');
     await this.sender.replaceTrack(this.track);
     if (this.closed) {
       this.track.stop();
@@ -307,14 +311,15 @@ export class SubscriptionVoiceStream {
       this.sending = false;
     }
   }
-  private fail(message: string) {
+  private fail(message: string, reason: StopReason = 'transport-failed') {
     if (this.failed || this.closed) return;
     this.failed = true;
-    this.close();
+    this.close(reason);
     this.options.onError(message);
   }
-  close() {
+  close(reason: StopReason = 'capture-stopped') {
     if (this.closed) return;
+    this.stopReason = reason;
     this.closed = true;
     this.replay?.close();
     this.replay = null;
@@ -348,7 +353,7 @@ export class SubscriptionVoiceStream {
                 inputEpoch: this.options.ownerEpoch,
                 runId: this.runId || this.options.recovery.runId,
               }
-            : { inputEpoch: this.options.inputEpoch },
+            : { inputEpoch: this.options.inputEpoch, reason },
         ),
         signal: AbortSignal.timeout(2000),
         keepalive: true,

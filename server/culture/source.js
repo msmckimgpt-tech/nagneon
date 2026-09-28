@@ -46,21 +46,25 @@ export async function getPublic(url, { signal, headers = {}, resolve = lookup } 
 }
 
 export function extractDocument(html, base) {
-  const links = [], text = []; let hidden = 0, denied = false, length = 0;
+  const links = [], text = []; let hidden = 0, denied = false, length = 0, linked = 0, proseLength = 0, contentLength = 0;
   const suppress = new Set(['script', 'style', 'noscript', 'form', 'nav', 'footer', 'svg']);
   const parser = new Parser({
     onopentag(name, attrs) {
       if (suppress.has(name)) hidden++;
+      if (name === 'a') linked++;
       if (name === 'meta' && /^(robots|nagneonculture)$/i.test(attrs.name || '') && /noindex|noai|noarchive|nosnippet/i.test(attrs.content || '')) denied = true;
       if (!hidden && ((name === 'a' && attrs.href) || (name === 'link' && /rss|atom/.test(attrs.type || '')))) {
         try { const u = new URL(attrs.href, base); u.hash = ''; if (u.origin === new URL(base).origin && !u.search && !u.username && !/login|sign.?in|logout|admin|download|account|register/i.test(u.pathname)) links.push(u.href); } catch {}
       }
     },
-    onclosetag(name) { if (suppress.has(name)) hidden = Math.max(0, hidden - 1); },
-    ontext(value) { if (!hidden && length < 18000) { text.push(value); length += value.length; } },
+    onclosetag(name) { if (suppress.has(name)) hidden = Math.max(0, hidden - 1); if (name === 'a') linked = Math.max(0, linked - 1); },
+    ontext(value) { if (!hidden && length < 18000) { text.push(value); length += value.length; contentLength += value.trim().length; if (!linked) proseLength += value.trim().length; } },
   }, { decodeEntities: true });
   parser.end(html);
-  return { denied, text: text.join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000), links: [...new Set(links)].slice(0, 40) };
+  const content = text.join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
+  const usable = proseLength >= 20 && proseLength / Math.max(1, contentLength) >= .35 &&
+    !(content.length < 800 && /verify (?:that )?you are human|access denied|enable javascript|로그인.{0,12}(?:필요|하세요)|접근이?\s*(?:제한|차단)/iu.test(content));
+  return { denied, text: content, usable, links: [...new Set(links)].slice(0, 40) };
 }
 
 export async function collectDomain(origin, { signal, request = getPublic, wait = delay } = {}) {
@@ -97,7 +101,7 @@ export async function collectDomain(origin, { signal, request = getPublic, wait 
     if (/noindex|noai|noarchive|nosnippet/i.test(response.headers['x-robots-tag'] || '')) continue;
     const doc = extractDocument(response.body, url);
     if (doc.denied) continue;
-    if (doc.text) documents.push({ url, text: doc.text });
+    if (doc.usable) documents.push({ url, text: doc.text });
     pending.push(...doc.links);
   }
   if (!documents.length) throw Error('수집 가능한 공개 문서가 없습니다.');

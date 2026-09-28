@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SubscriptionVoiceStream } from '../src/subscription-voice.ts';
+import { ContinuousListening } from '../src/continuous-listening.ts';
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));
 function setup(t, handle) {
   const original = { pc: globalThis.RTCPeerConnection, fetch: globalThis.fetch };
@@ -174,6 +175,35 @@ test('cancellation during connection prevents a late ready state and closes owne
   assert.equal(p.peers[0].connectionState, 'closed');
   assert.equal(p.tracks.length, 0);
 });
+test('input source ending and transport failure retain distinct stop causes', async (t) => {
+  const p = setup(t);
+  await p.client.connect();
+  await p.client.attach(p.source);
+  p.tracks[0].onended();
+  assert.equal(p.requests.findLast((r) => r.path.endsWith('/stop')).body.reason, 'source-ended');
+  assert.equal(p.errors.length, 1);
+  const listener = new ContinuousListening({
+    sessionId: '11111111-1111-4111-8111-111111111111',
+    remote: true,
+    track: {},
+    onLevel() {},
+    onTranscript() {},
+    onError() {},
+  });
+  listener.inputEpoch = '22222222-2222-4222-8222-222222222222';
+  listener.subscription = p.client;
+  listener.captureFailure = new Error('input ended');
+  try {
+    listener.stopCapture();
+    assert.deepEqual(
+      p.requests.filter((r) => r.path.endsWith('/stop')).map((r) => r.body.reason),
+      ['source-ended', 'source-ended'],
+    );
+  } finally {
+    listener.close();
+  }
+});
+
 test('input backlog stops the connection and reports a recoverable failure once', async (t) => {
   const p = setup(t);
   await p.client.connect();
@@ -190,4 +220,8 @@ test('input backlog stops the connection and reports a recoverable failure once'
   assert.equal(p.errors.length, 1);
   assert.equal(p.peers[0].connectionState, 'closed');
   assert.equal(p.tracks[0].readyState, 'ended');
+  assert.equal(
+    p.requests.findLast((r) => r.path.endsWith('/stop')).body.reason,
+    'transport-failed',
+  );
 });

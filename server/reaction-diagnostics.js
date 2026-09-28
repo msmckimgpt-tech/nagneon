@@ -3,7 +3,7 @@
 const LIMIT=120;
 const count=n=>Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
 const elapsed=(a,b)=>Math.max(0,b-a);
-const reasons=new Set(['expired','absent','disabled','blocked','duplicate','spoiler','advice','pace','cleared','delivery-error']);
+const reasons=new Set(['expired','absent','disabled','blocked','duplicate','spoiler','advice','pace','cleared','delivery-error','manager-role']);
 const outcomes=new Set(['accepted','stale-screen','stopped','superseded','episode-ended','transcription-review','error']);
 const skips=new Set(['busy','audience-arrival','interval','backoff','older-window','unchanged-input','ended-screen','stale-screen','stopped','superseded','episode-ended']);
 export class ReactionDiagnostics {

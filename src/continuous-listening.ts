@@ -195,7 +195,7 @@ export class ContinuousListening {
         try {
           await this.subscription.connect();
         } catch (error) {
-          this.subscription.close();
+          this.subscription.close('transport-failed');
           throw error;
         }
       }
@@ -244,6 +244,8 @@ export class ContinuousListening {
         startingFrames.length = 0;
         void this.subscription.recover();
       } catch (error) {
+        this.captureFailure =
+          error instanceof Error ? error : new Error('구독 음성 입력을 연결하지 못했습니다.');
         this.stopCapture();
         throw error;
       }
@@ -437,8 +439,10 @@ export class ContinuousListening {
   stopCapture() {
     if (this.captureStopped || this.stoppingCapture) return;
     this.stoppingCapture = true;
+    const reason =
+      this.subscription?.stopReason || (this.captureFailure ? 'capture-failed' : 'capture-stopped');
+    this.subscription?.close(reason);
     this.startController.abort();
-    this.subscription?.close();
     const dispose = this.disposeCapture;
     this.disposeCapture = null;
     dispose?.();
@@ -447,7 +451,7 @@ export class ContinuousListening {
       void fetch(`/api/${this.endpoint}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
-        body: JSON.stringify({ inputEpoch: this.inputEpoch }),
+        body: JSON.stringify({ inputEpoch: this.inputEpoch, reason }),
       }).catch(() =>
         this.report('원격 청취 중단을 확인하지 못했습니다. 방송 종료로 연결을 중단해주세요.'),
       );

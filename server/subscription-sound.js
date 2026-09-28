@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SubscriptionVoice } from './subscription-voice.js';
+import { SubscriptionStopRequest } from '../shared/subscription-voice.js';
 
 // A separate source preserves game dialogue attribution and microphone order.
 // It shares the bounded subscription transport and durable recovery contract.
@@ -71,8 +72,8 @@ export function subscriptionSoundRoutes(app, voice, studio) {
     res.json(voice.heartbeat(value.inputEpoch, value.runId));
   });
   app.post('/api/subscription-sound/stop', async (req, res) => {
-    const value = z.object({ inputEpoch: z.string().uuid() }).strict().parse(req.body);
-    if (voice.session?.inputEpoch === value.inputEpoch) await voice.stop('system-audio-ended');
+    const value = SubscriptionStopRequest.parse(req.body);
+    if (voice.session?.inputEpoch === value.inputEpoch) await voice.stop(value.reason);
     res.json(voice.snapshot());
     studio.publish();
   });

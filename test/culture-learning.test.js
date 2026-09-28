@@ -43,6 +43,26 @@ test('collector observes robots exclusions, crawl delay, and total request budge
   } });
   assert.equal(urls.length, 4); assert.equal(result.documents.length, 3); assert.ok(!urls.some(u => u.endsWith('/blocked'))); assert.deepEqual(waits, [12000, 12000, 12000]);
 });
+test('navigation-only roots are followed but never analysed as community language', async () => {
+  const result = await collectDomain(origin, { wait: async () => {}, request: async (url) => {
+    if (url.endsWith('robots.txt')) return response('');
+    if (url === origin + '/') return response('<nav>로그인 전체 메뉴</nav><a href="/topic">자유 게시판 인기글 목록</a>');
+    return response('<article>합성 게시글입니다. 게임에서 다른 선택을 해 본 이야기가 이어집니다.</article>');
+  } });
+  assert.equal(result.documents.length, 1); assert.equal(result.documents[0].url, origin + '/topic');
+  assert.equal(extractDocument('<a href="/a">게시판 목록 인기글 전체글</a>', origin).usable, false);
+  assert.equal(extractDocument('<article>' + '\n  '.repeat(500) + '합성 게시글입니다. 게임에서 다른 선택을 해 본 이야기가 이어집니다.</article>', origin).usable, true);
+});
+
+test('an empty culture analysis is not usable learning or a live reference', async () => {
+  const f = setup();
+  f.s.provider.react = async () => ({ observation: { cultureAnalysis: { tendencies: '충분한 자료가 없음', patterns: [] }, messages: [] } });
+  f.advance(); await f.run();
+  assert.equal(f.learning.snapshot().sources[0].status, 'no-patterns');
+  assert.equal(f.learning.snapshot().sources[0].patternCount, 0);
+  assert.ok(f.learning.context(defaults.personas).viewers.every((v) => v.references.length === 0));
+});
+
 test('robots unavailable and redirects never bypass restrictions', async () => {
   for (const status of [401, 403, 429, 500, 302]) {
     let calls = 0;

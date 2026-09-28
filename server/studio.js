@@ -27,6 +27,8 @@ import { CultureLearning } from './culture/learning.js';
 import { ClipPerception } from './clip-perception.js';
 import { ViewingContinuity, SCREEN_REACTION_TTL_MS } from './viewing-continuity.js';
 import { donationMessage } from './chat-attention.js';
+import { managerMaySpeak, replySource, repeatsDonation } from './live-response-policy.js';
+import { projectSpeech } from '../shared/speech-content.js';
 import { temporalVideo } from './temporal-video.js';
 import { VIDEO_REACTION_TTL_MS } from '../shared/temporal-policy.js';
 import { sameViewingVisit, retainPresentReactions } from './live-presence.js';
@@ -274,7 +276,7 @@ export class Studio extends EventEmitter {
     );
     if (!result.duplicate) {
       this.inputLatency.receive(id, capture);
-      this.queue = this.queue.filter((m) => m.origin !== 'live');
+      this.clearMomentQueue(text);
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
       if (
@@ -291,6 +293,16 @@ export class Studio extends EventEmitter {
   log(text) {
     this.events.push({ id: randomUUID(), time: this.now(), text });
     this.events = this.events.slice(-60);
+  }
+  clearMomentQueue(speech) {
+    const cancelled = revisesLiveSituation(speech) || adviceIntent(speech).refused;
+    this.queue = this.queue.filter(
+      (m) =>
+        m.origin !== 'live' ||
+        (!cancelled &&
+          m.replySourceId &&
+          this.messages.some((source) => source.id === m.replySourceId)),
+    );
   }
   setChatDisplay(showStreamerMessages) {
     if (typeof showStreamerMessages !== 'boolean')
@@ -476,6 +488,7 @@ export class Studio extends EventEmitter {
       this.journal.forget([id]);
       this.speechInbox.forget(id);
       this.messages = this.messages.filter((m) => m.id !== id);
+      this.queue = this.queue.filter((m) => m.replySourceId !== id);
       this.log('메시지 삭제');
     }
     if (action === 'ban' || action === 'unban') {
@@ -542,6 +555,8 @@ export class Studio extends EventEmitter {
       diagnosticId,
       responseStartedAt,
       externalIds,
+      viewerContext,
+      speech = '',
     } = {},
   ) {
     const obs = Observation.parse(observation);
@@ -573,11 +588,28 @@ export class Studio extends EventEmitter {
       Math.max(0, obs.messages.length - this.settings.chatPace),
     );
     for (const m of obs.messages.slice(0, this.settings.chatPace)) {
-      if (origin === 'live' && Number.isFinite(expiresAt) && this.now() >= expiresAt) {
+      const context = viewerContext?.[m.personaId];
+      const durableReply = origin === 'live' && replySource(m, context, speech);
+      const messageExpiresAt = durableReply ? undefined : expiresAt;
+      if (
+        origin === 'live' &&
+        Number.isFinite(messageExpiresAt) &&
+        this.now() >= messageExpiresAt
+      ) {
         this.reactions.reject(diagnosticId, 'expired');
         continue;
       }
       const p = this.settings.personas.find((p) => p.id === m.personaId && p.enabled);
+      if (
+        origin === 'live' &&
+        this.settings.mode === 'live' &&
+        viewerContext &&
+        p?.id === this.settings.managerId &&
+        !managerMaySpeak(m, context)
+      ) {
+        this.reactions.reject(diagnosticId, 'manager-role');
+        continue;
+      }
       const blocked =
         this.autonomy?.violatesStyleBoundary?.(m.personaId, m.text) ||
         (origin === 'live' && isPlayfulPushbackText(m.text) && !banterAllowed?.[m.personaId]) ||
@@ -625,6 +657,7 @@ export class Studio extends EventEmitter {
         ...(loreIds?.length ? { loreIds } : {}),
         ...(externalIds?.length ? { externalIds } : {}),
         ...(diagnosticId ? { diagnosticId } : {}),
+        ...(durableReply ? { replySourceId: durableReply.id } : {}),
         ...(m.advice && adviceRequestId ? { adviceRequestId } : {}),
         ...(origin === 'live' && this.settings.mode === 'live'
           ? {
@@ -633,7 +666,7 @@ export class Studio extends EventEmitter {
             }
           : {}),
         ...(screenSourceId ? { screenSourceId } : {}),
-        ...(Number.isFinite(expiresAt) ? { expiresAt } : {}),
+        ...(Number.isFinite(messageExpiresAt) ? { expiresAt: messageExpiresAt } : {}),
         createdAt: this.now(),
         kind: m.kind === 'notice' && p.id === this.settings.managerId ? 'notice' : 'chat',
         due: this.now() + delay,
@@ -669,8 +702,10 @@ export class Studio extends EventEmitter {
         absent =
           this.settings.mode === 'live' &&
           !sameViewingVisit(this.audience, m.personaId, m.viewingVisit);
-      if (expired || absent) {
-        this.reactions.drop(m.diagnosticId, expired ? 'expired' : 'absent');
+      const removedSource =
+        m.replySourceId && !this.messages.some((source) => source.id === m.replySourceId);
+      if (expired || absent || removedSource) {
+        this.reactions.drop(m.diagnosticId, expired ? 'expired' : absent ? 'absent' : 'cleared');
         return false;
       }
       return true;
@@ -692,6 +727,10 @@ export class Studio extends EventEmitter {
     }
     if (m.meme && !this.culture.canUse(m.personaId)) {
       this.reactions.drop(m.diagnosticId, 'expired');
+      return;
+    }
+    if (m.origin === 'live' && repeatedChat(m, this.messages.slice(-60), now)) {
+      this.reactions.drop(m.diagnosticId, 'duplicate');
       return;
     }
     this.lastSpeaker.set(m.personaId, now);
@@ -768,6 +807,10 @@ export class Studio extends EventEmitter {
     if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
     const speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
     speech = speechBatch.text;
+    if (!speech.trim() && speechBatch.ids.length && speechBatch.nonverbal?.length) {
+      this.speechInbox.acknowledge(speechBatch.ids);
+      return { ok: true, nonSpeech: true };
+    }
     const uncertain = this.speechInbox
       .sources(speechBatch.ids)
       .filter(
@@ -822,7 +865,7 @@ export class Studio extends EventEmitter {
         !speechBatch.ids.length &&
         !(this.messages.at(-1)?.kind === 'streamer' && this.messages.at(-1)?.text === speech)
       ) {
-        this.queue = this.queue.filter((m) => m.origin !== 'live');
+        this.clearMomentQueue(speech);
         this.addMessage('streamer', speech, 'streamer');
       }
       if (this.settings.mode === 'rehearsal') {
@@ -1199,12 +1242,15 @@ export class Studio extends EventEmitter {
         : viewerKnowledgeByPersona(this.knowledge.get(name, game.popularity), eligiblePersonas, {
             popularity: game.popularity,
           });
-    const liveSpeech = witnessedSpeech(this.speechInbox.sources(speechBatch.ids), {
-      sessionId: this.sessionId,
-      now: this.now(),
-      joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
-      endedSources: this.endedVideoSources,
-    });
+    const liveSpeech = witnessedSpeech(
+      this.speechInbox.sources(speechBatch.ids).map(projectSpeech),
+      {
+        sessionId: this.sessionId,
+        now: this.now(),
+        joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
+        endedSources: this.endedVideoSources,
+      },
+    );
     operation.speechSourceIds = new Set(
       liveSpeech.map((s) => s.capture?.screen?.sourceId).filter(Boolean),
     );
@@ -1317,6 +1363,8 @@ export class Studio extends EventEmitter {
           ),
           advicePolicy,
           expiresAt: capturedAt + SCREEN_REACTION_TTL_MS,
+          viewerContext: personalContext.viewerContext,
+          speech,
         },
       );
       this.viewing.acknowledge(viewing);
@@ -1352,7 +1400,9 @@ export class Studio extends EventEmitter {
       advicePolicy,
       adviceRequestId,
       screenSourceId: screenTimeline?.sourceId,
-      ...(operation.hasSpeech ? {} : { expiresAt: visualExpiresAt }),
+      expiresAt: visualExpiresAt,
+      viewerContext: personalContext.viewerContext,
+      speech,
     });
     this.recordReactionExperience({
       observation,
@@ -1365,6 +1415,8 @@ export class Studio extends EventEmitter {
       capturedAt,
       personalContext,
       game,
+      diagnosticId,
+      stale: this.now() >= visualExpiresAt,
     });
   }
   recordReactionExperience({
@@ -1378,18 +1430,34 @@ export class Studio extends EventEmitter {
     capturedAt,
     personalContext,
     game,
+    diagnosticId,
+    stale = false,
   }) {
     this.audience.observePresence(observation, witnesses, capturedAt, this.now(), {
       visual: !!image,
+      chatActivity: this.messages.slice(-60),
     });
     const donations = this.economy.reward({
       observation,
       settings: this.settings,
       audience: this.audience,
-      hasInput: !chatDriven && (!!image || !!speech),
+      hasInput: !stale && !chatDriven && (!!image || !!speech),
       paid: false,
     });
     for (const d of donations) this.publishMessage(donationMessage(d));
+    // The public projection deliberately hides anonymous donors. Resolve the
+    // matching receipt only here, never in a provider packet or public message.
+    const donated = donations.map((d) => this.economy.data.ledger.find((e) => e.id === d.id));
+    if (donated.length)
+      this.queue = this.queue.filter((m) => {
+        if (
+          m.diagnosticId !== diagnosticId ||
+          !donated.some((d) => repeatsDonation(m, d, this.now()))
+        )
+          return true;
+        this.reactions.drop(m.diagnosticId, 'duplicate');
+        return false;
+      });
     if (this.autonomy) {
       const clipSpeech = this.speechInbox.sources(speechBatch.ids);
       const styleSourceId = speechBatch.ids.length
