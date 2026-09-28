@@ -12,6 +12,7 @@ import { SpecialFeatures } from './special-features.js';
 import { Clips, ClipFeatures } from './clips.js';
 import { SoundScene } from './sound-scene.js';
 import { ConversationJournal } from './conversation-journal.js';
+import { ChatHistory } from './chat-history.js';
 import { AudienceAutonomy } from './audience-autonomy.js';
 import { Ambient } from './ambient.js';
 import { requestsAdvice, adviceIntent, liveAdvicePolicy } from './advice-intent.js';
@@ -67,6 +68,7 @@ export class Studio extends EventEmitter {
     this.knowledge = knowledge;
     this.running = false;
     this.messages = [];
+    this.chatHistory = new ChatHistory(this);
     this.events = [];
     this.queue = [];
     this.controller = new AbortController();
@@ -203,7 +205,8 @@ export class Studio extends EventEmitter {
       running: this.running,
       sessionId: this.sessionId,
       startedAt: this.startedAt,
-      messages: this.messages,
+      messages: this.messages.map((message) => this.chatHistory.message(message)),
+      chatHistory: this.chatHistory.snapshot(),
       events: this.events,
       observation: this.observation,
       ai: this.ai.snapshot(),
@@ -375,6 +378,7 @@ export class Studio extends EventEmitter {
     this.messages = [];
     this.events = [];
     this.resetCounters();
+    this.chatHistory.reset();
     try {
       if (this.settings.mode === 'live') this.social.startLive();
       this.running = true;
@@ -454,6 +458,7 @@ export class Studio extends EventEmitter {
     };
   }
   publishMessage(msg, { witnesses = this.presentWitnesses(), publishState = true } = {}) {
+    this.chatHistory.record(msg);
     this.messages.push(msg);
     if (this.running && this.settings.mode === 'live')
       try {
@@ -488,6 +493,7 @@ export class Studio extends EventEmitter {
       this.journal.forget([id]);
       this.speechInbox.forget(id);
       this.messages = this.messages.filter((m) => m.id !== id);
+      this.chatHistory.invalidate();
       this.queue = this.queue.filter((m) => m.replySourceId !== id);
       this.log('메시지 삭제');
     }
@@ -517,6 +523,7 @@ export class Studio extends EventEmitter {
     }
     if (action === 'clear') {
       this.journal.forget(this.messages.map((m) => m.id));
+      this.chatHistory.invalidate({ clear: true });
       this.speechInbox.clear();
       this.messages = [];
       this.queue = [];

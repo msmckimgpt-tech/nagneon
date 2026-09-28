@@ -956,6 +956,18 @@ async function startServerImpl(
       ),
     ),
   );
+  app.get('/api/chat/history', (req, res) => {
+    const query = z
+      .object({
+        sessionId: z.string().uuid(),
+        revision: z.coerce.number().int().min(0),
+        before: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(100),
+      })
+      .strict()
+      .parse(req.query);
+    res.set('Cache-Control', 'no-store').json(studio.chatHistory.page(query));
+  });
   app.post(
     '/api/react',
     express.raw({ type: FRAME_WIRE_TYPE, limit: FRAME_JSON_LIMIT }),

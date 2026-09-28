@@ -61,6 +61,7 @@ import { ReactionDiagnostics } from './ReactionDiagnostics';
 import { ChatBriefing } from './ChatBriefing';
 import { useMedia } from './useMedia';
 import { useChatFollow } from './useChatFollow';
+import { useChatHistory } from './useChatHistory';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
 import { createNavigationHistory, type NavigationDirection } from '../shared/navigation-history.js';
@@ -80,7 +81,7 @@ const ChatLine = memo(function ChatLine({
   managerId: string;
 }) {
   return (
-    <div className={'chat-line ' + message.kind}>
+    <div className={'chat-line ' + message.kind} data-message-id={message.id}>
       <span className="chat-time">{time(message.time)}</span>
       <div>
         <strong style={{ color: message.color }}>
@@ -171,6 +172,7 @@ export function App() {
     state?.messages.at(-1)?.id || '',
     state?.sessionId || '',
   );
+  const chatHistory = useChatHistory(state, !overlay, chatFollow.preserve);
   useEffect(() => {
     if (state && initialGuide === null) setInitialGuide(state.onboarding?.status === 'new');
   }, [state, initialGuide]);
@@ -250,7 +252,8 @@ export function App() {
     manager = s.personas.find((p) => p.id === s.managerId);
   const showMessage = (m: Message) =>
     s.showStreamerMessages !== false || (m.kind !== 'streamer' && m.personaId !== 'streamer');
-  const shownMessages = state.messages.filter(showMessage);
+  const shownMessages = chatHistory.messages.filter(showMessage);
+  const liveMessageIds = new Set(state.messages.map((message) => message.id));
   const present =
     state.running && s.mode === 'live'
       ? active.filter((p) => ['active', 'lurking'].includes(state.audience.presence[p.id]))
@@ -985,6 +988,22 @@ export function App() {
                       </div>
                     </div>
                     <div className="chat-scroll">
+                      {state.sessionId && (
+                        <div className="chat-history-controls">
+                          {chatHistory.hasMore ? (
+                            <button
+                              className="secondary"
+                              disabled={chatHistory.loading}
+                              onClick={() => void chatHistory.loadMore()}
+                            >
+                              {chatHistory.loading ? '이전 채팅 불러오는 중…' : '이전 채팅 더보기'}
+                            </button>
+                          ) : chatHistory.messages.length > 0 ? (
+                            <p className="muted">보관된 이전 채팅을 모두 불러왔어요.</p>
+                          ) : null}
+                          {chatHistory.error && <p role="alert">{chatHistory.error}</p>}
+                        </div>
+                      )}
                       {shownMessages.length === 0 && (
                         <div className="chat-empty">
                           <MessageCircle size={30} />
@@ -998,13 +1017,19 @@ export function App() {
                           message={m}
                           moderate={moderate}
                           managerId={s.managerId}
-                          onInsight={showInsight}
+                          onInsight={liveMessageIds.has(m.id) ? showInsight : undefined}
                         />
                       ))}
                       <div ref={chatEnd} />
                     </div>
-                    {chatFollow.unread && (
-                      <button className="chat-jump" onClick={chatFollow.jump}>
+                    {(chatFollow.unread || chatHistory.pausedTail) && (
+                      <button
+                        className="chat-jump"
+                        onClick={() => {
+                          chatHistory.showLatest();
+                          chatFollow.jump();
+                        }}
+                      >
                         새 채팅 보기 ↓
                       </button>
                     )}

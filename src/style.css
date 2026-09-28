@@ -772,6 +772,18 @@ main {
   min-height: 0;
   overflow: auto;
   padding: 8px 16px;
+  overflow-anchor: none;
+}
+.chat-history-controls {
+  text-align: center;
+  padding: 4px 0;
+}
+.chat-history-controls button {
+  width: 100%;
+}
+.chat-history-controls p {
+  font-size: 11px;
+  margin: 8px 0;
 }
 .chat-empty {
   height: 100%;

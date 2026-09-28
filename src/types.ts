@@ -72,6 +72,7 @@ export type Settings = {
   games: Game[];
 };
 export type Message = {
+  historySequence?: number;
   donation?: { amount: number; anonymous: boolean };
   transcription?: {
     source: 'microphone';
@@ -232,6 +233,7 @@ export type State = BroadcastSessionState & {
   };
   startedAt: number | null;
   messages: Message[];
+  chatHistory?: { revision: number; hasMore: boolean };
   events: { id: string; time: number; text: string }[];
   observation: {
     game: string;
