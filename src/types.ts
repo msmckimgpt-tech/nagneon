@@ -211,6 +211,8 @@ export type State = BroadcastSessionState & {
       checkedAt: number;
       analyzedAt: number;
       error: string;
+      patternCount: number;
+      status: 'unavailable' | 'uncollected' | 'no-patterns' | 'stale' | 'ready';
     }[];
   };
   audience: {
