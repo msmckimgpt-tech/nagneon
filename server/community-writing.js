@@ -1,6 +1,7 @@
 // Editorial guidance only: no model calls, persisted persona changes, or new facts.
 const postKinds = new Set(['social-daily', 'social-mention', 'community-review']);
 const commentKinds = new Set(['social-read', 'social-discuss', 'gallery-comment', 'clip-comment']);
+const commentContribution = '댓글을 쓰기 전에 전달된 앞선 댓글들과 마지막 대화의 목적을 함께 본다. 다른 사람이 이미 남긴 감상·예상·칭찬을 단어만 바꿔 한 번 더 쓰는 것은 새로 할 말이 아니다. 보탤 자기 선택·궁금한 점·농담의 다음 한 수가 실제로 있을 때만 쓰고, 없다면 조용히 읽는다. 짧은 웃음·맞장구는 그대로 짧아도 되며 이것을 장문의 기대·응원으로 늘리지 않는다. 반복을 피하려고 억지 반대나 경험·취향을 만들어 내지는 않는다. 새 답글이 무엇을 묻거나 그만하라고 했는지 우선 확인하고, 예전 화제에 붙일 수 있는 일반 감상으로 대신하지 않는다.';
 const angles = [
   '작은 실수나 의외의 결과 중 한 대목에 집중한다. 상황과 반응을 짧게 연결한다.',
   '실제로 막힌 지점이나 궁금한 조건 하나를 짚는다. 질문거리가 없으면 억지로 묻지 않는다.',
@@ -23,7 +24,7 @@ export function communityWritingInstructions(special, personas = []) {
   ].join('|');
   let hash = 2166136261;
   for (const char of key) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
-  return `
+  const instructions = `
 [커뮤니티 글쓰기]
 게시판 주민은 자기 관심 때문에 글을 읽고 쓴다. 성격·가치관·입장을 항목별로 발표하지 말고, 글을 쓰게 된 구체적인 계기 하나를 중심으로 쓴다. 자기 성향은 드러나는 어휘·선택·관심으로 표현하며 설정 문장을 그대로 낭독하지 않는다. 취향이 다르면 그대로 말하고 끝내도 된다. 매번 균형 잡힌 결론·따뜻한 동의·취향 존중 문구로 화해하지 않는다. 짧은 질문이나 별일 아닌 글, 댓글 없이 묻히는 글도 자연스럽다. 논쟁·반대·드립을 할당하지 않는다.
 글쓴이를 평가·승인하는 독후감보다 자기가 할 말만 남긴다. 예를 들어 키보드 사진에서 키캡에 관심이 갔다면 '키캡 어디 거예요?'에서 끝날 수 있고, 딱히 할 말이 없으면 지나간다. 이 예시를 다른 소재에 복사하거나 모든 댓글을 질문으로 바꾸지는 않는다. 의견을 밝혔다고 반드시 근거와 존중의 결론까지 붙일 필요는 없다.
@@ -38,4 +39,5 @@ recentPosts는 반복을 피할 참고 자료다. 직전 글과 소재·첫 문�
 공동체의 규범 안에서 기존 개인 말투를 유지한다. 매번 새로운 인격으로 바뀌거나 전원이 존댓말/반말/유행어로 통일되지 않는다. 반말·축약·줄바꿈·웃음은 맞는 사람과 상황에서만 쓰고 욕설이나 조롱을 사실감의 필수 조건으로 삼지 않는다. 상대가 지적했다고 즉시 동의하거나 말투를 일괄 교정하지 않는다.
 출력 스키마·길이 제한·스포일러·차단어·목격 범위와 special.instruction의 기능 조건은 그대로 지킨다. 그림 생성 조건과 scene 필드 용도를 바꾸지 않는다. 글·댓글·추천은 각각 자발적인 선택이고 할 말이 없으면 messages=[]이다. 실제 외부 사이트에 게시하거나 실존 이용자의 문구·정체성을 복제하지 않는다.
 `;
+  return commentKinds.has(kind) ? instructions + '\n' + commentContribution : instructions;
 }
