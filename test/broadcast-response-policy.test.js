@@ -60,33 +60,43 @@ function fixture(t, react) {
 }
 
 for (const anonymous of [false, true])
-  test(`same-request paraphrased gift and chat publish once; anonymous=${anonymous}`, async (t) => {
-    const f = fixture(t, async () => ({
-      observation: observation([chat('마침내 저 입구 뚫었네!')], gift(anonymous)),
-    }));
-    await f.s.react({ speech: '이제 다음 방으로 갈 수 있겠네.' });
-    f.advance(2000);
-    f.s.pump();
-    const gifts = f.s.messages.filter((m) => m.kind === 'donation');
-    assert.equal(gifts.length, 1);
-    assert.equal(f.s.messages.filter((m) => m.kind === 'chat').length, 0);
-    assert.equal(f.s.reactions.snapshot(f.s.queue).summary.rejected.duplicate, 1);
-    if (anonymous) {
-      assert.equal(gifts[0].personaId, 'anonymous');
-      assert.ok(!JSON.stringify(gifts).includes('pop'));
-    }
-  });
+  for (const donationFollowup of [false, true])
+    test(`same-request paraphrased gift and chat publish once; anonymous=${anonymous}, followup=${donationFollowup}`, async (t) => {
+      const f = fixture(t, async () => ({
+        observation: observation(
+          [chat('마침내 저 입구 뚫었네!', { donationFollowup })],
+          gift(anonymous),
+        ),
+      }));
+      await f.s.react({ speech: '이제 다음 방으로 갈 수 있겠네.' });
+      f.advance(2000);
+      f.s.pump();
+      const gifts = f.s.messages.filter((m) => m.kind === 'donation');
+      assert.equal(gifts.length, 1);
+      assert.equal(f.s.messages.filter((m) => m.kind === 'chat').length, 0);
+      assert.equal(f.s.reactions.snapshot(f.s.queue).summary.rejected.duplicate, 1);
+      if (anonymous) {
+        assert.equal(gifts[0].personaId, 'anonymous');
+        assert.ok(!JSON.stringify(gifts).includes('pop'));
+      }
+    });
 
-test('an additional detail survives a gift; failed and silent gifts do not consume chat', async (t) => {
+test('a witnessed answer survives a gift; failed and silent gifts do not consume chat', async (t) => {
   for (const mode of ['followup', 'disabled', 'silent']) {
-    const f = fixture(t, async () => ({
+    const f = fixture(t, async (args) => ({
       observation: observation(
-        [chat('왼쪽 스위치는 그대로 켜져 있네', { donationFollowup: mode === 'followup' })],
+        [
+          chat('왼쪽 스위치는 그대로 켜져 있네', {
+            donationFollowup: mode === 'followup',
+            intent: 'reply',
+            replyTo: args.viewerContext.pop.chatHistory.findLast((m) => m.kind === 'streamer').id,
+          }),
+        ],
         gift(false, mode === 'silent' ? '' : '열렸다!'),
       ),
     }));
     if (mode === 'disabled') f.s.settings.pointsEnabled = false;
-    await f.s.react({ speech: '다음 방이다' });
+    await f.s.react({ speech: '팝콘, 어느 스위치가 켜져 있어?' });
     f.advance(2000);
     f.s.pump();
     assert.ok(
@@ -94,14 +104,61 @@ test('an additional detail survives a gift; failed and silent gifts do not consu
       mode,
     );
   }
+  const source = { id: randomUUID(), kind: 'streamer', text: '어느 문이 열렸어?' };
   assert.equal(
     repeatsDonation(
-      chat('열렸다!', { donationFollowup: true }),
-      { personaId: 'pop', text: '열렸다!' },
+      chat('파란 문 열렸어', { donationFollowup: true, intent: 'reply', replyTo: source.id }),
+      { personaId: 'pop', text: '파란 문 열렸어' },
       100,
+      { chatHistory: [source] },
     ),
     true,
   );
+});
+
+test('donation followup labels cannot invent an answer source or a second spontaneous detail', async (t) => {
+  for (const mode of ['invented', 'non-question', 'initiative', 'other-viewer']) {
+    const f = fixture(t, async (args) => ({
+      observation: observation(
+        [
+          chat('아래에 숫자 세 개가 남아 있네', {
+            personaId: mode === 'other-viewer' ? 'gg' : 'pop',
+            donationFollowup: true,
+            intent: mode === 'initiative' || mode === 'other-viewer' ? 'initiative' : 'reply',
+            replyTo:
+              mode === 'invented'
+                ? randomUUID()
+                : args.viewerContext.pop.chatHistory.findLast((m) => m.kind === 'streamer').id,
+          }),
+        ],
+        gift(),
+      ),
+    }));
+    await f.s.react({
+      speech: mode === 'non-question' ? '다음 방이다' : '팝콘, 어느 스위치가 켜져 있어?',
+    });
+    f.advance(2000);
+    f.s.pump();
+    assert.equal(f.s.messages.filter((m) => m.kind === 'donation').length, 1, mode);
+    assert.equal(
+      f.s.messages.filter((m) => m.kind === 'chat').length,
+      mode === 'other-viewer' ? 1 : 0,
+      mode,
+    );
+  }
+  const source = { id: randomUUID(), kind: 'streamer', text: '어느 스위치가 켜져 있어?' };
+  const candidate = chat('왼쪽이야', {
+    donationFollowup: true,
+    intent: 'reply',
+    replyTo: source.id,
+  });
+  const donation = { personaId: 'pop', text: '드디어 다음 구역이다' };
+  assert.equal(repeatsDonation(candidate, donation, 100, { chatHistory: [] }), true);
+  assert.equal(
+    repeatsDonation(candidate, donation, 100, { chatHistory: [{ ...source, fictional: true }] }),
+    true,
+  );
+  assert.equal(repeatsDonation(candidate, donation, 100, { chatHistory: [source] }), false);
 });
 
 test('late mixed input drops moment commentary but delivers a witnessed anchored answer', async (t) => {

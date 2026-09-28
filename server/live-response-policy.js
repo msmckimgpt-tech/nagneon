@@ -36,12 +36,14 @@ export function managerMaySpeak(message, context) {
   );
 }
 
-export function repeatsDonation(message, donation, now) {
+export function repeatsDonation(message, donation, now, context) {
   if (!donation?.text?.trim() || message.personaId !== donation.personaId) return false;
-  // The one inference explicitly distinguishes a genuinely additional detail
-  // from restating its own gift. Keep the lexical guard even for that label.
+  // A published gift consumes this contributor's spontaneous response. The
+  // model's novelty label alone cannot justify a second version of the cheer.
+  // Preserve a witnessed question's answer, with the lexical guard still active.
   return (
     message.donationFollowup !== true ||
+    !replySource(message, context) ||
     repeatedChat(
       message,
       [

@@ -1475,7 +1475,9 @@ export class Studio extends EventEmitter {
       this.queue = this.queue.filter((m) => {
         if (
           m.diagnosticId !== diagnosticId ||
-          !donated.some((d) => repeatsDonation(m, d, this.now()))
+          !donated.some((d) =>
+            repeatsDonation(m, d, this.now(), personalContext.viewerContext[m.personaId]),
+          )
         )
           return true;
         this.reactions.drop(m.diagnosticId, 'duplicate');
