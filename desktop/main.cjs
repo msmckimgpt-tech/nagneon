@@ -47,7 +47,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
         app.relaunch();
       }catch(error){dialog.showErrorBox('저장 위치 변경 실패',error.message+'\n기존 기록은 원래 위치에 보존되어 있습니다. 앱을 다시 실행해주세요.');}
     }
-  });
+  },{onStage:phase=>service?.studio.trace.lifecycle('electron',phase)});
   app.on('second-instance',()=>{if(!shutdown.quitting&&main&&!main.isDestroyed()){main.show();main.focus();}});
   app.whenReady().then(async()=>{
     const prepared=await recovery.prepareProfile({appData:app.getPath('appData'),explicitProfile:profile,dialog});

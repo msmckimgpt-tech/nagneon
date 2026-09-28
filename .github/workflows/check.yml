@@ -40,3 +40,5 @@ jobs:
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-community-scroll.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
       - name: Current broadcast chat pagination and reading position
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-chat-history-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
+      - name: Persistent broadcast flow diagnostic download and failure state
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-broadcast-trace-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"

@@ -73,13 +73,27 @@ report.lifecycle = { spawnedAt };
 child.stdout.on('data', (bytes) => logs.push(bytes));
 child.stderr.on('data', (bytes) => logs.push(bytes));
 let exited = false;
+const evidenceWrites = [];
+const saveLateEvidence = (name, value) => {
+  const saved = writeFile(join(output, name), value).catch(error => {
+    (report.evidenceErrors ||= []).push({ name, message: error.message });
+    process.exitCode = 1;
+    console.error('Lifecycle evidence write failed:', name, error.message);
+  });
+  evidenceWrites.push(saved);
+};
 child.once('exit', (code, signal) => {
   report.lifecycle.processExit = { at: Date.now(), code, signal };
+  // Preserve late completion even if the original 15-second check already
+  // wrote its failure report. Exit and inherited stdio closure are distinct.
+  saveLateEvidence('process-exit.json', JSON.stringify(report.lifecycle, null, 2));
 });
 const closed = once(child, 'close').then(([code]) => {
   exited = true;
   report.exitCode = code;
   report.lifecycle.pipesClosedAt = Date.now();
+  saveLateEvidence('process-close.json', JSON.stringify(report.lifecycle, null, 2));
+  saveLateEvidence('native-complete.log', Buffer.concat(logs));
 });
 // Exercise the Windows title-bar close path. CDP Browser.close can time out
 // without acknowledging shutdown; it is not evidence of a normal user close.
@@ -323,6 +337,8 @@ try {
 } finally {
   if (!exited) await closeNativeWindow().catch(error => { report.cleanupError = error.message; });
   socket?.close();
+  await Promise.all(evidenceWrites);
+  if (report.evidenceErrors?.length) report.passed = false;
   await writeFile(join(output, 'native.log'), Buffer.concat(logs));
   await writeFile(join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));

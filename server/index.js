@@ -35,6 +35,7 @@ import { ClipInspector } from './clip-inspector.js';
 import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
+import { BroadcastTrace } from './broadcast-trace.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
 import { NativeAudio, NativeAudioConfig } from './native-audio.js';
 import { nativeAudioRoutes } from './native-audio-routes.js';
@@ -301,6 +302,7 @@ async function startServerImpl(
     aiControl.storageError =
       'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 사용 기록과 실행 허용 설정을 확인해주세요.';
   studio = new Studio({
+    trace: new BroadcastTrace({ dir: persist ? resolve(dataDir, 'broadcast-trace') : undefined }),
     aiControl,
     cultureLearning: { data: cultureStore.data, save: cultureStore.save },
     provider,
@@ -315,6 +317,8 @@ async function startServerImpl(
     clipPerception: new ClipPerception(runtime),
     storageStatus,
   });
+  studio.trace.lifecycle('service', 'started', undefined, 'startup');
+  onResource(() => studio.trace.lifecycle('service', 'failed', undefined, 'startup'));
   const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
     mode: persist && !hasPreviousSettings ? 'remote' : 'local',
     transport: 'subscription',
@@ -1175,11 +1179,18 @@ async function startServerImpl(
   });
   app.get('/api/diagnostics/reactions', (req, res) => {
     if (req.query.download === 'true') res.attachment('nagneon-reaction-diagnostics.json');
-    res.set('Cache-Control', 'no-store').json(studio.reactions.snapshot(studio.queue));
+    res.set('Cache-Control', 'no-store').json({
+      ...studio.reactions.snapshot(studio.queue),
+      trace: studio.trace.status(),
+    });
   });
   app.get('/api/diagnostics/input-latency', (req, res) => {
     if (req.query.download === 'true') res.attachment('nagneon-input-latency.json');
     res.set('Cache-Control', 'no-store').json(studio.inputLatency.snapshot());
+  });
+  app.get('/api/diagnostics/broadcast-trace', (req, res) => {
+    if (req.query.download === 'true') res.attachment('nagneon-broadcast-trace.json');
+    res.set('Cache-Control', 'no-store').json(studio.trace.snapshot());
   });
   app.post('/api/diagnostics/input-latency/rendered', (req, res) => {
     const value = z
@@ -1192,6 +1203,7 @@ async function startServerImpl(
       .parse(req.body);
     if (value.sessionId !== studio.sessionId) throw new Error('이미 끝난 방송의 표시 기록입니다.');
     studio.inputLatency.rendered(value.ids, value.at);
+    studio.trace.rendered(value.sessionId, value.ids, value.at);
     res.json({ ok: true });
   });
   app.get('/api/export', (_req, res) => {
@@ -1233,6 +1245,7 @@ async function startServerImpl(
         .catch((error) => console.warn('마이크 원음 보존 정리 실패:', error.message));
   }, 60000);
   speechRetention.unref();
+  studio.trace.lifecycle('service', 'completed', undefined, 'startup');
   return {
     server,
     studio,
@@ -1244,33 +1257,49 @@ async function startServerImpl(
     accessToken: access.token,
     close: () => {
       if (closing) return closing;
+      const closingAt = performance.now();
+      studio.trace.lifecycle('service', 'started');
       clearInterval(health);
       clearInterval(speechRetention);
-      obsInput.disconnect();
       // Start every cleanup even if another one fails, and keep the event loop
       // alive until all owned requests have left their cleanup/finally blocks.
-      const invoke = (fn) => {
+      const invoke = (component, fn) => {
+        const started = performance.now();
+        studio.trace.lifecycle(component, 'started');
+        let task;
         try {
-          return Promise.resolve(fn());
+          task = Promise.resolve(fn());
         } catch (error) {
-          return Promise.reject(error);
+          task = Promise.reject(error);
         }
+        return task.then(
+          (value) => {
+            studio.trace.lifecycle(component, 'completed', performance.now() - started);
+            return value;
+          },
+          (error) => {
+            studio.trace.lifecycle(component, 'failed', performance.now() - started);
+            throw error;
+          },
+        );
       };
       const tasks = [
-        invoke(() => nativeAudio.close()),
-        invoke(() => subscriptionSound.close()),
-        invoke(() => runtimeComponents?.close()),
-        requests.close(),
-        invoke(() => tutorial.operation),
-        invoke(() => probe.cancel()),
-        invoke(() => studio.close()),
-        invoke(() => studio.culture.close()),
-        invoke(() => clipInspector.close()),
-        invoke(() => speech.close()),
-        invoke(() => studio.communityActivity.yield()),
-        invoke(() => studio.clipPerception.close()),
-        invoke(() => sound.close()),
+        invoke('obs', () => obsInput.disconnect()),
+        invoke('native-audio', () => nativeAudio.close()),
+        invoke('system-audio', () => subscriptionSound.close()),
+        invoke('runtime-components', () => runtimeComponents?.close()),
+        invoke('requests', () => requests.close()),
+        invoke('tutorial', () => tutorial.operation),
+        invoke('probe', () => probe.cancel()),
+        invoke('studio', () => studio.close()),
+        invoke('culture', () => studio.culture.close()),
+        invoke('clip-inspector', () => clipInspector.close()),
+        invoke('speech', () => speech.close()),
+        invoke('community', () => studio.communityActivity.yield()),
+        invoke('clip-perception', () => studio.clipPerception.close()),
+        invoke('sound', () => sound.close()),
         invoke(
+          'http',
           () =>
             new Promise((done, fail) => {
               server.close((error) => (error ? fail(error) : done()));
@@ -1282,6 +1311,11 @@ async function startServerImpl(
         const errors = results
           .filter((result) => result.status === 'rejected')
           .map((result) => result.reason);
+        studio.trace.lifecycle(
+          'service',
+          errors.length ? 'failed' : 'completed',
+          performance.now() - closingAt,
+        );
         if (errors.length) throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
       });
       return closing;

@@ -74,3 +74,43 @@ test('a fast cleanup waits until the native quit event unwinds before retrying',
   const shutdown=installGracefulQuit(app,()=>Promise.resolve());app.quit();await shutdown.pending;
   assert.deepEqual(exits,[0]);
 });
+
+test('a synchronous OBS disconnect failure does not prevent other shutdown work or hide the pending stage',async()=>{
+  const remaining=deferred(),stages=[];let soundStarted=false;
+  const service=await startServer({port:0,persist:false,localSpeech:false,
+    provider:{status:()=>({configured:true}),react:async()=>{}},
+    soundWorker:{close:async()=>{soundStarted=true;await remaining.promise;}}});
+  service.studio.trace.lifecycle=(component,phase,durationMs)=>stages.push({component,phase,durationMs});
+  service.obsInput.disconnect=()=>{throw Error('synthetic OBS disconnect');};
+  const closing=service.close();
+  const rejection=assert.rejects(closing,error=>error instanceof AggregateError&&error.errors.some(e=>e.message==='synthetic OBS disconnect'));
+  await Promise.resolve();
+  assert.equal(soundStarted,true);
+  assert.ok(stages.some(e=>e.component==='obs'&&e.phase==='failed'));
+  assert.ok(stages.some(e=>e.component==='sound'&&e.phase==='started'));
+  assert.equal(stages.some(e=>e.component==='sound'&&e.phase==='completed'),false);
+  remaining.resolve();await rejection;
+  assert.equal(service.server.listening,false);
+  assert.ok(stages.some(e=>e.component==='sound'&&e.phase==='completed'&&e.durationMs>=0));
+  assert.equal(stages.at(-1).component,'service');assert.equal(stages.at(-1).phase,'failed');
+});
+
+test('native lifecycle distinguishes requesting quit from the actual native quit event',async()=>{
+  const app=appFixture(),cleanup=deferred(),stages=[];
+  const shutdown=installGracefulQuit(app,()=>cleanup.promise,{onStage:stage=>stages.push(stage)});
+  app.quit();app.quit();assert.deepEqual(stages,['started']);
+  cleanup.resolve();await shutdown.pending;
+  assert.deepEqual(stages,['started','quit-requested']);
+  app.emit('quit',{},0);assert.deepEqual(stages,['started','quit-requested','completed']);
+});
+
+test('native lifecycle observers cannot prevent normal exit or replace cleanup errors',async()=>{
+  for(const failed of [false,true]){
+    const app=appFixture(),errors=[];
+    const shutdown=installGracefulQuit(app,()=>{if(failed)throw Error('cleanup');},{
+      onStage:()=>{throw Error('diagnostic observer');},onError:error=>errors.push(error.message),
+    });
+    app.quit();await shutdown.pending;
+    assert.deepEqual(app.exits,[failed?1:0]);assert.deepEqual(errors,failed?['cleanup']:[]);
+  }
+});

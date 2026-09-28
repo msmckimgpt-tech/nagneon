@@ -18,6 +18,7 @@ import { Ambient } from './ambient.js';
 import { requestsAdvice, adviceIntent, liveAdvicePolicy } from './advice-intent.js';
 import { SpeechInbox } from './speech-inbox.js';
 import { InputLatency } from './input-latency.js';
+import { BroadcastTrace } from './broadcast-trace.js';
 import { repeatedChat } from './chat-quality.js';
 import { admitTranscriptCorrection, transcriptAnomaly } from './transcript-correction.js';
 import { revisesLiveSituation } from './streamer-expression.js';
@@ -52,6 +53,7 @@ export class Studio extends EventEmitter {
     clipPerception,
     cultureLearning,
     aiControl,
+    trace,
     storageStatus = () => ({ warnings: [], recovered: [] }),
   } = {}) {
     super();
@@ -61,6 +63,7 @@ export class Studio extends EventEmitter {
     this.settings = Settings.parse(settings);
     this.persist = persist;
     this.now = now;
+    this.trace = trace || new BroadcastTrace({ now });
     this.random = random;
     this.storageStatus = storageStatus;
     this.audience = audience;
@@ -80,7 +83,7 @@ export class Studio extends EventEmitter {
     this.clipFeatures = new ClipFeatures(this, this.clips);
     this.sound = new SoundScene(this);
     this.viewing = new ViewingContinuity();
-    this.reactions = new ReactionDiagnostics(now);
+    this.reactions = new ReactionDiagnostics(now, (row) => this.trace.reaction(row));
     this.inputLatency = new InputLatency(now);
     this.resetCounters();
     this.timer = setInterval(() => this.pump(), 250);
@@ -223,6 +226,7 @@ export class Studio extends EventEmitter {
     };
   }
   publish() {
+    this.trace.observePresence(this.sessionId, this.settings, this.audience);
     this.emit('state', this.state());
   }
   receiveSpeech({
@@ -279,6 +283,7 @@ export class Studio extends EventEmitter {
     );
     if (!result.duplicate) {
       this.inputLatency.receive(id, capture);
+      this.trace.inputReceived(this.sessionId, id, capture, source, result.messageId);
       this.clearMomentQueue(text);
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
@@ -398,10 +403,12 @@ export class Studio extends EventEmitter {
       this.publish();
       throw error;
     }
+    this.trace.session(this.sessionId, true);
     this.log(this.settings.mode === 'live' ? 'AI 방송 시작' : '리허설 시작');
     this.publish();
   }
   stop() {
+    const wasRunning = this.running;
     this.culture.interrupt();
     this.communityActivity?.interrupt();
     this.sound.stop();
@@ -434,6 +441,7 @@ export class Studio extends EventEmitter {
         this.log(this.lastError);
       }
     }
+    if (wasRunning) this.trace.session(this.sessionId, false);
     this.log('방송 종료 · 대기 반응 취소');
     this.publish();
   }
@@ -467,6 +475,7 @@ export class Studio extends EventEmitter {
           witnesses,
           title: this.settings.title,
         });
+        this.trace.savedMessage(this.sessionId, msg, witnesses);
       } catch (error) {
         this.log(`대화 기억 보관 실패: ${error.message}`);
         this.lastError = '대화는 표시됐지만 기억에 보관하지 못했습니다. ' + error.message;
@@ -657,7 +666,7 @@ export class Studio extends EventEmitter {
         first = false;
       }
       this.reactions.admit(diagnosticId);
-      this.queue.push({
+      const queued = {
         ...m,
         origin,
         chatDriven,
@@ -677,7 +686,9 @@ export class Studio extends EventEmitter {
         createdAt: this.now(),
         kind: m.kind === 'notice' && p.id === this.settings.managerId ? 'notice' : 'chat',
         due: this.now() + delay,
-      });
+      };
+      this.queue.push(queued);
+      this.trace.queued(queued);
     }
     this.publish();
   }
@@ -752,6 +763,7 @@ export class Studio extends EventEmitter {
       });
       this.reactions.delivered(m.diagnosticId);
       this.inputLatency.publish(m.diagnosticId, delivered.id);
+      this.trace.publishedMessage(m, delivered);
     } catch (error) {
       this.reactions.drop(m.diagnosticId, 'delivery-error');
       this.lastError = error.message;
@@ -919,6 +931,8 @@ export class Studio extends EventEmitter {
         this.inputLatency.request(diagnosticId, speechBatch.ids, {
           screenThrough: screenTimeline?.through,
         });
+        this.trace.requested(this, diagnosticId, context, speechBatch.ids, screenTimeline?.through);
+        this.trace.reaction(this.reactions.row(diagnosticId));
         const responseStartedAt = this.now();
         const result = await this.provider.react(
           {
@@ -944,6 +958,7 @@ export class Studio extends EventEmitter {
           },
           signal,
         );
+        this.trace.modelResult(diagnosticId, result);
         this.ai.assertCurrent(result);
         const previousQueue = new Set(this.queue);
         const accepted = this.acceptLiveReaction({
@@ -998,6 +1013,7 @@ export class Studio extends EventEmitter {
       throw error;
     } finally {
       this.reactions.finish(diagnosticId, diagnosticOutcome);
+      this.trace.finishRequest(diagnosticId, diagnosticOutcome);
       if (this.liveReaction === operation) this.liveReaction = null;
       if (epoch === this.epoch) {
         this.busy = false;
