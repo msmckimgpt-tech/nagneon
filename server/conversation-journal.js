@@ -65,8 +65,9 @@ export class ConversationJournal {
       take(scored.filter(r=>!r.entry.fictional&&r.entry.personaId!=='streamer'&&/추천|한\s*표|저라면/.test(r.entry.text)&&r.hits.some(h=>!/(?:추천|누구|누가|주신|있었|골라|고르)/.test(h.word))).sort((a,b)=>b.relevance-a.relevance||a.index-b.index),2);
     }
     take(scored.filter(r=>r.relevance>0&&r.entry.personaId===viewerId).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),2);
-    // An old pinned promise must not outlive an explicit later cancellation.
-    take(scored.filter(r=>r.entry.personaId==='streamer'&&/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(r.entry.text)).reverse(),2);
+    // Related corrections must survive newer cancellations of other topics.
+    // Keep recency within each group and the same two-quote selection budget.
+    take(scored.filter(r=>r.entry.personaId==='streamer'&&/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(r.entry.text)).sort((a,b)=>Number(b.relevance>0)-Number(a.relevance>0)||b.index-a.index),2);
     take(scored.filter(r=>r.relevance>0).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),3);
     take(scored.filter(r=>r.entry.pinned).reverse(),1);
     take(scored.filter(r=>r.anchor).reverse(),1);
