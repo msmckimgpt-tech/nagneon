@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
 . (Join-Path $PSScriptRoot 'Register-NagneonShortcut.ps1')
+. (Join-Path $PSScriptRoot 'Launcher-Command.ps1')
 if ($Register) {
     Assert-NagneonNativeStorageView -Profile (Join-Path $env:APPDATA 'Nagneon')
     Assert-NagneonNativeStorageView -Profile (Join-Path $env:LOCALAPPDATA 'Nagneon')
@@ -77,9 +78,15 @@ try {
         [pscustomobject]@{path=$relative;sha256=$hash}
     }
     Write-JsonAtomic (Join-Path $backup 'package-inventory.json') $inventory
+    $oldCommand = Join-Path $InstallRoot 'Start-Nagneon.cmd'
+    if (Test-Path -LiteralPath $oldCommand -PathType Leaf) {
+        $savedCommand = Join-Path $backup 'Start-Nagneon.cmd'
+        Copy-Item -LiteralPath $oldCommand -Destination $savedCommand
+        if ((Get-FileHash -LiteralPath $oldCommand).Hash -ne (Get-FileHash -LiteralPath $savedCommand).Hash) { throw 'Launcher changed during backup. Retry with the app closed.' }
+    }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-InstalledNagneon.ps1') -Destination (Join-Path $InstallRoot 'Start-InstalledNagneon.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1') -Destination (Join-Path $InstallRoot 'Profile-Compatibility.ps1') -Force
-    [IO.File]::WriteAllText((Join-Path $InstallRoot 'Start-Nagneon.cmd'), "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Start-InstalledNagneon.ps1`" -InstallRoot `"%~dp0.`"`r`nif errorlevel 1 pause`r`n", [Text.Encoding]::ASCII)
+    [IO.File]::WriteAllText((Join-Path $InstallRoot 'Start-Nagneon.cmd'), (Get-NagneonLauncherCommand -Installed), [Text.Encoding]::ASCII)
     Write-JsonAtomic $configPath ([ordered]@{version=$Version;executable=$relativeExe;profile=$Profile;exeSha256=(Get-FileHash -LiteralPath (Join-Path $destination 'Nagneon.exe')).Hash;backup=$backup})
     if ($Register) {
         if (-not (Test-Path -LiteralPath $storageFile)) {

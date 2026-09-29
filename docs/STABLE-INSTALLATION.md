@@ -27,14 +27,18 @@ PowerShell의 별도 복구 구현은 제거했으며, 0.1.6 이상 실행기는
 앱을 정상 종료하고 검증된 **새 패키지**에 대해 실행한다. 최초 설치에는 보존할 프로필을 지정한다. 이후에는 생략하여 앱 설정값을 유지한다.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Install-NagneonRelease.ps1 -PackageFolder "<패키지 폴더>" -Version "<새 버전>" -InstallRoot "G:\dev\ai\Nagneon" -Profile "<기존 프로필 절대 경로>" -Register
+pwsh -NoProfile -File scripts/Install-NagneonRelease.ps1 -PackageFolder "<패키지 폴더>" -Version "<새 버전>" -InstallRoot "G:\dev\ai\Nagneon" -Profile "<기존 프로필 절대 경로>" -Register
 ```
+
+설치 명령은 현재 정책에서 스크립트 실행이 허용된 PowerShell에서 실행한다. 위 예시는 이미 설치된 PowerShell 7이다. Windows PowerShell을 사용할 경우 실행 파일 이름만 `powershell`로 바꾸며 실행 정책을 강제로 변경하는 옵션은 사용하지 않는다. 정책이 거절하면 설치를 중단하고 해당 환경의 정상 배포 절차를 확인한다.
+
+고정 CMD는 표준 `Program Files/PowerShell/7/pwsh.exe`, 사용자 WindowsApps의 `pwsh.exe`, Windows PowerShell 순서로 **파일 존재 여부만** 확인해 하나를 선택한다. 선택 후 실행 실패나 정책 거절이 발생하면 오류를 유지하며 다른 엔진으로 재시도하지 않는다. 새 런타임을 설치하거나 정책을 변경하지 않는다. 설치 폴더는 명시적으로 전달하고, 메인의 CMD는 기존 설치 등록을 읽는다. 한글·공백·느낌표·앰퍼샌드가 있는 경로와 종료 코드 보존을 실제 CMD/격리 실행 파일로 검증한다.
 
 업데이트마다 현재 data를 `backups/update-*/data`에 복사하고 해시를 대조한다. 패키지를 고유 버전 폴더에 복사한 뒤 모든 파일의 해시를 대조한다. 실패하면 현재 실행 포인터를 바꾸지 않는다. 기존 실행 파일과 백업은 자동 삭제하지 않는다. 바탕 화면 바로가기와 메인의 CMD는 그대로 유지된다. 앱 설정에서 저장 위치를 변경한 경우 업데이트 인자에 예전 Profile을 다시 지정하지 않는다.
 
 호환되는 버전으로 복귀할 때만 해당 백업의 `current.json`을 설치 루트에 복원한다. 데이터는 자동으로 과거 버전으로 되돌리지 않는다. 0.1.4 기록은 0.1.3 스키마와 호환되지 않는다. 복구가 필요하면 업데이트 전 `data` 백업을 **별도 프로필 폴더**에 복사하고, 구버전 실행 파일에 `--backseat-profile="<별도 프로필 절대 경로>"`를 지정한다. 현재 기록은 덮어쓰지 않는다.
 
-새 설치·실행 도구는 `Profile-Compatibility.ps1`과 `Register-NagneonShortcut.ps1`을 함께 배포한다. 실행 파일의 실제 버전과 저장 형식을 읽어 알려진 0.1.4→구버전 비호환을 설치·실행 전에 거절한다. 버전 표시 문자열만 변경해도 통과하지 않는다. 과거 실행 파일을 직접 여는 경로에는 이 검사가 없으므로 업데이트된 프로필을 구버전 EXE에 직접 연결하지 않는다. 이는 모든 미래 버전의 역호환을 보장하는 검사는 아니다. JSON은 Windows PowerShell 5.1에서도 UTF-8로 읽는다.
+새 설치·실행 도구는 `Profile-Compatibility.ps1`, `Register-NagneonShortcut.ps1`, `Launcher-Command.ps1`을 함께 배포한다. 실행 파일의 실제 버전과 저장 형식을 읽어 알려진 0.1.4→구버전 비호환을 설치·실행 전에 거절한다. 버전 표시 문자열만 변경해도 통과하지 않는다. 과거 실행 파일을 직접 여는 경로에는 이 검사가 없으므로 업데이트된 프로필을 구버전 EXE에 직접 연결하지 않는다. 이는 모든 미래 버전의 역호환을 보장하는 검사는 아니다. JSON은 Windows PowerShell 5.1에서도 UTF-8로 읽는다. 업데이트는 이전 고정 CMD도 데이터 백업 폴더의 `Start-Nagneon.cmd`로 보존하고 해시를 확인한다.
 
 현재 설치 경로 확인: `powershell -File scripts/Start-InstalledNagneon.ps1 -Inspect`.
 
