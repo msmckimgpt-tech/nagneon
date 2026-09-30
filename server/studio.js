@@ -1123,6 +1123,7 @@ export class Studio extends EventEmitter {
               viewing.at,
               game.popularity,
               witnesses,
+              new Map(witnesses.map((id) => [id, this.audience.data.members[id]?.joinedAt])),
             );
             this.publish();
           }
@@ -1228,6 +1229,9 @@ export class Studio extends EventEmitter {
         (id) => !speechHearers || speechHearers.includes(id),
       ),
       capturedAt = this.lastRequest;
+    const witnessVisits = new Map(
+      witnesses.map((id) => [id, this.audience.data.members[id]?.joinedAt]),
+    );
     const visits = new Map(
       eligiblePersonas.map((p) => [p.id, this.audience.data.members[p.id]?.joinedAt]),
     );
@@ -1292,6 +1296,7 @@ export class Studio extends EventEmitter {
       eligibleSettings,
       witnesses,
       capturedAt,
+      witnessVisits,
       visits,
       personalContext,
       transcriptCandidates,
@@ -1326,6 +1331,7 @@ export class Studio extends EventEmitter {
       transcriptCandidates,
       adviceRequestId,
       witnesses,
+      witnessVisits,
       personalContext,
       game,
     } = context;
@@ -1436,6 +1442,7 @@ export class Studio extends EventEmitter {
       image,
       witnesses,
       capturedAt,
+      witnessVisits,
       personalContext,
       game,
       diagnosticId,
@@ -1451,6 +1458,7 @@ export class Studio extends EventEmitter {
     image,
     witnesses,
     capturedAt,
+    witnessVisits,
     personalContext,
     game,
     diagnosticId,
@@ -1551,6 +1559,7 @@ export class Studio extends EventEmitter {
         capturedAt,
         game.popularity,
         witnesses,
+        witnessVisits,
       );
       this.publish();
     }
