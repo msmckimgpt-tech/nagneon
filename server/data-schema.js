@@ -154,7 +154,6 @@ export const ClipsData = z
       activityReads: ActivityReads.optional(),
       votes: z
         .array(actor)
-        .max(150)
         .refine((v) => new Set(v).size === v.length)
         .optional(),
       id: z.string().uuid(),
@@ -169,7 +168,7 @@ export const ClipsData = z
       source: text,
       comments: z.array(comment),
       messages: z.array(message),
-      readings: z.array(clipReading).max(150).optional(),
+      readings: z.array(clipReading).optional(),
       video: z.boolean(),
       audio: z.boolean().optional().default(false),
       audioEligible: z.boolean().optional().default(false),

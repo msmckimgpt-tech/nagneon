@@ -4,6 +4,11 @@ import {
   markWorldFormat,
   backupWorldV1,
 } from './profile-writer.js';
+import {
+  readProfileFormat,
+  requiredProfileFormat,
+  mergeProfileFormat,
+} from './profile-capabilities.js';
 import { socialRoutes } from './social-runtime.js';
 import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutorial.js';
 import { SpeechCapture } from './speech-screen.js';
@@ -119,17 +124,43 @@ async function startServerImpl(
   let expectedHost;
   const stores = [];
   const worldFormat = persist ? inspectWorldFormat(dataDir) : { protected: false, migrate: false };
+  let profileFormat = persist ? readProfileFormat(dataDir) : null;
+  const namedStores = new Map();
+  const protectExpandedReaders = (required) => {
+    if (!required) return;
+    const next = mergeProfileFormat(profileFormat, required);
+    if (JSON.stringify(next) === JSON.stringify(profileFormat)) return;
+    // Reader 3 protects both files from fallback. Materialize an absent, validated
+    // clip store before raising the marker, so a gallery-only profile can restart.
+    const clip = namedStores.get('clips');
+    if (!existsSync(clip.store.file)) clip.store.save(clip.data);
+    profileFormat = markWorldFormat(dataDir, required);
+    for (const name of ['world', 'clips']) namedStores.get(name).store.forbidRecovery = true;
+  };
   const useStore = (name, schema, initial) => {
     if (!persist) return { data: initial(), save: () => {} };
     const store = new JsonStore(resolve(dataDir, name + '.json'), {
       validate: (value) => schema.parse(value),
       initial,
       backupCount: 3,
-      forbidRecovery: name === 'world' && worldFormat.protected,
+      forbidRecovery:
+        (name === 'world' && worldFormat.protected) ||
+        (name === 'clips' && profileFormat?.minReader >= 3),
     });
     const data = store.load();
     stores.push(store);
-    return { data, save: (value) => store.save(value) };
+    namedStores.set(name, { store, data });
+    return {
+      data,
+      save: (value) => {
+        if (name === 'world' || name === 'clips') {
+          const validated = schema.parse(value);
+          protectExpandedReaders(requiredProfileFormat(name, validated));
+          return store.save(validated);
+        }
+        return store.save(value);
+      },
+    };
   };
   let providerChoice;
   if (!provider) {
@@ -250,6 +281,11 @@ async function startServerImpl(
   );
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
+  const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
+    mode: persist && !hasPreviousSettings ? 'remote' : 'local',
+    transport: 'subscription',
+    consent: false,
+  }));
   const journalStorage = persist ? new JournalStore(dataDir) : null;
   const journalStore = {
     data: journalStorage?.load() || emptyJournal(),
@@ -262,7 +298,11 @@ async function startServerImpl(
     onboardingStore.save(onboardingStore.data);
   if (persist) {
     backupWorldV1(dataDir);
-    markWorldFormat(dataDir);
+    protectExpandedReaders(
+      requiredProfileFormat('world', worldStore.data) ||
+        requiredProfileFormat('clips', clipsStore.data),
+    );
+    profileFormat = markWorldFormat(dataDir);
   }
   if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);
   const world = new World(worldStore.data, worldStore.save);
@@ -319,11 +359,6 @@ async function startServerImpl(
   });
   studio.trace.lifecycle('service', 'started', undefined, 'startup');
   onResource(() => studio.trace.lifecycle('service', 'failed', undefined, 'startup'));
-  const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
-    mode: persist && !hasPreviousSettings ? 'remote' : 'local',
-    transport: 'subscription',
-    consent: false,
-  }));
   const nativeAudio = new NativeAudio({
     studio,
     recovery: speechRecovery,

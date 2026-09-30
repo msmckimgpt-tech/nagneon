@@ -14,7 +14,11 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { JsonStore } from './storage.js';
+import {
+  readProfileFormat,
+  assertSupportedProfileFormat,
+  writeProfileFormat,
+} from './profile-capabilities.js';
 export function ownProfileWriter(dataDir) {
   mkdirSync(dataDir, { recursive: true });
   const root = realpathSync(dataDir),
@@ -86,9 +90,7 @@ export function inspectWorldFormat(dataDir) {
   const marker = resolve(dataDir, 'profile-format.json'),
     file = resolve(dataDir, 'world.json');
   if (existsSync(marker)) {
-    const m = JSON.parse(readFileSync(marker, 'utf8'));
-    if (m.minReader !== 2)
-      throw Error('이 프로필은 다른 버전의 앱이 필요합니다. 기존 기록을 보존하세요.');
+    assertSupportedProfileFormat(readProfileFormat(dataDir));
     if (!existsSync(file))
       throw Error('사회 기록의 기본 저장 파일이 없습니다. 백업을 자동 복원하지 않습니다.');
   }
@@ -105,16 +107,8 @@ export function inspectWorldFormat(dataDir) {
     throw Error('더 새로운 앱에서 저장한 프로필입니다. 현재 앱으로 변경할 수 없습니다.');
   return { protected: existsSync(marker) || version === 2, migrate: version !== 2 };
 }
-export function markWorldFormat(dataDir) {
-  const store = new JsonStore(resolve(dataDir, 'profile-format.json'), {
-    validate: (v) => {
-      if (v.minReader !== 2 || v.minAppVersion !== '0.1.7')
-        throw Error('프로필 형식 표시를 확인하세요.');
-      return v;
-    },
-    initial: () => ({ minReader: 2, minAppVersion: '0.1.7' }),
-  });
-  store.save({ minReader: 2, minAppVersion: '0.1.7' });
+export function markWorldFormat(dataDir, required) {
+  return writeProfileFormat(dataDir, required);
 }
 
 export function backupWorldV1(dataDir, { copy = copyFileSync } = {}) {
