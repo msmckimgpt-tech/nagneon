@@ -23,7 +23,7 @@ npm audit --audit-level=high
 
 전체 검사에서 Codex 호스트의 WindowsApps 보기와 기본 시험 엔진 정책 차이가 확인되면 [실행 도구 검증 안내](RELEASE-0.1.15-LAUNCHER.md)에 따라 `NAGNEON_TEST_POWERSHELL`에 검증용 호스트의 절대 경로를 미리 지정한다. 제품 실행기나 Windows 실행 정책을 변경하지 않는다. 실패 기록과 재검증 결과를 함께 보존한다.
 
-현재 `brace-expansion` 빌드 의존성의 npm audit 고위험 경고가 확인돼 별도 수정이 필요하다. 경고를 면제하지 않으며 보안 검사 통과 전 통합·패키지 배포는 보류한다. [공식 취약점 공지](https://github.com/advisories/GHSA-qhr7-859c-m2p7).
+최초 기준 코드의 `brace-expansion` 빌드 의존성에서 npm audit 고위험 경고가 확인돼 통합을 보류했다. 해당 패치가 반영된 0.1.17 코드로 갱신한 후 전체 검사 1,215개·형식 검사·TypeScript/Vite 빌드와 보안 경고 0건을 확인했다. 원본은 `artifacts/check-0.1.17.log`, `artifacts/audit-0.1.17.json`이며 이전 실패도 보존한다. 경고 면제나 감사 우회는 사용하지 않았다. [공식 취약점 공지](https://github.com/advisories/GHSA-qhr7-859c-m2p7).
 
 ## 복귀와 남은 검증
 
