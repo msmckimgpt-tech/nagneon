@@ -19,7 +19,7 @@
     "format:check": "prettier --check src/App.tsx src/style.css src/types.ts server/studio.js server/index.js \"server/decision/*.js\" test/decision-service.test.js docs/DECISION-ASSIST.md"
   },
   "dependencies": {
-    "@grpc/grpc-js": "1.14.4",
+    "@grpc/grpc-js": "1.14.5",
     "@grpc/proto-loader": "0.8.1",
     "express": "^5.1.0",
     "htmlparser2": "12.0.0",
