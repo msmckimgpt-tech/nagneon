@@ -79,7 +79,7 @@ async function run(bin,args,cwd=root){
 const pkg=await json(join(root,'package.json'));
 const codex=join(root,'node_modules/@openai/codex-win32-x64');
 const codexPkg=await json(join(codex,'package.json'));
-if(codexPkg.version!=='0.156.1-win32-x64')throw new Error('검증된 Codex 런타임 버전과 다릅니다.');
+if(codexPkg.version!=='0.159.2-win32-x64')throw new Error('검증된 Codex 런타임 버전과 다릅니다.');
 const electronVersion=(await json(join(root,'node_modules/electron/package.json'))).version;
 const packagingRecipe=await packageRecipeIdentity(codex);
 let speechManifest,bundledIdentity=null;

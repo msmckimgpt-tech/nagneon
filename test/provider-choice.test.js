@@ -36,6 +36,8 @@ test('model/effort schema rejects invalid pairs and credentials while legacy cho
   for(const config of [{kind:'codex',model:'unknown'},{kind:'codex',model:'gpt-6-astra',effort:'none'},{kind:'codex',effort:'none'},{kind:'openai',model:'gpt-5.4-mini',effort:'ultra'},{kind:'openai',model:'gpt-5.4-mini',apiKey:'secret'}])assert.equal(ProviderSelection.safeParse(config).success,false);
   for(const kind of ['codex','openai'])for(const effort of ['none','low','medium','high','xhigh'])assert.equal(ProviderSelection.safeParse({kind,model:'gpt-5.4-mini',effort}).success,true);
   for(const effort of ['none','low','medium','high','xhigh','max'])assert.equal(ProviderSelection.safeParse({kind:'codex',model:'gpt-5.6-luna',effort}).success,true);
+  assert.deepEqual(ProviderSelection.parse({kind:'codex',model:'gpt-6.1-sol',effort:'low'}),{kind:'codex',model:'gpt-6.1-sol',effort:'low'});
+  assert.equal(ProviderSelection.safeParse({kind:'codex',model:'gpt-6.1-sol',effort:'none'}).success,false);
   assert.equal(ProviderSelection.safeParse({kind:'codex',model:'gpt-5.4-mini',effort:'max'}).success,false);
   for(const Provider of [CodexProvider,OpenAIProvider]){
     const provider=new Provider({...hostedModelEnv({model:'gpt-5.4-mini',effort:'none'})});
