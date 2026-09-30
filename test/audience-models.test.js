@@ -7,8 +7,9 @@ import { OpenAIProvider } from '../server/provider.js';
 
 const gpt6Efforts = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
 const additions = [
-  ['gpt-6-sol', 'GPT-6 Sol · 경량'],
-  ['gpt-6-luna', 'GPT-6 Luna · 초경량'],
+  ['gpt-6.1-sol', 'GPT-6.1 Sol', ['low', 'medium', 'high', 'xhigh', 'max']],
+  ['gpt-6-sol', 'GPT-6 Sol · 경량', gpt6Efforts],
+  ['gpt-6-luna', 'GPT-6 Luna · 초경량', gpt6Efforts],
 ];
 
 function makeBackend(config) {
@@ -27,24 +28,24 @@ function makeBackend(config) {
 test('shared audience catalog exposes GPT-6 lightweight tiers once, ahead of legacy choices', () => {
   const ids = audienceModels.models.map((model) => model.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.deepEqual(ids.slice(0, 3), ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
-  for (const [id, label] of additions) {
+  assert.deepEqual(ids.slice(0, 4), ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+  for (const [id, label, efforts] of additions) {
     assert.deepEqual(
       audienceModels.models.find((model) => model.id === id),
       {
         id,
         label,
-        efforts: gpt6Efforts,
+        efforts,
       },
     );
   }
   for (const effort of gpt6Efforts) assert.ok(audienceModels.effortLabels[effort]);
 });
 
-for (const [model] of additions) {
+for (const [model, , efforts] of additions) {
   test(`${model} accepts documented efforts in both hosted providers and rejects unsupported values`, () => {
     for (const kind of ['codex', 'openai']) {
-      for (const effort of gpt6Efforts) {
+      for (const effort of efforts) {
         const config = { kind, model, effort };
         assert.deepEqual(ProviderSelection.parse(config), config);
         const Provider = kind === 'codex' ? CodexProvider : OpenAIProvider;
@@ -52,7 +53,7 @@ for (const [model] of additions) {
         assert.equal(provider.model, model);
         assert.equal(provider.effort, effort);
       }
-      for (const effort of ['minimal', 'ultra', 'MAX']) {
+      for (const effort of ['minimal', 'ultra', 'MAX', ...gpt6Efforts.filter(e => !efforts.includes(e))]) {
         assert.equal(ProviderSelection.safeParse({ kind, model, effort }).success, false);
       }
       assert.equal(
@@ -70,22 +71,23 @@ for (const [model] of additions) {
       const original = choice.active;
       choice.proxy.localSpeech = true;
       choice.proxy.transcribe = async () => 'fixture-local-transcription';
-      const config = { kind, model, effort: 'none' };
+      const effort = efforts[0];
+      const config = { kind, model, effort };
       await choice.select(config);
       assert.deepEqual(saved, config);
       assert.equal(choice.proxy.model, model);
-      assert.equal(choice.proxy.effort, 'none');
+      assert.equal(choice.proxy.effort, effort);
       assert.equal(choice.proxy.key, 'fixture-session-key');
       assert.equal(await choice.proxy.transcribe(), 'fixture-local-transcription');
       assert.ok(!JSON.stringify(choice.snapshot()).includes('fixture-session-key'));
       const restored = new ProviderChoice({ factories, initial: saved });
       assert.equal(restored.proxy.model, model);
-      assert.equal(restored.proxy.effort, 'none');
+      assert.equal(restored.proxy.effort, effort);
       choice.save = () => {
         throw new Error('fixture-save-failure');
       };
       await assert.rejects(choice.select({ kind, model, effort: 'max' }), /fixture-save-failure/);
-      assert.equal(choice.proxy.effort, 'none');
+      assert.equal(choice.proxy.effort, effort);
       choice.save = () => {};
       await choice.select({ kind: 'codex' });
       assert.equal(choice.active, original);
