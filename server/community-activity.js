@@ -7,13 +7,18 @@ import {transcriptAnomaly} from './transcript-correction.js';
 export const COMMUNITY_HOUR=3600000,COMMUNITY_COOLDOWN=1800000,COMMUNITY_HOURLY_LIMIT=6;
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const publicPost=raw=>{const {activityReads,...post}=galleryPost(raw);return post;};
+const publicClipComments=raw=>raw.comments.filter(c=>!c.deleted).map(c=>({id:c.id,at:c.at,personaId:c.personaId,name:c.name,kind:c.kind,text:c.text,parentId:c.parentId||null}));
 // Own comments and votes do not create another reason for the author to visit.
 export function communityRevision(kind,raw,viewerId,cache=new Map()){
   let entry=cache.get(raw);
   if(!entry){
     const value=kind==='clip'?clipTextSnapshot(raw):publicPost(raw);
     const {votes,updatedAt,comments=[],...content}=value;
-    entry={content:hash({...content,...(kind==='clip'?{video:raw.video,audio:raw.audio,voice:raw.voice,...(raw.video||raw.audio?{perceptionVersion:1}: {})}: {})}),comments:comments.filter(c=>!c.deleted).map(c=>({personaId:c.personaId,hash:hash(c)}))};cache.set(raw,entry);
+    // Discovery uses the visible discussion inventory, not the prompt's last 30.
+    // An own reply must not evict a peer from the fingerprint and cause a revisit.
+    // This inventory does not grant read receipts; the actual prompt stays bounded.
+    const discussion=kind==='clip'?publicClipComments(raw):comments.filter(c=>!c.deleted);
+    entry={content:hash({...content,...(kind==='clip'?{video:raw.video,audio:raw.audio,voice:raw.voice,...(raw.video||raw.audio?{perceptionVersion:1}: {})}: {})}),comments:discussion.map(c=>({personaId:c.personaId,hash:hash(c)}))};cache.set(raw,entry);
   }
   return hash({content:entry.content,comments:entry.comments.filter(c=>c.personaId!==viewerId).map(c=>c.hash)});
 }
