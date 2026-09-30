@@ -111,11 +111,18 @@ export class SoundScene {
     }
   }
   context(viewerId) {
+    const joinedAt = this.studio.audience.data.members[viewerId]?.joinedAt;
+    if (!Number.isFinite(joinedAt)) return [];
     return structuredClone(
       this.events
         .filter(
           (e) =>
-            this.studio.now() - e.endedAt < 30000 && e.witnesses.includes(viewerId) && !e.silent,
+            // The witness ID records the original capture, not a later visit.
+            // Delayed classification must not bridge an absence or re-entry.
+            e.startedAt >= joinedAt &&
+            this.studio.now() - e.endedAt < 30000 &&
+            e.witnesses.includes(viewerId) &&
+            !e.silent,
         )
         .slice(-4)
         .map(({ witnesses, ...e }) => e),
