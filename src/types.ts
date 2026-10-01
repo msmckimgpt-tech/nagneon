@@ -324,6 +324,8 @@ declare global {
       toggleClickThrough: () => Promise<boolean>;
       closeOverlay: () => Promise<void>;
       onOverlayState: (fn: (value: boolean) => void) => () => void;
+      previewVisibility?: () => Promise<boolean>;
+      onPreviewVisibility?: (fn: (value: boolean) => void) => () => void;
       onNavigationHistory?: (fn: (direction: 'back' | 'forward') => void) => () => void;
       accountStatus: () => Promise<AccountState>;
       startAccountLogin: (method: 'browser' | 'device') => Promise<AccountState>;
