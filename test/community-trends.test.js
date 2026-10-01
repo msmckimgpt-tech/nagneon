@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from '../server/index.js';
+import { JsonStore } from '../server/storage.js';
+import {
+  readProfileFormat,
+  TREND_FACTS_FORMAT,
+  WORLD_PROFILE_FORMAT,
+} from '../server/profile-capabilities.js';
+import * as reader3 from './fixtures/profile-reader3.js';
 import {
   TrendFact,
   TrendFactInput,
@@ -205,6 +212,8 @@ test('unsupported statistics, internet hype and rumor responses are withheld', (
     '유출 소문이 확정됐어',
     '패치로 무기가 추가됐대',
     '접속자가 999명 늘었대',
+    '최신 화제라네',
+    '실시간 인기라던데',
   ])
     assert.equal(safeTrendReaction(text), false);
   assert.equal(safeTrendReaction('그 안내 보니 퍼즐 구성이 궁금해. 나는 천천히 해보고 싶네'), true);
@@ -322,6 +331,13 @@ test('runtime rejects unsupported generated hype and silent responses without ma
   assert.equal(f.s.social.data().threads.length, 0);
   assert.equal(f.s.social.trends.facts.length, 1);
 });
+test('unobserved popularity creates no fact-driven candidate or model request', async (t) => {
+  const f = await fixture(t, undefined, { metrics: [] });
+  assert.equal(f.candidate('social-daily', 'writer'), undefined);
+  assert.equal(f.candidate('social-daily', 'reader'), undefined);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.s.social.summary().trendInput.connection, 'synthetic');
+});
 test('a topic observation allows an interested late reply hours later without reheating', async (t) => {
   const f = await fixture(t, undefined, { expiresAt: at + 24 * 3600000 });
   await f.run(f.candidate('social-daily', 'writer'));
@@ -356,7 +372,9 @@ test('changed source hash while the model is pending rejects the late generated 
 test('fact provenance survives a local restart; input connection starts disconnected', async (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), 'community-trend-provenance-'));
   const f = await fixture(t, undefined, {}, { persist: true, dataDir });
+  assert.deepEqual(readProfileFormat(dataDir), WORLD_PROFILE_FORMAT);
   await f.run(f.candidate('social-daily', 'writer'));
+  assert.deepEqual(readProfileFormat(dataDir), TREND_FACTS_FORMAT);
   const original = structuredClone(f.s.social.data().threads[0]);
   await f.close();
   const reopened = await startServer({
@@ -371,4 +389,79 @@ test('fact provenance survives a local restart; input connection starts disconne
   assert.deepEqual(reopened.studio.social.data().threads[0], original);
   assert.equal(reopened.studio.social.trends.snapshot(at).connection, 'disconnected');
   assert.equal(reopened.studio.social.detail(original.id).externalFact.evidenceKind, 'synthetic');
+  assert.deepEqual(readProfileFormat(dataDir), TREND_FACTS_FORMAT);
+  const worldFile = join(dataDir, 'world.json'),
+    markerFile = join(dataDir, 'profile-format.json');
+  const worldBytes = readFileSync(worldFile),
+    markerBytes = readFileSync(markerFile);
+  writeFileSync(
+    join(dataDir, 'world.json.bak.1'),
+    JSON.stringify({ version: 2, syntheticOlderBackup: true }),
+  );
+  assert.throws(
+    () => reader3.assertSupportedProfileFormat(reader3.readProfileFormat(dataDir)),
+    /다른 버전/,
+  );
+  assert.deepEqual(readFileSync(worldFile), worldBytes);
+  assert.deepEqual(readFileSync(markerFile), markerBytes);
+});
+test('failed profile marker write prevents the first fact post from altering disk or memory', async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'community-trend-marker-failure-'));
+  const f = await fixture(t, undefined, {}, { persist: true, dataDir });
+  const before = readFileSync(join(dataDir, 'world.json'));
+  const originalSave = JsonStore.prototype.save;
+  JsonStore.prototype.save = function (value) {
+    if (this.file === join(dataDir, 'profile-format.json')) throw Error('synthetic marker denied');
+    return originalSave.call(this, value);
+  };
+  try {
+    await assert.rejects(
+      f.s.social.run(f.candidate('social-daily', 'writer'), {
+        controller: new AbortController(),
+        epoch: f.s.epoch,
+      }),
+      /marker denied/,
+    );
+  } finally {
+    JsonStore.prototype.save = originalSave;
+  }
+  assert.equal(f.s.social.data().threads.length, 0);
+  assert.deepEqual(readFileSync(join(dataDir, 'world.json')), before);
+  assert.deepEqual(readProfileFormat(dataDir), WORLD_PROFILE_FORMAT);
+});
+test('failed fact data write retains the old transaction and a conservative reader4 floor', async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'community-trend-data-failure-'));
+  const f = await fixture(t, undefined, {}, { persist: true, dataDir });
+  const before = readFileSync(join(dataDir, 'world.json'));
+  const originalSave = JsonStore.prototype.save;
+  JsonStore.prototype.save = function (value) {
+    if (this.file === join(dataDir, 'world.json')) throw Error('synthetic world denied');
+    return originalSave.call(this, value);
+  };
+  try {
+    await assert.rejects(
+      f.s.social.run(f.candidate('social-daily', 'writer'), {
+        controller: new AbortController(),
+        epoch: f.s.epoch,
+      }),
+      /world denied/,
+    );
+  } finally {
+    JsonStore.prototype.save = originalSave;
+  }
+  assert.equal(f.s.social.data().threads.length, 0);
+  assert.deepEqual(readFileSync(join(dataDir, 'world.json')), before);
+  assert.deepEqual(readProfileFormat(dataDir), TREND_FACTS_FORMAT);
+  await f.close();
+  const reopened = await startServer({
+    port: 0,
+    persist: true,
+    dataDir,
+    localSpeech: false,
+    provider: { status: () => ({ configured: false }) },
+  });
+  clearInterval(reopened.studio.timer);
+  t.after(() => reopened.close());
+  assert.equal(reopened.studio.social.data().threads.length, 0);
+  assert.deepEqual(readProfileFormat(dataDir), TREND_FACTS_FORMAT);
 });

@@ -1,16 +1,12 @@
+// Frozen reader3 guard from 73ab76bc (v0.1.18). Only import path and captured app version differ.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { JsonStore } from './storage.js';
+import { JsonStore } from '../../server/storage.js';
 
 export const WORLD_PROFILE_FORMAT = Object.freeze({ minReader: 2, minAppVersion: '0.1.7' });
 export const UNLIMITED_READERS_FORMAT = Object.freeze({ minReader: 3, minAppVersion: '0.1.18' });
-export const PROFILE_READER = 4;
-const appVersion = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-).version;
-// The reader capability protects same-version development builds as well.
-// The eventual release's version is recorded when it first writes this representation.
-export const TREND_FACTS_FORMAT = Object.freeze({ minReader: 4, minAppVersion: appVersion });
+export const PROFILE_READER = 3;
+const appVersion = '0.1.18';
 const versionParts = (version) => {
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version))
     throw Error('프로필의 최소 앱 버전을 확인하세요. 원본과 백업을 보존하세요.');
@@ -83,8 +79,6 @@ export function writeProfileFormat(dataDir, required = WORLD_PROFILE_FORMAT) {
 // Viewer counts are durable history, unlike bounded request windows or retry queues.
 // Only representations that the previous reader cannot load raise the profile floor.
 export function requiredProfileFormat(name, value) {
-  if (name === 'world' && value.socialWorld?.threads?.some((t) => t.trendFact))
-    return TREND_FACTS_FORMAT;
   const expanded =
     name === 'clips'
       ? value.some((c) => [c.readings, c.votes, c.activityReads].some((rows) => rows?.length > 150))

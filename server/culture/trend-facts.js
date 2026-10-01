@@ -103,16 +103,25 @@ export function factHeat(f, now) {
 }
 
 export class TrendFactInput {
-  constructor() {
+  constructor({ onChange = () => {} } = {}) {
     this.facts = [];
     this.connection = 'disconnected';
     this.generation = 0;
     this.nextReadAt = 0;
+    this.onChange = onChange;
   }
   snapshot(now) {
+    const active = this.facts.filter((f) => activeFact(f, now));
     return {
       connection: this.connection,
-      activeFacts: this.facts.filter((f) => activeFact(f, now)).length,
+      activeFacts: active.length,
+      ...(active.length
+        ? {
+            validUntil: Math.max(
+              ...active.map((f) => Math.min(f.expiresAt, f.publishedAt + 7 * 86400000)),
+            ),
+          }
+        : {}),
     };
   }
   // Atomic replacement; synthetic mode stays visibly separate from live observation.
@@ -132,11 +141,13 @@ export class TrendFactInput {
     this.facts = structuredClone(rows);
     this.connection = connection;
     this.generation++;
+    this.onChange();
   }
   disconnect() {
     this.facts = [];
     this.connection = 'disconnected';
     this.generation++;
+    this.onChange();
   }
   resolve(id, hash, now) {
     return this.facts.find((f) => f.id === id && factHash(f) === hash && activeFact(f, now));

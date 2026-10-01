@@ -26,7 +26,7 @@ export class SocialRuntime {
     this.s = studio;
     this.world = studio.world;
     this.media = new SocialMedia();
-    this.trends = new TrendFactInput();
+    this.trends = new TrendFactInput({ onChange: () => this.s.publish() });
   }
   data() {
     return this.world?.data.socialWorld;
