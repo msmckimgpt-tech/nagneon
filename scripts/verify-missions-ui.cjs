@@ -30,7 +30,8 @@ let service,
   replyConsumed = false,
   releaseResponse,
   releaseRequest,
-  previewVisible = true;
+  previewVisible = true,
+  previewMinimized = false;
 ipcMain.handle('account:status', () => ({ status: 'idle' }));
 ipcMain.handle('capture:sources', () => [
   { id: 'screen:synthetic', name: '합성 미션·미리보기 화면', kind: 'screen', thumbnail: '' },
@@ -72,9 +73,9 @@ async function nativeHistory(direction) {
   });
   assert.equal(sent.status, 0, sent.stderr || sent.error?.message);
 }
-async function post(path, body = {}) {
+async function post(path, body = {}, method = 'POST') {
   const r = await fetch(service.url + '/api/' + path, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: 'Bearer ' + service.accessToken,
       'X-Backseat-Client': 'studio',
@@ -168,6 +169,7 @@ async function open(width = 860) {
   attachNavigationHistory(win);
   // Only native visibility state is simulated; no desktop is captured or shown.
   win.isVisible = () => previewVisible;
+  win.isMinimized = () => previewMinimized;
   attachPreviewVisibility({ main: win, ipcMain });
   win.webContents.on('console-message', (e) => {
     if (e.level === 'error') report.errors.push(e.message);
@@ -216,17 +218,20 @@ app.whenReady().then(async () => {
         soundWorker: {
           prepare: async () => true,
           close() {},
-          analyze: async () => ({
-            durationSeconds: 4,
-            volumeDb: -25,
-            balance: 0,
-            silent: true,
-            classes: [],
-            systemSpeech: '',
-            language: 'ko',
-            source: 'system-output',
-            caveat: 'Synthetic mission preview acceptance',
-          }),
+          analyze: async () => {
+            report.soundAnalyses = (report.soundAnalyses || 0) + 1;
+            return {
+              durationSeconds: 4,
+              volumeDb: -25,
+              balance: 0,
+              silent: true,
+              classes: [],
+              systemSpeech: '',
+              language: 'ko',
+              source: 'system-output',
+              caveat: 'Synthetic mission preview acceptance',
+            };
+          },
         },
       });
       clearInterval(service.studio.timer);
@@ -557,6 +562,14 @@ app.whenReady().then(async () => {
       readFileSync(join(base, 'data', 'profile-format.json'), 'utf8'),
     );
     assert.equal(report.profileFormat.minReader, 2);
+    // Deadline tests advance the mission clock. Real media timestamps must use
+    // the server's real clock too; keep the independent mission clock frozen.
+    service.studio.now = Date.now;
+    assert.equal(
+      (await post('settings', { ...service.studio.settings, clipBufferEnabled: true }, 'PUT'))
+        .status,
+      200,
+    );
     assert.equal((await post('start')).status, 200);
     const finances = () =>
       JSON.stringify({
@@ -566,20 +579,47 @@ app.whenReady().then(async () => {
         P: service.studio.economy.data.balance,
       });
     const beforePreview = finances();
-    await js(`(()=>{
-      window.scrollTo(0,0);window.qaAnalysisSamples=0;window.qaRecorders=[];
+    await js(`(async()=>{
+      window.scrollTo(0,0);window.qaAnalysisSamples=0;window.qaRecorders=[];window.qaRecorderEvents=[];
+      window.qaAnalysisVideos=new Set();window.qaPreviewObservers=new Set();window.qaVisibilityListeners=new Set();
+      const Observer=IntersectionObserver;window.IntersectionObserver=class extends Observer{
+        constructor(...args){super(...args);qaPreviewObservers.add(this);}
+        disconnect(){qaPreviewObservers.delete(this);return super.disconnect();}
+      };
+      const add=document.addEventListener.bind(document),remove=document.removeEventListener.bind(document);
+      document.addEventListener=(type,listener,...args)=>{if(type==='visibilitychange')qaVisibilityListeners.add(listener);return add(type,listener,...args);};
+      document.removeEventListener=(type,listener,...args)=>{if(type==='visibilitychange')qaVisibilityListeners.delete(listener);return remove(type,listener,...args);};
+      const trackState=s=>s.getTracks().map(t=>({kind:t.kind,state:t.readyState,muted:t.muted}));
+      window.qaCaptureState=()=>({
+        tracks:window.qaStream?trackState(qaStream):[],samples:qaAnalysisSamples,
+        audioState:window.qaAudio?.state,
+        recorders:qaRecorders.map(r=>({state:r.state,mime:r.mimeType,tracks:trackState(r.stream)})),
+        events:qaRecorderEvents,
+        alerts:[...document.querySelectorAll('[role="alert"],.error,.toast')].map(e=>e.textContent)
+      });
+      window.qaClipRecorders=()=>qaRecorders.filter(r=>r.stream.getVideoTracks().length>0);
+      window.qaRecordingContinues=()=>qaStream.getTracks().every(t=>t.readyState==='live')&&
+        qaClipRecorders().some(r=>r.state==='recording'&&r.stream.getTracks().every(t=>t.readyState==='live'));
       const draw=CanvasRenderingContext2D.prototype.drawImage;
       CanvasRenderingContext2D.prototype.drawImage=function(image,...args){
-        if(image instanceof HTMLVideoElement&&!image.isConnected)qaAnalysisSamples++;
-        return draw.call(this,image,...args);
+        const result=draw.call(this,image,...args);
+        if(image instanceof HTMLVideoElement&&!image.isConnected){qaAnalysisSamples++;qaAnalysisVideos.add(image);}
+        return result;
       };
       const Native=MediaRecorder;window.MediaRecorder=class extends Native{
-        constructor(...args){super(...args);qaRecorders.push(this);}
+        constructor(...args){super(...args);this.qaId=qaRecorders.length;qaRecorders.push(this);
+          for(const type of ['start','stop','error','dataavailable'])this.addEventListener(type,e=>{
+            if(qaRecorderEvents.length<100)qaRecorderEvents.push({id:this.qaId,type,at:performance.now(),
+              state:this.state,error:e.error?{name:e.error.name,message:e.error.message}:undefined,
+              bytes:e.data?.size,tracks:trackState(this.stream)});
+          });
+        }
+        stop(){qaRecorderEvents.push({id:this.qaId,type:'stop-called',at:performance.now(),stack:new Error().stack});return super.stop();}
       };
       const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
       let frame=0;window.qaPaint=setInterval(()=>{const c=canvas.getContext('2d');
         c.fillStyle='#234';c.fillRect(0,0,640,360);c.fillStyle='white';c.fillRect(frame++%640,20,30,30);},50);
-      window.qaAudio=new AudioContext();void qaAudio.resume();
+      window.qaAudio=new AudioContext();await qaAudio.resume();
       const out=qaAudio.createMediaStreamDestination(),tone=qaAudio.createOscillator();
       tone.frequency.value=440;tone.connect(out);tone.start();
       navigator.mediaDevices.getDisplayMedia=async()=>{
@@ -593,7 +633,7 @@ app.whenReady().then(async () => {
       `document.querySelector('.source-card[aria-label="합성 미션·미리보기 화면"]').click()`,
     );
     await until(
-      `document.querySelector('.preview video')?.srcObject===qaStream && qaAnalysisSamples>0 && qaRecorders.some(r=>r.state==='recording')`,
+      `document.querySelector('.preview video')?.srcObject===qaStream && qaAnalysisSamples>0 && qaRecordingContinues()`,
     );
     const beforeHide = await js('qaAnalysisSamples');
     previewVisible = false;
@@ -601,12 +641,7 @@ app.whenReady().then(async () => {
     await until(
       `document.querySelector('.preview video')?.srcObject===null && qaAnalysisSamples>${beforeHide + 2}`,
     );
-    assert.equal(
-      await js(
-        `qaStream.getTracks().every(t=>t.readyState==='live')&&qaRecorders.some(r=>r.state==='recording')`,
-      ),
-      true,
-    );
+    assert.equal(await js(`qaRecordingContinues()`), true);
     previewVisible = true;
     win.emit('show');
     await until(`document.querySelector('.preview video')?.srcObject===qaStream`);
@@ -624,11 +659,7 @@ app.whenReady().then(async () => {
       samples:qaAnalysisSamples,
       alerts:[...document.querySelectorAll('[role="alert"]')].map(e=>e.textContent)
     })`);
-    // Rolling recorders may rotate between segments at this exact read.
-    await until(
-      `qaStream.getTracks().every(t=>t.readyState==='live')&&qaRecorders.some(r=>r.state==='recording')`,
-      2000,
-    );
+    await until(`qaRecordingContinues()`, 2000);
     await nativeHistory('back');
     await until(
       `location.hash==='#/studio' && document.querySelector('.preview video')?.srcObject===qaStream && !!document.querySelector('.mission-panel')`,
@@ -639,15 +670,72 @@ app.whenReady().then(async () => {
         `document.querySelector('.mission-help').textContent.includes('현금 가치·구매·환전이 없어요')`,
       ),
     );
+    for (let cycle = 0; cycle < 2; cycle++) {
+      const sampled = await js('qaAnalysisSamples');
+      previewMinimized = true;
+      win.emit('minimize');
+      await until(
+        `document.querySelector('.preview video')?.srcObject===null && qaAnalysisSamples>${sampled + 2}`,
+      );
+      assert.equal(await js('qaRecordingContinues()'), true);
+      previewMinimized = false;
+      win.emit('restore');
+      await until(`document.querySelector('.preview video')?.srcObject===qaStream`);
+      const beforeAway = await js('qaAnalysisSamples');
+      await js(
+        `window.qaDisplay=document.querySelector('.preview video');[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='나의 관객').click()`,
+      );
+      await until(
+        `location.hash==='#/audience' && qaDisplay.srcObject===null && qaAnalysisSamples>${beforeAway + 2}`,
+      );
+      assert.equal(await js('qaRecordingContinues()'), true);
+      assert.equal(finances(), beforePreview);
+      assert.deepEqual(
+        await js('({observers:qaPreviewObservers.size,listeners:qaVisibilityListeners.size})'),
+        { observers: 0, listeners: 0 },
+      );
+      await nativeHistory('back');
+      await until(
+        `location.hash==='#/studio' && document.querySelector('.preview video')?.srcObject===qaStream && !!document.querySelector('.mission-panel')`,
+      );
+      assert.equal(finances(), beforePreview);
+      assert.equal(
+        await js(
+          "qaClipRecorders().filter(r=>r.state==='recording').length<=2 && qaAnalysisVideos.size===1 && qaPreviewObservers.size===1 && qaVisibilityListeners.size===1",
+        ),
+        true,
+      );
+    }
+    report.captureBeforeStop = await js('qaCaptureState()');
+    report.videoChunks = await js(`qaRecorderEvents.filter(e=>e.type==='dataavailable'&&
+      e.bytes>0&&qaRecorders[e.id].stream.getVideoTracks().length>0).map(e=>e.bytes)`);
+    assert.ok(
+      report.videoChunks.length >= 2,
+      'independent video recorder must encode multiple chunks',
+    );
+    assert.equal(report.captureBeforeStop.audioState, 'running');
+    assert.ok(
+      report.soundAnalyses >= 2,
+      'multiple real-timestamp sound chunks must reach the synthetic analyzer',
+    );
+    assert.equal(
+      report.captureBeforeStop.events.some((e) => e.type === 'error'),
+      false,
+    );
+    assert.deepEqual(report.captureBeforeStop.alerts, []);
     assert.equal((await post('stop')).status, 200);
     await until(
       `qaStream.getTracks().every(t=>t.readyState==='ended')&&qaRecorders.every(r=>r.state==='inactive')`,
+    );
+    assert.deepEqual(
+      await js('({observers:qaPreviewObservers.size,listeners:qaVisibilityListeners.size})'),
+      { observers: 0, listeners: 0 },
     );
     report.nativePreviewVisibilitySimulated = true;
     report.analysisSamples = await js('qaAnalysisSamples');
     await js('clearInterval(qaPaint);qaAudio.close()');
     report.checks.push(
-      'mission ledger and app P survive preview hide/restore and native tab back; analysis samples and recording tracks continue until explicit broadcast stop',
+      'mission ledger and app P survive repeated preview hide/minimize/restore and native tab back; independent video recording, frame sampling and accepted sound analysis continue until explicit stop without accumulating players, observers or visibility listeners',
     );
     assert.deepEqual(report.errors, []);
     report.passed = true;
@@ -655,6 +743,7 @@ app.whenReady().then(async () => {
     report.error = error.stack;
     console.error(error.stack);
     if (win && !win.isDestroyed()) {
+      report.captureFailure = await js('window.qaCaptureState?.()');
       writeFileSync(join(base, 'failure-dom.txt'), await js('document.body.innerText'));
       writeFileSync(join(base, 'failure.png'), (await win.webContents.capturePage()).toPNG());
     }
@@ -666,7 +755,15 @@ app.whenReady().then(async () => {
     writeFileSync(join(base, 'result.json'), JSON.stringify(report, null, 2));
     writeFileSync(resolve('artifacts/mission-ui.json'), JSON.stringify(report, null, 2));
     console.log(
-      JSON.stringify({ passed: report.passed, base, checks: report.checks, error: report.error }),
+      JSON.stringify({
+        passed: report.passed,
+        base,
+        checks: report.checks,
+        error: report.error,
+        captureFailure: report.captureFailure,
+        videoChunks: report.videoChunks,
+        soundAnalyses: report.soundAnalyses,
+      }),
     );
     app.exit(report.passed ? 0 : 1);
   }
