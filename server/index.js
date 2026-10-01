@@ -952,12 +952,10 @@ async function startServerImpl(
     ),
   );
   app.post('/api/special/bid', (req, res) => {
-    studio.special.ready();
     const { id, amount } = z
       .object({ id: z.string().uuid(), amount: z.number().int().min(1).max(10000) })
       .parse(req.body);
-    economy.bid(id, amount);
-    studio.publish();
+    studio.special.bid({ id, amount });
     res.json({ ok: true });
   });
   app.post('/api/special/cancel', (req, res) => {

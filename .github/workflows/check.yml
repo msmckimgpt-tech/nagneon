@@ -44,3 +44,6 @@ jobs:
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-broadcast-trace-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
       - name: Culture learning availability and empty-analysis settings state
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-culture-status-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
+
+      - name: Point negotiation lifetime, settlement, refund and restart
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-point-negotiation-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"

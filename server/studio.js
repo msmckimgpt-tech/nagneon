@@ -197,7 +197,9 @@ export class Studio extends EventEmitter {
       settings: this.world?.publicSettings() || this.settings,
       autonomy: this.autonomy?.snapshot(),
       clips: this.clips.list(),
-      economy: this.economy.snapshot(this.settings.personas),
+      economy: this.economy.snapshot(this.settings.personas, {
+        sessionId: this.running ? this.sessionId : null,
+      }),
       audience: this.world?.publicAudience() || {
         ...this.audience.data,
         communityActivity: undefined,

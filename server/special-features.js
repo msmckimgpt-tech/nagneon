@@ -59,8 +59,14 @@ export class SpecialFeatures {
       if(kind==='contract')for(const m of messages)s.addMessage(m.personaId,m.text,'chat');
       s.ai.accepted(result);
       return receipt;
-    }catch(error){s.economy.refund(requestId,error.message);throw error;}
+    }catch(error){const failure=epoch!==s.epoch?new Error('방송 상태가 바뀌어 실행을 취소하고 포인트를 반환했습니다.',{cause:error}):error;s.economy.refund(requestId,failure.message);throw failure;}
     finally{if(epoch===s.epoch)s.busy=false;s.publish();}
   }
   quote(input){const s=this.ready();if(!s.running)throw new Error('방송 중에 관객에게 부탁할 수 있습니다.');const id=s.economy.quote({...input,settings:s.settings,audience:s.audience,sessionId:s.sessionId});s.publish();return {id};}
+  bid({id,amount}){
+    const s=this.ready(),q=s.economy.data.quotes.find(q=>q.id===id);
+    if(!s.running||!q||q.sessionId!==s.sessionId)throw new Error('현재 방송에서 진행 중인 협상에만 가격을 제안할 수 있습니다.');
+    if(q.targets.some(id=>!s.settings.personas.some(p=>p.id===id&&p.enabled&&!p.system&&p.id!==s.settings.managerId)||!['active','lurking'].includes(s.audience.presence[id])))throw new Error('부탁한 관객이 현재 방송에 있어야 가격을 제안할 수 있습니다.');
+    const result=s.economy.bid(id,amount);s.publish();return result;
+  }
 }
