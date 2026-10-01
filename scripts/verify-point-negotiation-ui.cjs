@@ -9,7 +9,7 @@ const assert=require('node:assert/strict');
 const base=resolve('artifacts/point-negotiation-ui-'+Date.now());
 mkdirSync(base,{recursive:true});app.setPath('userData',join(base,'profile'));
 const report={base,passed:false,syntheticModel:true,nativeDevices:false,realAccount:false,checks:[],errors:[]};
-let service,win,modelMode='success',release;
+let service,win,modelMode='success',release,releaseQuoteResponse;
 ipcMain.handle('account:status',()=>({status:'idle'}));
 ipcMain.handle('capture:sources',()=>[]);ipcMain.handle('capture:previews',()=>[]);
 ipcMain.handle('storage:status',()=>({profile:join(base,'profile'),defaultProfile:join(base,'profile'),isolated:true}));
@@ -26,7 +26,12 @@ async function textButton(text){await until(`Array.from(document.querySelectorAl
 async function click(selector){await until(`!!document.querySelector(${JSON.stringify(selector)})&&!document.querySelector(${JSON.stringify(selector)}).disabled`);await js(`document.querySelector(${JSON.stringify(selector)}).click()`);}
 async function screenshot(name){await js('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');await pause(100);writeFileSync(join(base,name),(await win.webContents.capturePage()).toPNG());}
 async function openWindow(){
-  win=new BrowserWindow({width:1360,height:960,show:false,webPreferences:{session:createStudioSession(session,service),preload:resolve('desktop/preload.cjs'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
+  const uiSession=createStudioSession(session,service);
+  // SSE can render a quote while its initiating HTTP response is still pending.
+  uiSession.webRequest.onHeadersReceived({urls:[service.url+'/api/special/quote']},(_details,callback)=>{
+    releaseQuoteResponse=()=>{releaseQuoteResponse=null;callback({});};
+  });
+  win=new BrowserWindow({width:1360,height:960,show:false,webPreferences:{session:uiSession,preload:resolve('desktop/preload.cjs'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
   win.webContents.on('console-message',e=>{if(e.level==='error')report.errors.push(e.message);});
   await win.loadURL(service.url);await until(`!!document.querySelector('.app-shell')`);
 }
@@ -39,8 +44,15 @@ async function negotiate(name){
   const count=service.studio.economy.data.quotes.length;
   await textButton('요구 가격 물어보기');await until(`document.querySelectorAll('.quote-card').length===${Math.min(5,count+1)}`);
   const q=service.studio.economy.data.quotes.at(-1);
-  await js(`{const card=document.querySelector('.quote-card');Array.from(card.querySelectorAll('button')).find(b=>b.textContent.trim()==='가격 제안').click();}`);
+  const heldAt=Date.now();while(typeof releaseQuoteResponse!=='function'&&Date.now()-heldAt<8000)await pause(30);
+  assert.equal(typeof releaseQuoteResponse,'function','quote response must be held');
+  assert.equal(await js(`document.querySelector('.quote-card .secondary').disabled`),true,'pending quote must disable bidding');
+  assert.equal(q.round,0);assert.equal(q.status,'open');
+  releaseQuoteResponse();
+  await click('.quote-card .secondary');
   await until(`document.querySelector('.quote-card').textContent.includes('합의한 행동 실행')`);
+  assert.equal(service.studio.economy.data.quotes.find(v=>v.id===q.id).round,1,'one enabled click submits one bid');
+  report.pendingQuoteCases=(report.pendingQuoteCases||0)+1;
   assert.equal(service.studio.economy.data.quotes.find(v=>v.id===q.id).status,'agreed');return service.studio.economy.data.quotes.find(v=>v.id===q.id);
 }
 app.whenReady().then(async()=>{
@@ -88,6 +100,7 @@ app.whenReady().then(async()=>{
     await textButton('방송실');assert.equal((await post('start')).status,200);await textButton('마음과 포인트');
     const fresh=await negotiate('각보는고양이');assert.notEqual(fresh.sessionId,stopped.sessionId);
     report.checks.push('stopped quotes lose controls, offline bids fail, and the same viewer can negotiate in a new broadcast');
+    assert.equal(report.pendingQuoteCases,4);report.checks.push('four held quote responses keep bids disabled, then each enabled click submits exactly once');
     modelMode='deferred';const startingBalance=service.studio.economy.data.balance;
     await textButton('합의한 행동 실행 · '+fresh.agreed+'P');await until(`document.querySelector('.quote-card').textContent.includes('실행 중')`);
     assert.equal(service.studio.economy.data.balance,startingBalance-fresh.agreed);
@@ -113,5 +126,5 @@ app.whenReady().then(async()=>{
     await screenshot('points-restored.png');
     assert.deepEqual(report.errors,[]);report.passed=true;
   }catch(error){report.error=error.stack;console.error(error.stack);if(win&&!win.isDestroyed()){writeFileSync(join(base,'failure-dom.txt'),await js('document.body.innerText'));writeFileSync(join(base,'failure.png'),(await win.webContents.capturePage()).toPNG());}}
-  finally{if(win&&!win.isDestroyed())win.destroy();if(service)await service.close();writeFileSync(join(base,'result.json'),JSON.stringify(report,null,2));writeFileSync(resolve('artifacts/point-negotiation-ui.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,base,checks:report.checks,error:report.error}));app.exit(report.passed?0:1);}
+  finally{if(releaseQuoteResponse)releaseQuoteResponse();if(win&&!win.isDestroyed())win.destroy();if(service)await service.close();writeFileSync(join(base,'result.json'),JSON.stringify(report,null,2));writeFileSync(resolve('artifacts/point-negotiation-ui.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,base,checks:report.checks,error:report.error}));app.exit(report.passed?0:1);}
 });

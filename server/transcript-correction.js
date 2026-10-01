@@ -1,7 +1,9 @@
 import {requestsAdvice} from './advice-intent.js';
 
 const clean=text=>text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
-const protectedWords=text=>(text.normalize('NFKC').toLowerCase().match(/\d+(?:[.,]\d+)*|아니|않|없|못|안(?=[가-힣])|\b(?:not|no|never|cannot|can't|don't)\b/g)||[]).join('|');
+// Negation survives Korean spacing and typographic apostrophes. A close
+// syllable edit must not turn "안 갈래요" into "난 갈래요", or remove n't.
+const protectedWords=text=>(text.normalize('NFKC').toLowerCase().replace(/[‘’ʼ]/g,"'").match(/\d+(?:[.,]\d+)*|아니|않|없|못|안(?=[가-힣\s.!?…]|$)|\b(?:not|no|never|cannot|[a-z]+n't)\b/g)||[]).join('|');
 // Preserve pragmatic meaning as well as spelling: uncertainty, preferences,
 // emotional words, laughter and the speaker's register are not ASR noise.
 const stance=text=>(text.normalize('NFKC').match(/좋|싫|기쁘|슬프|무섭|재밌|재미|힘들|편하|불편|농담|장난|아마|혹시|같[아은]|겠|싶|까|[ㅋㅎ]{2,}|하하+|허허+|습니다|습니까|세요|줘|줄래|요(?=[.!?…\s]|$)/g)||[]).join('|');
