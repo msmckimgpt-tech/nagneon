@@ -1,7 +1,10 @@
 import type {ClipSegment} from './clip-buffer';
-type Candidate={id:string;source:string;sessionId?:string;video:boolean;audio?:boolean;audioEligible?:boolean;createdAt:number;observedAt?:number};
-type Options={sessionId:string;takeAt:(at:number)=>Promise<ClipSegment|null>;allowed:()=>boolean;onError:(message:string)=>void;
+import type {ClipWindow} from './context-clip-buffer';
+type Candidate={id:string;source:string;sessionId?:string;video:boolean;audio?:boolean;audioEligible?:boolean;createdAt:number;observedAt?:number;recordingWindow?:ClipWindow};
+type Options={sessionId:string;takeAt:(at:number,window?:ClipWindow)=>Promise<ClipSegment|null>;allowed:()=>boolean;onError:(message:string)=>void;
   request?:typeof fetch;now?:()=>number;retryDelays?:number[];timeoutMs?:number};
+
+type Preparation={id:string;key:string;promise:Promise<ClipSegment|null>};
 
 class ClipRequestError extends Error {
   retryable:boolean;
@@ -19,12 +22,16 @@ export class ClipUploads {
   private abort=new AbortController();
   private request:typeof fetch;
   private now:()=>number;
+  private preparing:Preparation|null=null;
+  private key(clip:Candidate){return JSON.stringify([clip.observedAt,clip.recordingWindow?.startedAt,clip.recordingWindow?.endedAt]);}
+  private prepare(clip:Candidate){return {id:clip.id,key:this.key(clip),promise:this.options.takeAt(clip.observedAt??clip.createdAt,clip.recordingWindow)};}
   constructor(options:Options){this.options=options;this.request=options.request||((...args)=>fetch(...args));this.now=options.now||Date.now;}
   private allowed(){return !this.closed&&this.options.allowed();}
   add(clips:Candidate[]){
     if(!this.allowed())return;
     const ids=new Set(clips.map(c=>c.id)),unsaved=new Set(clips.filter(c=>!c.video&&!c.audio).map(c=>c.id));
-    this.queue=this.queue.filter(c=>unsaved.has(c.id));
+    this.queue=this.queue.filter(c=>unsaved.has(c.id)).map(c=>clips.find(updated=>updated.id===c.id)!);
+    if(this.preparing){const updated=clips.find(c=>c.id===this.preparing!.id);if(updated&&unsaved.has(updated.id)&&this.key(updated)!==this.preparing.key)this.preparing=this.prepare(updated);}
     for(const id of this.seen)if(!ids.has(id))this.seen.delete(id);
     for(const clip of clips){
       if(clip.source!=='spectator'||clip.sessionId!==this.options.sessionId||clip.video||clip.audio||this.seen.has(clip.id)||this.now()-clip.createdAt>120_000||this.queue.length>=100)continue;
@@ -81,7 +88,10 @@ export class ClipUploads {
       while(this.allowed()&&this.queue.length){
         const clip=this.queue.shift()!;
         try{
-          const recording=await this.options.takeAt(clip.observedAt??clip.createdAt);
+          this.preparing=this.prepare(clip);
+          let recording:ClipSegment|null;
+          for(;;){const current:Preparation=this.preparing!;recording=await current.promise;if(!this.allowed())return;if(this.preparing===current)break;}
+          this.preparing=null;
           if(!this.allowed())return;
           if(!this.seen.has(clip.id))continue;
           if(!recording)throw Error('선택한 순간의 영상·음성 버퍼가 없어 녹화를 저장하지 못했습니다.');
@@ -91,7 +101,7 @@ export class ClipUploads {
           if(recording.voice){if(recording.voice.sessionId!==recording.sessionId)throw Error('마이크 클립의 방송이 다릅니다.');await this.upload(clip,recording.voice,true);}
         }catch(error){if(this.allowed())this.options.onError((error instanceof Error?error.message:'관객 클립 영상 연결 실패')+' · 관객의 장면 기록은 저장되어 있습니다.');}
       }
-    }finally{this.working=false;}
+    }finally{this.preparing=null;this.working=false;}
   }
   dispose(){if(this.closed)return;this.closed=true;this.abort.abort();this.queue=[];this.seen.clear();}
 }

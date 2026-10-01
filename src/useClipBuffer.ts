@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createSeparatedClipSources} from './clip-source';
-import {ClipBuffer} from './clip-buffer';
+import {ContextClipBuffer as ClipBuffer} from './context-clip-buffer';
+import type {ClipWindow} from './context-clip-buffer';
 
 export function useClipBuffer(screen:MediaStream|null,mic:MediaStream|null,enabled:boolean,sessionId:string|null,system:MediaStream|null=null,onError?:(message:string)=>void){
   const current=useRef<ClipBuffer|null>(null);
@@ -24,5 +25,5 @@ export function useClipBuffer(screen:MediaStream|null,mic:MediaStream|null,enabl
       return()=>{buffer.dispose();voiceBuffer?.dispose();if(current.current===buffer){current.current=null;voice.current=null;}release();setBuffering(false);};
     }catch{current.current?.dispose();voice.current?.dispose();release();report('영상·음성 클립 녹화를 준비하지 못했습니다.');}
   },[screen,mic,enabled,sessionId,system]);
-  return {buffering,takeAt:async(at:number)=>{const base=current.current,voiceBuffer=voice.current,audioLayout=layout.current;if(!base)return null;const [clip,micClip]=await Promise.all([base.takeAt(at),voiceBuffer?.takeAt(at)||Promise.resolve(null)]);if(!clip||current.current!==base)return null;return {...clip,audioLayout,...(micClip?{voice:micClip}:{})};}};
+  return {buffering,takeAt:async(at:number,window?:ClipWindow)=>{const base=current.current,voiceBuffer=voice.current,audioLayout=layout.current;if(!base)return null;const [clip,micClip]=await Promise.all([base.takeAt(at,window),voiceBuffer?.takeAt(at,window)||Promise.resolve(null)]);if(!clip||current.current!==base)return null;return {...clip,audioLayout,...(micClip?{voice:micClip}:{})};}};
 }

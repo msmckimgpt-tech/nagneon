@@ -367,7 +367,6 @@ export class AudienceAutonomy {
       this.lastSaved = now;
     }
     if (now < this.nextCheck) return;
-    this.nextCheck = now + 60000;
     if (
       !s.ai.allowed('discovery') ||
       s.busy ||
@@ -376,6 +375,10 @@ export class AudienceAutonomy {
       now - this.world.data.autonomy.lastArrivalAt < 300000
     )
       return;
+    // A busy model slot defers this check rather than consuming its minute.
+    // Charge the interval only when the lottery can actually be evaluated;
+    // declined draws and model failures still wait a minute before retrying.
+    this.nextCheck = now + 60000;
     // No catch-up bursts after suspend, no waiting character pool. Rates are
     // simulation choices: a 3% chance/minute after ten minutes of actual uptime.
     const used = new Set(

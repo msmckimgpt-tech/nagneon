@@ -3,12 +3,16 @@ const grams=text=>{const result=new Set();for(let i=0;i<text.length-2;i++)result
 const dice=(a,b)=>{const left=grams(a),right=grams(b);let overlap=0;for(const token of left)if(right.has(token))overlap++;return 2*overlap/Math.max(1,left.size+right.size);};
 const polarity=text=>/\b(?:not|never|no|cannot|can't|isn't|wasn't)\b|(?:^|\s)(?:안|못)\s|아니|않|없|실패|싫|별로|불편|실망/.test(text.normalize('NFKC').toLowerCase());
 const numbers=text=>(text.match(/\d+(?:[.,]\d+)*/g)||[]).join('|');
+// NFKC turns compatibility ㅋ/ㅎ into canonical Hangul choseong. Long
+// laughter is still a shared reaction; its character count is not prose.
+const laughterOnly=text=>/^[\u110f\u1112]{2,}$/u.test(text.normalize('NFKC').replace(/[!?.,~…。！？\s]/gu,''));
 
 export function repeatedChat(candidate,recent,now){
   const core=compact(candidate.text);
   return recent.some(prior=>{
     if(prior.kind==='streamer')return false;
     const age=now-(prior.time??prior.createdAt??now);if(age<0||age>45000)return false;
+    if(laughterOnly(candidate.text)&&laughterOnly(prior.text))return age<=8000&&prior.personaId===candidate.personaId;
     const other=compact(prior.text);
     // Short cheers are a shared crowd response, not a paraphrased analysis.
     // The same person still cannot spam an identical cheer every pump tick.
