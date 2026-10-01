@@ -18,9 +18,9 @@ import './page-navigation.css';
 type Position = { top: number; focus?: string };
 type Entry = { key: string; index: number; origin?: number; position?: Position };
 type Navigation = {
-  batch: (change: () => void) => void;
+  batch: (change: () => void, start?: boolean) => void;
   route: PageRoute;
-  navigate: (route: PageRoute, replace?: boolean) => void;
+  navigate: (route: PageRoute, replace?: boolean, start?: boolean) => void;
   patch: (patch: Partial<PageRoute>, replace?: boolean) => void;
   move: (direction: 'back' | 'forward') => void;
   closeSettings: () => void;
@@ -61,13 +61,13 @@ export function PageNavigation({ children }: { children: ReactNode }) {
     }
     navigate(updatePageRoute(current.current, patch), replace);
   }
-  function batch(change: () => void) {
+  function batch(change: () => void, start = false) {
     transaction.current = current.current;
     try {
       change();
       const next = transaction.current;
       transaction.current = null;
-      navigate(next);
+      navigate(next, false, start);
     } finally {
       transaction.current = null;
     }
@@ -87,7 +87,7 @@ export function PageNavigation({ children }: { children: ReactNode }) {
     setRoute(next);
     setRevision((n) => n + 1);
   }
-  function navigate(next: PageRoute, replace = false) {
+  function navigate(next: PageRoute, replace = false, start = false) {
     if (transaction.current) {
       transaction.current = next;
       return;
@@ -105,7 +105,7 @@ export function PageNavigation({ children }: { children: ReactNode }) {
       next,
       next.settings || current.current.settings
         ? position()
-        : samePage
+        : samePage && !start
           ? positions.current.get(hash)
           : undefined,
     );

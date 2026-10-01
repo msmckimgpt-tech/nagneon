@@ -19,7 +19,7 @@ export function useReadingPosition(key: string, ready = true, active = true) {
   function move(change: () => void, preserve = false, start = false) {
     if (navigation) {
       if (!active || (ref.current && !ref.current.getClientRects().length)) return;
-      navigation.batch(change);
+      navigation.batch(change, start);
       return;
     }
     if (!ref.current?.getClientRects().length) {

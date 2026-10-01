@@ -258,6 +258,14 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
         ),
         true,
       );
+      // Opening a post again starts at its heading; history Back restores the list.
+      await js("document.querySelectorAll('.social-post')[18].click()");
+      await until("!!document.querySelector('.social-detail')");
+      await settle();
+      await detailAtStart('.social-detail');
+      await click('← 글 목록');
+      await settle();
+      near(await top(), listTop, 'reopened detail return restores list scroll');
       await js(
         "(()=>{const b=document.querySelectorAll('.social-post')[19] ;b.scrollIntoView({block:'center'});b.focus({preventScroll:true});})()",
       );
