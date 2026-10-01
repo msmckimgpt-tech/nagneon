@@ -620,6 +620,10 @@ export class Studio extends EventEmitter {
     let delay = 0,
       first = true,
       admittedHints = this.admittedAdvice(adviceRequestId);
+    const duplicateContext =
+      origin === 'live'
+        ? { addressViewers: this.audience.addressing(this.settings, this.now()) }
+        : undefined;
     this.reactions.reject(
       diagnosticId,
       'pace',
@@ -660,7 +664,7 @@ export class Studio extends EventEmitter {
       const recent = [...this.messages.slice(-60), ...this.queue];
       const duplicate =
         origin === 'live'
-          ? repeatedChat(m, recent, this.now())
+          ? repeatedChat(m, recent, this.now(), duplicateContext)
           : recent.some((x) => x.text === m.text);
       if (!p || blocked || duplicate || (m.spoiler && this.settings.spoilerGuard)) {
         this.reactions.reject(
@@ -770,7 +774,12 @@ export class Studio extends EventEmitter {
       this.reactions.drop(m.diagnosticId, 'expired');
       return;
     }
-    if (m.origin === 'live' && repeatedChat(m, this.messages.slice(-60), now)) {
+    if (
+      m.origin === 'live' &&
+      repeatedChat(m, this.messages.slice(-60), now, {
+        addressViewers: this.audience.addressing(this.settings, now),
+      })
+    ) {
       this.reactions.drop(m.diagnosticId, 'duplicate');
       return;
     }
