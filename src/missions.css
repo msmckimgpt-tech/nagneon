@@ -1,0 +1,93 @@
+.mission-panel {
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.mission-heading,
+.mission-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mission-heading small {
+  display: block;
+  color: var(--text-muted, #a5a7b3);
+  margin-top: 5px;
+  font-size: 11px;
+}
+.mission-help {
+  font-size: 12px;
+  color: var(--text-muted, #a5a7b3);
+  line-height: 1.6;
+}
+.mission-list {
+  display: grid;
+  gap: 10px;
+  max-height: 600px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.mission-card {
+  padding: 13px;
+  border: 1px solid #ffffff20;
+  border-radius: 12px;
+  background: #ffffff04;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mission-card > header span {
+  font-size: 11px;
+  color: #e8c88e;
+}
+.mission-card > small,
+.mission-card > p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.mission-card .mission-condition {
+  padding: 9px;
+  border-radius: 8px;
+  background: #b997f00d;
+  border-left: 3px solid #b997f0;
+}
+.mission-card progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #b997f0;
+}
+.mission-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.mission-actions button,
+.mission-heading button {
+  font-size: 11px;
+  padding: 7px 9px;
+}
+.mission-card details {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.mission-card summary {
+  cursor: pointer;
+  color: #c6b5e7;
+}
+.mission-revision fieldset {
+  border: 0;
+  padding: 8px 0;
+  min-width: 0;
+}
+.mission-revision label {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+.mission-revision select,
+.mission-revision input {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}

@@ -44,6 +44,7 @@ import { api } from './api';
 import { DonationBadge } from './DonationBadge';
 import { SpecialStudio } from './SpecialStudio';
 import { DonationToast, DonationHistory } from './Donations';
+import { MissionPanel } from './MissionPanel';
 import { HotClips } from './HotClips';
 import { CommunityGallery } from './CommunityGallery';
 import { SettingsDialog } from './SettingsDialog';
@@ -56,6 +57,7 @@ import { ConversationMemories } from './ConversationMemories';
 import { SoundPanel } from './SoundPanel';
 import { ObsPanel } from './ObsPanel';
 import { CapturePicker } from './CapturePicker';
+import { ScreenPreview } from './ScreenPreview';
 import { ChatDisplayToggle } from './ChatDisplayToggle';
 import { ReactionDiagnostics } from './ReactionDiagnostics';
 import { ChatBriefing } from './ChatBriefing';
@@ -64,7 +66,7 @@ import { useChatFollow } from './useChatFollow';
 import { useChatHistory } from './useChatHistory';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
-import { createNavigationHistory, type NavigationDirection } from '../shared/navigation-history.js';
+import { PageNavigation, usePageNavigation } from './PageNavigation';
 import { subscribeNavigationInputs } from '../shared/navigation-input.js';
 
 const time = (n: number) =>
@@ -119,16 +121,31 @@ const ChatLine = memo(function ChatLine({
   );
 });
 export function App() {
+  return (
+    <PageNavigation>
+      <AppContent />
+    </PageNavigation>
+  );
+}
+function AppContent() {
+  const navigation = usePageNavigation()!;
+  const { route } = navigation;
   const overlay = location.pathname === '/overlay';
   const { state, connected } = useStudioState();
   const [error, setError] = useState('');
-  const [settingsTab, setSettingsTab] = useState<'broadcast' | 'mood' | 'connection'>('broadcast');
+  const settingsTab = route.settings || 'broadcast';
+  const setSettingsTab = (settings: string) => navigation.patch({ settings });
   const composeInput = useRef<HTMLInputElement>(null);
-  const [communitySection, setCommunitySection] = useState<'broadcast' | 'outside'>('broadcast');
-  const [tab, setTabState] = useState('studio'),
-    [draft, setDraft] = useState<Settings | null>(null),
-    [modal, setModal] = useState(false),
-    [captureSound, setCaptureSound] = useState<boolean | null>(null),
+  const communitySection = route.section || 'broadcast';
+  const setCommunitySection = (section: 'broadcast' | 'outside') =>
+    navigation.navigate({ tab: 'community', section });
+  const tab = route.tab;
+  const modal = !!route.settings;
+  const [draft, setDraft] = useState<Settings | null>(null);
+  const setModal = (open: boolean) => {
+    if (!open) navigation.closeSettings();
+  };
+  const [captureSound, setCaptureSound] = useState<boolean | null>(null),
     [text, setText] = useState('');
   const [now, setNow] = useState(Date.now()),
     [through, setThrough] = useState(false),
@@ -139,15 +156,13 @@ export function App() {
   const [overlayTransparency, setOverlayTransparency] = useState(0);
   const [focusMessage, setFocusMessage] = useState<Message | null>(null);
   const [donationsOpen, setDonationsOpen] = useState(false);
-  const [tabHistory] = useState(() => createNavigationHistory('studio'));
   const navigateTab = useCallback(
-    (destination: string) => setTabState(tabHistory.push(destination).current),
-    [tabHistory],
+    (destination: string) => navigation.navigate({ tab: destination }),
+    [navigation.navigate],
   );
-  const moveTabHistory = useCallback(
-    (direction: NavigationDirection) => setTabState(tabHistory.move(direction).current),
-    [tabHistory],
-  );
+  const historyMove = useRef(navigation.move);
+  historyMove.current = navigation.move;
+  const moveTabHistory = (direction: 'back' | 'forward') => historyMove.current(direction);
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
   const subscriptionStartPending = useRef(false);
@@ -186,8 +201,10 @@ export function App() {
   useEffect(() => window.backseat?.onOverlayState(setThrough), []);
   useEffect(() => {
     if (overlay) return;
-    return subscribeNavigationInputs(window, window.backseat?.onNavigationHistory, moveTabHistory);
-  }, [overlay, moveTabHistory]);
+    return subscribeNavigationInputs(window, window.backseat?.onNavigationHistory, (direction) =>
+      historyMove.current(direction),
+    );
+  }, [overlay]);
   const action = useCallback(async (path: string, body?: unknown, method?: string) => {
     try {
       setError('');
@@ -229,7 +246,6 @@ export function App() {
     if (!state) return;
     setSettingsTab('broadcast');
     setDraft(structuredClone(state.settings));
-    setModal(true);
   }
   async function screen(_withSound = true) {
     if (media.capturePreparing) return;
@@ -372,7 +388,7 @@ export function App() {
             <Brand />
           </a>
           <span className="sidebar-label">LEAVE A LIGHT ON</span>
-          <nav>
+          <nav aria-label="주요 화면">
             {[
               { id: 'studio', label: '방송실', icon: LayoutDashboard },
               { id: 'ai', label: 'AI 대시보드', icon: Activity },
@@ -387,6 +403,7 @@ export function App() {
                 data-tutorial={'nav-' + item.id}
                 key={item.id}
                 className={tab === item.id ? 'selected' : ''}
+                aria-current={tab === item.id ? 'page' : undefined}
                 onClick={() => navigateTab(item.id)}
               >
                 <item.icon size={18} />
@@ -446,6 +463,14 @@ export function App() {
         </aside>
         <div className={tab === 'studio' ? 'workspace studio-workspace' : 'workspace'}>
           <header className="topbar">
+            <div className="page-history" aria-label="화면 이동">
+              <button aria-label="이전 화면" onClick={() => moveTabHistory('back')}>
+                ←
+              </button>
+              <button aria-label="다음 화면" onClick={() => moveTabHistory('forward')}>
+                →
+              </button>
+            </div>
             <div className="breadcrumbs">
               내 스튜디오 <ChevronRight size={13} />
               <b>
@@ -462,6 +487,16 @@ export function App() {
                   }[tab]
                 }
               </b>
+              {tab === 'community' && (
+                <span className="route-location">
+                  {' '}
+                  / {communitySection === 'outside' ? '바깥 커뮤니티' : '방송 커뮤니티'}
+                  {route.post ? ' / 게시글' : route.write ? ' / 글쓰기' : ''}
+                </span>
+              )}
+              {tab === 'clips' && route.clip && (
+                <span className="route-location"> / 클립 상세</span>
+              )}
             </div>
             <div className="top-status">
               <button className="ai-status-link" onClick={() => navigateTab('ai')}>
@@ -497,25 +532,32 @@ export function App() {
               </div>
             )}
             <DonationToast messages={state.messages} />
-            <section className="page-heading">
+            <section className="page-heading" data-route={location.hash}>
               <div>
                 <div className="eyebrow">NAGNE + ON AIR</div>
-                <h1>
-                  {tab === 'ai'
-                    ? 'AI가 언제, 어디서 작동하는지.'
-                    : tab === 'studio'
-                      ? '방송을 켜면, 이야기가 찾아옵니다.'
-                      : tab === 'audience'
-                        ? '오늘도 찾아온, 반가운 얼굴들.'
-                        : tab === 'knowledge'
-                          ? '같이 볼수록, 더 잘 알아요.'
-                          : tab === 'community'
-                            ? '방송이 끝나도, 이야기는 남아요.'
-                            : tab === 'special'
-                              ? '관객의 마음, 한 걸음 더 가까이.'
-                              : tab === 'clips'
-                                ? '명장면은, 계속 이야기되니까.'
-                                : '방송의 분위기를 지켜요.'}
+                <h1 tabIndex={-1} data-page-title>
+                  {route.clip
+                    ? state.clips.find((c) => c.id === route.clip)?.title || '핫클립 상세'
+                    : route.post
+                      ? state.audience.posts.find((p) => p.id === route.post)?.title ||
+                        '커뮤니티 게시글'
+                      : route.write
+                        ? '새 이야기 쓰기'
+                        : tab === 'ai'
+                          ? 'AI가 언제, 어디서 작동하는지.'
+                          : tab === 'studio'
+                            ? '방송을 켜면, 이야기가 찾아옵니다.'
+                            : tab === 'audience'
+                              ? '오늘도 찾아온, 반가운 얼굴들.'
+                              : tab === 'knowledge'
+                                ? '같이 볼수록, 더 잘 알아요.'
+                                : tab === 'community'
+                                  ? '방송이 끝나도, 이야기는 남아요.'
+                                  : tab === 'special'
+                                    ? '관객의 마음, 한 걸음 더 가까이.'
+                                    : tab === 'clips'
+                                      ? '명장면은, 계속 이야기되니까.'
+                                      : '방송의 분위기를 지켜요.'}
                 </h1>
                 <p>
                   {tab === 'ai'
@@ -579,12 +621,10 @@ export function App() {
                   if (destination.startsWith('settings:')) {
                     setSettingsTab(destination === 'settings:mood' ? 'mood' : 'connection');
                     setDraft(structuredClone(state.settings));
-                    setModal(true);
                   } else if (destination.startsWith('community:')) {
                     setCommunitySection(
                       destination === 'community:outside' ? 'outside' : 'broadcast',
                     );
-                    navigateTab('community');
                   } else navigateTab(destination);
                 }}
               />
@@ -654,7 +694,7 @@ export function App() {
                         </button>
                       </div>
                       <div className={'preview ' + (media.sharing ? 'has-video' : '')}>
-                        <video ref={media.video} autoPlay muted playsInline />
+                        <ScreenPreview source={media.previewSource} />
                         {!media.sharing && (
                           <div className="preview-empty">
                             <div className="orbit orbit-a" />
@@ -696,7 +736,7 @@ export function App() {
                         )}
                         {media.sharing && (
                           <div className="preview-caption">
-                            <span className="dot green" /> 선택한 화면 미리보기{' '}
+                            <span className="dot green" /> 화면 연결됨{' '}
                             <button onClick={media.stopPicture}>화면 공유 중지</button>
                           </div>
                         )}
@@ -807,7 +847,7 @@ export function App() {
                               ) {
                                 setSettingsTab('connection');
                                 setDraft(structuredClone(state.settings));
-                                setModal(true);
+
                                 setError(
                                   '방송 전에 마이크와 게임·시스템 소리의 전송 범위를 확인해주세요.',
                                 );
@@ -878,6 +918,12 @@ export function App() {
                       <span>마음에 든 순간은 관객이 핫클립으로 남겨요.</span>
                       <span>{state.economy.balance}P · 포인트</span>
                     </div>
+                    <MissionPanel
+                      state={state.missions}
+                      running={state.running}
+                      sessionId={state.sessionId}
+                      gameId={s.gameId}
+                    />
                     <section className="panel perception">
                       <div className="panel-heading">
                         <div>
@@ -1244,11 +1290,13 @@ export function App() {
                 setSection={setCommunitySection}
               >
                 <CommunityGallery state={state} onError={setError} />
-                <details className="panel teaching">
+                <details className="panel teaching" hidden={!!route.post || !!route.write}>
                   <summary>방송에서 나눈 대화 기억</summary>
                   <ConversationMemories state={state} onError={setError} />
                 </details>
-                <CommunityLore items={state.audience.lore} onError={setError} />
+                {!route.post && !route.write && (
+                  <CommunityLore items={state.audience.lore} onError={setError} />
+                )}
               </CommunitySpace>
             )}
             <footer>
@@ -1286,18 +1334,32 @@ export function App() {
             }
           />
         )}
-        {modal && draft && (
+        {modal && (draft || state.settings) && (
           <SettingsDialog
             state={state}
-            initial={draft}
-            initialTab={settingsTab}
+            initial={draft || state.settings}
+            initialTab={settingsTab as Parameters<typeof SettingsDialog>[0]['initialTab']}
             onDashboard={() => {
-              setModal(false);
+              navigation.drafts.delete('settings');
+              navigation.drafts.delete('settingsScroll');
               navigateTab('ai');
             }}
-            onClose={() => setModal(false)}
-            onSaved={() => setModal(false)}
+            onClose={() => {
+              navigation.drafts.delete('settings');
+              navigation.drafts.delete('settingsScroll');
+              setDraft(null);
+              setModal(false);
+            }}
+            onSaved={() => {
+              navigation.drafts.delete('settings');
+              navigation.drafts.delete('settingsScroll');
+              setDraft(null);
+              setModal(false);
+            }}
             onGuide={() => {
+              navigation.drafts.delete('settings');
+              navigation.drafts.delete('settingsScroll');
+              setDraft(null);
               setModal(false);
               void action('tutorial', { action: 'begin' });
             }}

@@ -12,7 +12,8 @@ app.whenReady().then(async()=>{try{
  const {startServer}=await import(pathToFileURL(resolve('server/index.js')));
  service=await startServer({port:0,dataDir:join(base,'data'),localSpeech:false,provider:{status:()=>({configured:true}),react:async()=>({observation:{game:'Synthetic',scene:'Synthetic frame',confidence:1,excitement:0,messages:[]}})},soundWorker:{prepare:async()=>true,close(){},analyze:async()=>({durationSeconds:4,volumeDb:-25,balance:0,silent:true,classes:[],systemSpeech:'',language:'ko',source:'system-output',caveat:'Synthetic'})}});
  service.studio.configure({...service.studio.settings,mode:'live'});
- win=new BrowserWindow({width:1260,height:900,show:true,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
+ const offscreen=process.argv.includes('--offscreen');
+ win=new BrowserWindow({width:1260,height:900,show:!offscreen,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false,offscreen}});
  win.webContents.on('console-message',e=>{if(e.level==='error')report.errors.push(e.message);});await win.loadURL(service.url);
  const js=code=>win.webContents.executeJavaScript(code,true),pause=ms=>new Promise(r=>setTimeout(r,ms));
  const until=async(code,timeout=7000)=>{const start=Date.now();while(Date.now()-start<timeout){if(await js(code))return;await pause(50);}throw Error('Capture preparation timeout: '+code);};

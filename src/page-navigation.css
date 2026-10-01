@@ -1,0 +1,61 @@
+.workspace > .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--night);
+}
+.page-history {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.page-history button {
+  border: 1px solid var(--ui-input-border);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+[data-page-title]:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 5px;
+}
+.route-location {
+  color: var(--neon);
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.clip-layout.clip-page-detail {
+  display: block;
+}
+.clip-page-detail .clip-detail {
+  width: 100%;
+  max-width: 1000px;
+  margin-inline: auto;
+}
+.detail-back {
+  margin-bottom: 16px;
+}
+.settings-route-note {
+  font-size: 11px;
+  margin: 4px 0;
+}
+@media (max-width: 760px) {
+  .topbar {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+  .topbar .breadcrumbs {
+    flex-wrap: wrap;
+  }
+  .topbar .top-status {
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+}
+
+.community-reading-space [hidden] {
+  display: none !important;
+}

@@ -1,23 +1,32 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { usePageNavigation } from './PageNavigation';
+import { useRouteValue } from './useRouteValue';
 import { useReadingPosition } from './useReadingPosition';
 import { api } from './api';
 import type { State } from './types';
 import './social-community.css';
 import { SocialDiscussion, type Discussion } from './SocialDiscussion';
 import { CommunitySettings } from './CommunitySettings';
-type Post = Discussion & {
-  id: string;
-  communityId: string;
-  topicId: string;
-  kind: string;
-  title: string;
-  text: string;
-  at: number;
-  author: string;
-  authorIsViewer: boolean;
-  sourceStatus: string;
-  bookmarked: boolean;
-};
+import {
+  CommunityFact,
+  CommunityFactInputStatus,
+  type FactPost,
+  type TrendInputStatus,
+} from './CommunityFact';
+type Post = Discussion &
+  FactPost & {
+    id: string;
+    communityId: string;
+    topicId: string;
+    kind: string;
+    title: string;
+    text: string;
+    at: number;
+    author: string;
+    authorIsViewer: boolean;
+    sourceStatus: string;
+    bookmarked: boolean;
+  };
 type Prefs = {
   enabled: boolean;
   creativeImages: boolean;
@@ -29,6 +38,7 @@ type Prefs = {
   bookmarks: string[];
 };
 type Data = {
+  trendInput?: TrendInputStatus;
   revision: number;
   communities: {
     id: string;
@@ -95,13 +105,27 @@ function OutsideCommunity({
   active: boolean;
   onError: (s: string) => void;
 }) {
+  const navigation = usePageNavigation();
+  const [community, setCommunity] = useRouteValue('community');
+  const [submitted, setSubmitted] = useRouteValue('q');
+  const [page, setPage] = useRouteValue('page', '0');
+  const offset = Number(page) * 30;
+  const setOffset = (next: number | ((previous: number) => number)) =>
+    setPage(String((typeof next === 'function' ? next(offset) : next) / 30));
+  const [bookmarkValue, setBookmarkValue] = useRouteValue('bookmarked');
+  const bookmarked = bookmarkValue === '1';
+  const setBookmarked = (value: boolean | ((previous: boolean) => boolean)) =>
+    setBookmarkValue((typeof value === 'function' ? value(bookmarked) : value) ? '1' : '');
+  const [query, setQuery] = useState(submitted);
+  useEffect(() => setQuery(submitted), [submitted]);
+  const [selectedState, setSelectedState] = useState<Post | null>(null);
+  const selectedId = navigation ? navigation.route.post : selectedState?.id;
+  const selected = selectedState?.id === selectedId ? selectedState : null;
+  const setSelected = (post: Post | null) => {
+    setSelectedState(post);
+    navigation?.patch({ post: post?.id });
+  };
   const [data, setData] = useState<Data | null>(null),
-    [community, setCommunity] = useState(''),
-    [query, setQuery] = useState(''),
-    [submitted, setSubmitted] = useState(''),
-    [offset, setOffset] = useState(0),
-    [bookmarked, setBookmarked] = useState(false),
-    [selected, setSelected] = useState<Post | null>(null),
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
     [loading, setLoading] = useState(false);
@@ -147,7 +171,6 @@ function OutsideCommunity({
       cancelled = true;
     };
   }, [active, revision, audienceKey, community, submitted, offset, bookmarked, refresh]);
-  const selectedId = selected?.id;
   useEffect(() => {
     if (!active || !selectedId) return;
     let cancelled = false;
@@ -160,12 +183,14 @@ function OutsideCommunity({
         });
         if (cancelled) return;
         if (response.status === 404) {
-          reading.move(() => setSelected(null));
+          if (navigation) navigation.patch({ post: undefined }, true);
+          else reading.move(() => setSelected(null));
+          onError('이 글을 찾을 수 없어요. 목록으로 돌아왔습니다.');
           return;
         }
         const post = await response.json();
         if (!response.ok) throw new Error(post.error || '글을 불러오지 못했습니다.');
-        if (!cancelled) setSelected((current) => (current?.id === selectedId ? post : current));
+        if (!cancelled) setSelectedState(post);
       } catch (error) {
         if (!cancelled) onError((error as Error).message);
       }
@@ -224,6 +249,7 @@ function OutsideCommunity({
         busy={busy}
         onPatch={patch}
       />
+      <CommunityFactInputStatus input={state.social?.trendInput ?? data.trendInput} />
       {data.quarantined ? (
         <p role="status">기록 복구 확인이 필요해 커뮤니티 열람과 활동을 보류하고 있어요.</p>
       ) : data.blockedReason ? (
@@ -237,7 +263,7 @@ function OutsideCommunity({
       ) : !p.enabled ? (
         <p role="status">자동활동을 껐어요. 저장된 이야기는 계속 읽을 수 있습니다.</p>
       ) : null}
-      <div className="social-community-list">
+      <div className="social-community-list" hidden={!!selectedId}>
         <button
           className={!community ? 'selected' : ''}
           aria-pressed={!community}
@@ -271,6 +297,7 @@ function OutsideCommunity({
       </div>
       <form
         className="social-search"
+        hidden={!!selectedId}
         onSubmit={(e) => {
           e.preventDefault();
           reading.move(() => {
@@ -320,7 +347,9 @@ function OutsideCommunity({
         </button>
       </form>
       <div ref={reading.ref} className="community-reading-content" tabIndex={-1}>
-        {selected ? (
+        {selectedId && !selected ? (
+          <p role="status">글을 불러오고 있어요…</p>
+        ) : selected ? (
           <article
             className={`social-detail${selected.authorIsViewer ? ' social-viewer-post' : ''}`}
           >
@@ -337,6 +366,7 @@ function OutsideCommunity({
               {selected.kind === 'daily' ? '일상' : '방송 이야기'}
             </small>
             <p>{selected.text}</p>
+            <CommunityFact post={selected} />
             {selected.sourceStatus === 'historical' && (
               <p className="muted">당시 남긴 이야기입니다. 현재 방송 근거로는 사용하지 않아요.</p>
             )}
@@ -396,13 +426,15 @@ function OutsideCommunity({
                 {(submitted || community || bookmarked) && (
                   <button
                     className="secondary"
-                    onClick={() => {
-                      setCommunity('');
-                      setQuery('');
-                      setSubmitted('');
-                      setBookmarked(false);
-                      setOffset(0);
-                    }}
+                    onClick={() =>
+                      reading.move(() => {
+                        setCommunity('');
+                        setQuery('');
+                        setSubmitted('');
+                        setBookmarked(false);
+                        setOffset(0);
+                      })
+                    }
                   >
                     전체 이야기 보기
                   </button>
@@ -421,6 +453,7 @@ function OutsideCommunity({
                     {post.kind === 'daily' ? '일상' : '방송 이야기'}
                   </span>
                   <strong>{post.title}</strong>
+                  <CommunityFact post={post} compact />
                   <small>
                     <span className="social-author">
                       {post.author}

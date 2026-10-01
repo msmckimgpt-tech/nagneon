@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { randomUUID, createHash } from 'node:crypto';
 import { Persona } from './schema.js';
+import { TrendFact } from './culture/trend-facts.js';
 import {
   SocialPreferences,
   SocialPreferencePatch,
@@ -59,6 +60,7 @@ const thread = z
     text: z.string().min(1).max(600),
     at: time,
     source: Source.nullable(),
+    trendFact: TrendFact.optional(),
     comments: z.array(comment).max(150).optional(),
     votes: z
       .array(z.union([uuid, z.literal('streamer')]))
@@ -117,6 +119,7 @@ export const SocialRuntimeData = z
         r.communityId !== t.communityId ||
         r.joinedAt > t.at ||
         (t.kind === 'mention') !== !!t.source ||
+        (t.trendFact && (t.kind !== 'daily' || t.trendFact.observedAt > t.at)) ||
         (t.source && (t.source.at > t.at || t.source.witnessId !== r.persona.id))
       )
         ctx.addIssue({ code: 'custom', message: '게시글의 작성자와 근거가 맞지 않습니다.' });

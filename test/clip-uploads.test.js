@@ -76,3 +76,55 @@ test('a saved queued pick is removed when the server publishes its newer state',
   const {q,calls}=make({takeAt:async()=>{takes++;if(takes===1)await first;return recording;}});t.after(()=>q.dispose());
   q.add([candidate(),candidate('clip-2')]);q.add([candidate(),candidate('clip-2',{video:true})]);resolve();await until(()=>calls.length===1);await delay(15);assert.equal(takes,1);assert.equal(calls.length,1);
 });
+
+test('an overlapping nomination while buffering uploads only the latest merged window', async (t) => {
+  const waits = [],
+    windows = [],
+    calls = [];
+  const { q, errors } = make({
+    takeAt: (at, window) => {
+      windows.push({ at, window });
+      return new Promise((resolve) => waits.push(resolve));
+    },
+    request: async (path, init) => {
+      calls.push({ path, init });
+      return ok();
+    },
+  });
+  t.after(() => q.dispose());
+  const first = {
+    startedAt: T - 10000,
+    endedAt: T + 1000,
+    eventStartedAt: T - 5000,
+    eventEndedAt: T,
+    basis: 'moment',
+  };
+  const merged = { ...first, endedAt: T + 6000 };
+  q.add([candidate('clip-1', { recordingWindow: first })]);
+  q.add([candidate('clip-1', { recordingWindow: merged })]);
+  assert.equal(waits.length, 2);
+  waits[0](recording);
+  await delay(10);
+  assert.equal(calls.length, 0);
+  const extended = { ...recording, endedAt: T + 6000 };
+  waits[1](extended);
+  await until(() => calls.length === 1);
+  assert.equal(windows[1].at, T - 5000);
+  assert.deepEqual(windows[1].window, merged);
+  assert.match(calls[0].path, /endedAt=1006000/);
+  assert.deepEqual(errors, []);
+});
+
+test('disposing an upload while a merged nomination waits prevents all late uploads', async () => {
+  const waits = [];
+  const { q, calls, errors } = make({
+    takeAt: () => new Promise((resolve) => waits.push(resolve)),
+  });
+  q.add([candidate('clip-1', { recordingWindow: { startedAt: T - 10000, endedAt: T } })]);
+  q.add([candidate('clip-1', { recordingWindow: { startedAt: T - 10000, endedAt: T + 5000 } })]);
+  q.dispose();
+  for (const resolve of waits) resolve(recording);
+  await delay(10);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(errors, []);
+});

@@ -7,6 +7,8 @@ import { socialContentHash, socialDiscussionHash, similarSocialText } from './so
 import { Persona, Observation } from './schema.js';
 import { communities, digest, SocialPreferencePatch } from './social-runtime-state.js';
 import { transcriptAnomaly } from './transcript-correction.js';
+import { TrendFactInput, factHash, activeFact } from './culture/trend-facts.js';
+import { selectTrend, trendParticipation, trendRelevance, trendInstruction, safeTrendReaction } from './culture/community-trends.js';
 
 const normalize = (s) => s.normalize('NFKC').toLocaleLowerCase();
 const querySchema = z
@@ -24,6 +26,7 @@ export class SocialRuntime {
     this.s = studio;
     this.world = studio.world;
     this.media = new SocialMedia();
+    this.trends = new TrendFactInput({ onChange: () => this.s.publish() });
   }
   data() {
     return this.world?.data.socialWorld;
@@ -137,6 +140,12 @@ export class SocialRuntime {
         : this.validSource(t.source)
           ? 'public-broadcast'
           : 'historical',
+      ...(t.trendFact ? {
+        externalFact: t.trendFact,
+        externalFactStatus: activeFact(t.trendFact, this.s.now())
+          ? t.trendFact.evidenceKind === 'synthetic' ? 'synthetic' : 'observed' : 'expired',
+        reactionKind: 'fictional-personal-reaction',
+      } : {}),
       bookmarked: this.data().preferences.bookmarks.includes(t.id),
       comments: (t.comments || []).map((c) => ({
         ...c,
@@ -163,6 +172,7 @@ export class SocialRuntime {
           blockedReason: this.s.ai.reason('community'),
           residents: d.residents.length,
           threads: d.threads.filter((t) => this.visible(t)).length,
+          trendInput: this.trends.snapshot(this.s.now()),
           status: d.quarantined
             ? 'recovery-required'
             : !d.preferences.enabled
@@ -375,7 +385,17 @@ export class SocialRuntime {
           dailyTopic =
             topics.find((t) => t.id === topic.id && t.id !== lastDaily?.topicId) ||
             topics[(topics.findIndex((t) => t.id === lastDaily?.topicId) + 1) % topics.length];
-        if (canPost && (!latest || now - latest.at >= 2 * 3600000))
+        const trend = selectTrend(r.persona, this.trends.facts, now),
+          newTrend = trend && !recent.some(t => t.trendFact?.id === trend.id);
+        if (canPost && newTrend && (!latest || now - latest.at >= 2 * 3600000))
+          out.push({
+            kind: 'social-daily', id: r.id, viewer: r.persona,
+            raw: { residentId: r.id, communityId: c.id, topicId: dailyTopic.id,
+              trendId: trend.id, trendHash: factHash(trend) },
+            revision: factHash(trend),
+            weight: 20 * trendParticipation(r.persona, trend, now).score,
+          });
+        else if (canPost && (!latest || now - latest.at >= 2 * 3600000))
           out.push({
             kind: 'social-daily',
             id: r.id,
@@ -414,6 +434,7 @@ export class SocialRuntime {
             (t) =>
               t.communityId === c.id &&
               this.visible(t) &&
+              (!t.trendFact || trendParticipation(r.persona, t.trendFact, now).eligible) &&
               !d.preferences.mutedTopics.includes(t.topicId) &&
               (t.comments || []).length < 150 &&
               (t.residentId !== r.id ||
@@ -437,7 +458,8 @@ export class SocialRuntime {
               discussionHash: socialDiscussionHash(discussion, r.id),
             },
             revision: socialDiscussionHash(discussion, r.id),
-            weight: 5,
+            weight: discussion.trendFact
+              ? 20 * trendParticipation(r.persona, discussion.trendFact, now).score : 5,
           });
         if (!r.admitted) {
           const t = d.threads.find(
@@ -520,6 +542,8 @@ export class SocialRuntime {
       thread = input.threadId ? d.threads.find((t) => t.id === input.threadId) : null;
     const original = source ? s.journal.data.entries.find((e) => e.id === source.id) : null;
     const discussing = target.kind === 'social-discuss';
+    const externalFact = thread?.trendFact || (input.trendId
+      ? this.trends.resolve(input.trendId, input.trendHash, s.now()) : null);
     const delivered = thread
       ? {
           id: thread.id,
@@ -553,6 +577,12 @@ export class SocialRuntime {
       !this.data().preferences.mutedCommunities.includes(c.id) &&
       !this.data().preferences.mutedTopics.includes(topic.id) &&
       (!source || this.validSource(source)) &&
+      (!input.trendId || !!this.trends.resolve(input.trendId, input.trendHash, s.now())) &&
+      (!(input.trendId || thread?.trendFact) || (externalFact &&
+        trendParticipation(target.viewer, externalFact, s.now()).eligible &&
+        trendRelevance(target.viewer, externalFact) > 0)) &&
+      (!input.trendId || !this.data().threads.some(t => t.communityId === c.id &&
+        t.trendFact?.id === input.trendId && this.visible(t))) &&
       (!thread ||
         this.data().threads.some(
           (t) => t.id === thread.id && socialContentHash(t) === input.threadHash && this.visible(t),
@@ -606,6 +636,8 @@ export class SocialRuntime {
           kind: target.kind,
           community: { name: c.name, norms: c.norms },
           topic,
+          ...(externalFact ? { externalFact: structuredClone(externalFact),
+            reactionKind: 'fictional-personal-reaction' } : {}),
           delivered,
           recentPosts: !thread
             ? d.threads
@@ -615,6 +647,7 @@ export class SocialRuntime {
             : [],
           instruction:
             instruction +
+            (externalFact ? ' ' + trendInstruction : '') +
             (!birth && !thread
               ? ' 최근 글과 같은 사건·질문·결론을 표현만 바꿔 반복하지 않는다. 다른 관심사나 구체적인 소재를 선택하고 차이가 없으면 침묵한다.'
               : '') +
@@ -634,6 +667,7 @@ export class SocialRuntime {
         m.kind === 'chat' &&
         !m.spoiler &&
         !m.meme &&
+        (!externalFact || safeTrendReaction(m.text)) &&
         !s.settings.blockedWords.some((w) => normalize(m.text).includes(normalize(w))),
     );
     if (birth && !observation.arrival)
@@ -760,6 +794,7 @@ export class SocialRuntime {
             text: message.text,
             at: now,
             source: source || null,
+            ...(externalFact ? { trendFact: structuredClone(externalFact) } : {}),
             ...(attachment ? { attachments: [attachment] } : {}),
           });
           applied = 'post-created';

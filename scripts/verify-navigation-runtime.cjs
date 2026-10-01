@@ -159,12 +159,13 @@ app.whenReady().then(async () => {
     await expectTab('ai');
     assert.equal(overlay.listenerCount('app-command'), 0);
     report.checks.push('overlay native commands leave main tab unchanged');
-    assert.equal(main.webContents.getURL(), originalURL);
-    assert.equal(main.webContents.navigationHistory.length(), 1);
+    assert.equal(new URL(main.webContents.getURL()).origin, new URL(originalURL).origin);
+    assert.equal(new URL(main.webContents.getURL()).hash, '#/ai');
+    assert.ok(main.webContents.navigationHistory.length() > 1);
     assert.equal(modelCalls, 0);
     assert.deepEqual(report.errors, []);
     report.checks.push(
-      'URL and Chromium page history unchanged; zero model calls or renderer errors',
+      'same-document route URLs and history updated; zero model calls or renderer errors',
     );
     fs.writeFileSync(join(out, 'navigation.png'), (await main.webContents.capturePage()).toPNG());
     report.passed = true;

@@ -18,8 +18,7 @@ import {
 } from './microphone-device';
 
 export function useMedia(state: State | null, onError: (s: string) => void) {
-  const video = useRef<HTMLVideoElement>(null),
-    screenStream = useRef<MediaStream | null>(null),
+  const screenStream = useRef<MediaStream | null>(null),
     micStream = useRef<MediaStream | null>(null);
   const captureVideo = useRef<HTMLVideoElement | null>(null),
     wasRunning = useRef(false),
@@ -104,13 +103,6 @@ export function useMedia(state: State | null, onError: (s: string) => void) {
     clipHasSource,
     clipRuntimeReady,
   ]);
-  useEffect(() => {
-    const v = video.current;
-    if (v && pictureRef.current && screenStream.current && v.srcObject !== screenStream.current) {
-      v.srcObject = screenStream.current;
-      void v.play().catch(() => {});
-    }
-  });
   function endFrames() {
     const { sessionId, sourceId } = temporal.current;
     temporal.current.reset();
@@ -146,7 +138,6 @@ export function useMedia(state: State | null, onError: (s: string) => void) {
     screenStream.current = null;
     setOutputStream(null);
     setSharing(false);
-    if (video.current) video.current.srcObject = null;
     if (captureVideo.current) {
       captureVideo.current.pause();
       captureVideo.current.srcObject = null;
@@ -159,7 +150,6 @@ export function useMedia(state: State | null, onError: (s: string) => void) {
     pictureRef.current = false;
     setPicture(false);
     setSharing(false);
-    if (video.current) video.current.srcObject = null;
     if (captureVideo.current) {
       captureVideo.current.pause();
       captureVideo.current.srcObject = null;
@@ -293,13 +283,7 @@ export function useMedia(state: State | null, onError: (s: string) => void) {
         track.onended = () => {
           if (screenStream.current === stream) stopSound();
         };
-      // The tab's preview can disappear while play() is pending. Only the
-      // independent capture player owns sharing; preview teardown is harmless.
-      const v = video.current;
-      if (v) {
-        v.srcObject = options.picture ? stream : null;
-        if (options.picture) void v.play().catch(() => {});
-      }
+      // The display player never owns capture playback or shared tracks.
       if (ticket !== captureEpoch.current) return;
       setSharing(options.picture);
       setCaptureRevision((n) => n + 1);
@@ -744,7 +728,7 @@ export function useMedia(state: State | null, onError: (s: string) => void) {
     [],
   );
   return {
-    video,
+    previewSource: sharing ? screenStream.current : null,
     sharing,
     capturePreparing,
     cancelCapture,

@@ -13,6 +13,8 @@ if(location.pathname==='/overlay'){
   window.addEventListener('blur',()=>{held=false;hovered=false;update();});
 }
 contextBridge.exposeInMainWorld('backseat',{
+  previewVisibility:()=>ipcRenderer.invoke('preview:visibility'),
+  onPreviewVisibility:fn=>{const listener=(_event,value)=>{if(typeof value==='boolean')fn(value);};ipcRenderer.on('preview:visible',listener);return()=>ipcRenderer.removeListener('preview:visible',listener);},
   storageStatus:()=>ipcRenderer.invoke('storage:status'),
   changeStorage:useDefault=>ipcRenderer.invoke('storage:change',useDefault),
   appendSpeechRaw:entry=>ipcRenderer.invoke('speech:raw',entry),
