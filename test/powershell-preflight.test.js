@@ -89,7 +89,11 @@ test('verification invocations and child helpers contain no policy override', as
     }
   }
   await walk('scripts');
-  paths.push('test/profile-compatibility.test.js', 'test/release-shortcuts.test.js');
+  paths.push(
+    'test/profile-compatibility.test.js',
+    'test/release-shortcuts.test.js',
+    '.github/workflows/check.yml',
+  );
   for (const path of paths)
     assert.doesNotMatch(
       await readFile(path, 'utf8'),
