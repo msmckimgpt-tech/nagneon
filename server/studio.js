@@ -314,6 +314,16 @@ export class Studio extends EventEmitter {
           this.messages.some((source) => source.id === m.replySourceId)),
     );
   }
+  invalidateRemovedMessages(ids, clear = false) {
+    const operation = this.liveReaction;
+    if (!operation || (!clear && !ids.some((id) => operation.conversationSourceIds?.has(id))))
+      return;
+    // Removal has already persisted. Ignore even providers that finish after
+    // abort, and keep surviving speech pending for a fresh request.
+    operation.removedSource = true;
+    operation.superseded = true;
+    operation.controller.abort();
+  }
   setChatDisplay(showStreamerMessages) {
     if (typeof showStreamerMessages !== 'boolean')
       throw new Error('표시 설정은 참 또는 거짓이어야 합니다.');
@@ -502,10 +512,15 @@ export class Studio extends EventEmitter {
   moderate(action, id) {
     if (action === 'delete') {
       this.journal.forget([id]);
+      this.invalidateRemovedMessages([id]);
       this.speechInbox.forget(id);
       this.messages = this.messages.filter((m) => m.id !== id);
       this.chatHistory.invalidate();
-      this.queue = this.queue.filter((m) => m.replySourceId !== id);
+      this.queue = this.queue.filter((m) => {
+        if (m.replySourceId !== id && !m.conversationSourceIds?.includes(id)) return true;
+        this.reactions.drop(m.diagnosticId, 'cleared');
+        return false;
+      });
       this.log('메시지 삭제');
     }
     if (action === 'ban' || action === 'unban') {
@@ -534,6 +549,7 @@ export class Studio extends EventEmitter {
     }
     if (action === 'clear') {
       this.journal.forget(this.messages.map((m) => m.id));
+      this.invalidateRemovedMessages([], true);
       this.chatHistory.invalidate({ clear: true });
       this.speechInbox.clear();
       this.messages = [];
@@ -573,6 +589,7 @@ export class Studio extends EventEmitter {
       diagnosticId,
       responseStartedAt,
       externalIds,
+      conversationSourceIds,
       viewerContext,
       speech = '',
     } = {},
@@ -674,6 +691,7 @@ export class Studio extends EventEmitter {
         chatDriven,
         ...(loreIds?.length ? { loreIds } : {}),
         ...(externalIds?.length ? { externalIds } : {}),
+        ...(conversationSourceIds?.length ? { conversationSourceIds } : {}),
         ...(diagnosticId ? { diagnosticId } : {}),
         ...(durableReply ? { replySourceId: durableReply.id } : {}),
         ...(m.advice && adviceRequestId ? { adviceRequestId } : {}),
@@ -990,8 +1008,11 @@ export class Studio extends EventEmitter {
       this.reactionRecovered();
       return { ok: true };
     } catch (error) {
-      if (Number.isFinite(error.aiGenerated))
+      if (Number.isFinite(error.aiGenerated)) {
         this.reactions.generated(diagnosticId, error.aiGenerated);
+        if (operation.removedSource)
+          this.reactions.reject(diagnosticId, 'cleared', error.aiGenerated);
+      }
       if (['ai_blocked', 'ai_cancelled'].includes(error.code)) {
         diagnosticOutcome = 'stopped';
         this.speechInbox.acknowledge(speechBatch.ids);
@@ -1283,6 +1304,20 @@ export class Studio extends EventEmitter {
     operation.speechSourceIds = new Set(
       liveSpeech.map((s) => s.capture?.screen?.sourceId).filter(Boolean),
     );
+    // These exact sources have left the current chat/journal as a snapshot.
+    // Deleting one must invalidate derived reactions, not just labelled replies.
+    operation.conversationSourceIds = new Set(
+      [
+        ...liveSpeech.map((s) => s.messageId),
+        ...Object.values(personalContext.viewerContext).flatMap((p) => [
+          ...p.chatHistory.map((m) => m.id),
+          ...(p.recollections || []).map((m) => m.sourceId),
+        ]),
+        ...(!speechBatch.ids.length && speech
+          ? [this.messages.findLast((m) => m.kind === 'streamer' && m.text === speech)?.id]
+          : []),
+      ].filter(Boolean),
+    );
     const adviceRequestId =
       speechBatch.ids.at(-1) ||
       (speech
@@ -1344,6 +1379,8 @@ export class Studio extends EventEmitter {
     }
     this.tokens += Number(result.usage?.total_tokens) || 0;
     if (operation.superseded) {
+      if (operation.removedSource)
+        this.reactions.reject(diagnosticId, 'cleared', result.observation.messages.length);
       return { outcome: 'superseded', result: { skipped: 'superseded' } };
     }
     const visualExpiresAt = screenTimeline
@@ -1384,6 +1421,7 @@ export class Studio extends EventEmitter {
           responseStartedAt,
           externalIds: operation.externalIds,
           loreIds: [...operation.loreIds],
+          conversationSourceIds: [...operation.conversationSourceIds],
           chatDriven: true,
           visits,
           banterAllowed: Object.fromEntries(
@@ -1420,6 +1458,7 @@ export class Studio extends EventEmitter {
       responseStartedAt,
       externalIds: operation.externalIds,
       loreIds: [...operation.loreIds],
+      conversationSourceIds: [...operation.conversationSourceIds],
       chatDriven,
       visits,
       banterAllowed: Object.fromEntries(

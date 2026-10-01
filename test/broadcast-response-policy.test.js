@@ -228,15 +228,18 @@ test('unwitnessed or invented reply anchors do not bypass a deadline', () => {
 });
 
 test('deleting the source while an answer is generating prevents later delivery', async (t) => {
-  let finish, source;
-  const f = fixture(t, (args) => {
+  let finish, source, signal;
+  const f = fixture(t, (args, capturedSignal) => {
+    signal = capturedSignal;
     source = args.viewerContext.pop.chatHistory.findLast((m) => m.kind === 'streamer');
     return new Promise((resolve) => (finish = resolve));
   });
   const pending = f.s.react({ speech: '팝콘, 어떤 문이 더 좋아?' });
   f.s.moderate('delete', source.id);
   finish({ observation: observation([chat('파란 문', { intent: 'reply', replyTo: source.id })]) });
-  await pending;
+  assert.deepEqual(await pending, { skipped: 'superseded' });
+  assert.equal(signal.aborted, true);
+  assert.equal(f.s.queue.length, 0);
   f.advance(2000);
   f.s.pump();
   assert.ok(!f.s.messages.some((m) => m.text === '파란 문'));
