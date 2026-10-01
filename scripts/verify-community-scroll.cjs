@@ -372,10 +372,13 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await js("document.querySelector('.community-sections').scrollIntoView({block:'start'})");
       await settle();
       const sectionTop = await position('.community-sections');
+      const sectionRoute = await js('location.hash');
       await click('방송 커뮤니티');
       await settle();
       near(await top(), 0, 'new section opens at page start');
-      await click('바깥 커뮤니티');
+      // Selecting another section opens a page; history Back restores the reader.
+      await js('history.back()');
+      await until(`location.hash===${JSON.stringify(sectionRoute)}`);
       await settle();
       near(
         await position('.community-sections'),
