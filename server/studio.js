@@ -1063,6 +1063,7 @@ export class Studio extends EventEmitter {
     if (this.settings.mode === 'live') {
       this.tickAudience();
       if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
+      const addressViewers = this.audience.addressing(this.settings, this.now());
       const witnesses = this.presentWitnesses();
       const temporal = temporalVideo(video, {
         now: this.now(),
@@ -1098,12 +1099,11 @@ export class Studio extends EventEmitter {
               ? witnesses.some((id) => m.time >= this.audience.data.members[id].joinedAt)
               : m.kind === 'chat' &&
                 witnesses.includes(m.personaId) &&
-                this.settings.personas.some(
-                  (p) =>
-                    p.id !== m.personaId &&
-                    witnesses.includes(p.id) &&
-                    m.time >= this.audience.data.members[p.id].joinedAt &&
-                    m.text.includes(p.name),
+                [...addressViewers(m.text)].some(
+                  (id) =>
+                    id !== m.personaId &&
+                    witnesses.includes(id) &&
+                    m.time >= this.audience.data.members[id].joinedAt,
                 )),
         )
         .slice(-40)
