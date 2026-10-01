@@ -202,8 +202,6 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       until(
         `(()=>{const b=document.querySelector(${JSON.stringify(selector)});if(!b||b.disabled)return false;b.click();return true;})()`,
       );
-    await win.loadURL(service.url);
-    await until("!!document.querySelector('.app-shell')");
     const settle = () => new Promise((r) => setTimeout(r, 180));
     const top = () => js('document.scrollingElement.scrollTop');
     const position = (selector) =>
@@ -226,6 +224,9 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
     };
     for (const width of [1280, 520]) {
       win.setSize(width, 820);
+      // Each viewport begins a fresh navigation history, with the same synthetic data.
+      await win.loadURL(service.url);
+      await until("!!document.querySelector('.app-shell')");
       await click('방송 밖 이야기');
       await click('바깥 커뮤니티');
       await until("document.querySelectorAll('.social-post').length===30");
