@@ -1,8 +1,9 @@
 // Owned hidden Electron renderer and authenticated loopback server. Everything
-// is synthetic; no user profile, real AI account, microphone or capture is used.
+// is synthetic; no user profile, real AI account or physical capture device is used.
 const { app, BrowserWindow, session, ipcMain } = require('electron');
 const { createStudioSession } = require('../desktop/session.cjs');
 const { attachNavigationHistory } = require('../desktop/navigation.cjs');
+const { attachPreviewVisibility } = require('../desktop/preview-visibility.cjs');
 const { spawnSync } = require('node:child_process');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -28,10 +29,14 @@ let service,
   replySpeech = '',
   replyConsumed = false,
   releaseResponse,
-  releaseRequest;
+  releaseRequest,
+  previewVisible = true;
 ipcMain.handle('account:status', () => ({ status: 'idle' }));
-ipcMain.handle('capture:sources', () => []);
+ipcMain.handle('capture:sources', () => [
+  { id: 'screen:synthetic', name: '합성 미션·미리보기 화면', kind: 'screen', thumbnail: '' },
+]);
 ipcMain.handle('capture:previews', () => []);
+ipcMain.handle('capture:select', () => {});
 ipcMain.handle('storage:status', () => ({
   profile: join(base, 'profile'),
   defaultProfile: join(base, 'profile'),
@@ -161,6 +166,9 @@ async function open(width = 860) {
   });
   win.setContentSize(width, 960);
   attachNavigationHistory(win);
+  // Only native visibility state is simulated; no desktop is captured or shown.
+  win.isVisible = () => previewVisible;
+  attachPreviewVisibility({ main: win, ipcMain });
   win.webContents.on('console-message', (e) => {
     if (e.level === 'error') report.errors.push(e.message);
   });
@@ -205,6 +213,21 @@ app.whenReady().then(async () => {
         dataDir: join(base, 'data'),
         localSpeech: false,
         provider,
+        soundWorker: {
+          prepare: async () => true,
+          close() {},
+          analyze: async () => ({
+            durationSeconds: 4,
+            volumeDb: -25,
+            balance: 0,
+            silent: true,
+            classes: [],
+            systemSpeech: '',
+            language: 'ko',
+            source: 'system-output',
+            caveat: 'Synthetic mission preview acceptance',
+          }),
+        },
       });
       clearInterval(service.studio.timer);
       service.studio.now = () => now;
@@ -534,6 +557,98 @@ app.whenReady().then(async () => {
       readFileSync(join(base, 'data', 'profile-format.json'), 'utf8'),
     );
     assert.equal(report.profileFormat.minReader, 2);
+    assert.equal((await post('start')).status, 200);
+    const finances = () =>
+      JSON.stringify({
+        campaigns: service.studio.missions.board.data.campaigns,
+        ledger: service.studio.missions.board.data.ledger,
+        wallets: service.studio.missions.board.data.wallets,
+        P: service.studio.economy.data.balance,
+      });
+    const beforePreview = finances();
+    await js(`(()=>{
+      window.scrollTo(0,0);window.qaAnalysisSamples=0;window.qaRecorders=[];
+      const draw=CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage=function(image,...args){
+        if(image instanceof HTMLVideoElement&&!image.isConnected)qaAnalysisSamples++;
+        return draw.call(this,image,...args);
+      };
+      const Native=MediaRecorder;window.MediaRecorder=class extends Native{
+        constructor(...args){super(...args);qaRecorders.push(this);}
+      };
+      const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
+      let frame=0;window.qaPaint=setInterval(()=>{const c=canvas.getContext('2d');
+        c.fillStyle='#234';c.fillRect(0,0,640,360);c.fillStyle='white';c.fillRect(frame++%640,20,30,30);},50);
+      window.qaAudio=new AudioContext();void qaAudio.resume();
+      const out=qaAudio.createMediaStreamDestination(),tone=qaAudio.createOscillator();
+      tone.frequency.value=440;tone.connect(out);tone.start();
+      navigator.mediaDevices.getDisplayMedia=async()=>{
+        window.qaStream=canvas.captureStream(15);qaStream.addTrack(out.stream.getAudioTracks()[0].clone());
+        return qaStream;
+      };
+      [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='게임 화면 연결').click();
+    })()`);
+    await until(`!!document.querySelector('.source-card[aria-label="합성 미션·미리보기 화면"]')`);
+    await js(
+      `document.querySelector('.source-card[aria-label="합성 미션·미리보기 화면"]').click()`,
+    );
+    await until(
+      `document.querySelector('.preview video')?.srcObject===qaStream && qaAnalysisSamples>0 && qaRecorders.some(r=>r.state==='recording')`,
+    );
+    const beforeHide = await js('qaAnalysisSamples');
+    previewVisible = false;
+    win.emit('hide');
+    await until(
+      `document.querySelector('.preview video')?.srcObject===null && qaAnalysisSamples>${beforeHide + 2}`,
+    );
+    assert.equal(
+      await js(
+        `qaStream.getTracks().every(t=>t.readyState==='live')&&qaRecorders.some(r=>r.state==='recording')`,
+      ),
+      true,
+    );
+    previewVisible = true;
+    win.emit('show');
+    await until(`document.querySelector('.preview video')?.srcObject===qaStream`);
+    const beforeTab = await js('qaAnalysisSamples');
+    await js(
+      `window.qaDisplay=document.querySelector('.preview video');[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='나의 관객').click()`,
+    );
+    await until(
+      `location.hash==='#/audience' && qaDisplay.srcObject===null && qaAnalysisSamples>${beforeTab + 2}`,
+    );
+    assert.equal(finances(), beforePreview);
+    report.previewAfterTab = await js(`({
+      tracks:qaStream.getTracks().map(t=>({kind:t.kind,state:t.readyState})),
+      recorders:qaRecorders.map(r=>r.state),
+      samples:qaAnalysisSamples,
+      alerts:[...document.querySelectorAll('[role="alert"]')].map(e=>e.textContent)
+    })`);
+    // Rolling recorders may rotate between segments at this exact read.
+    await until(
+      `qaStream.getTracks().every(t=>t.readyState==='live')&&qaRecorders.some(r=>r.state==='recording')`,
+      2000,
+    );
+    await nativeHistory('back');
+    await until(
+      `location.hash==='#/studio' && document.querySelector('.preview video')?.srcObject===qaStream && !!document.querySelector('.mission-panel')`,
+    );
+    assert.equal(finances(), beforePreview);
+    assert.ok(
+      await js(
+        `document.querySelector('.mission-help').textContent.includes('현금 가치·구매·환전이 없어요')`,
+      ),
+    );
+    assert.equal((await post('stop')).status, 200);
+    await until(
+      `qaStream.getTracks().every(t=>t.readyState==='ended')&&qaRecorders.every(r=>r.state==='inactive')`,
+    );
+    report.nativePreviewVisibilitySimulated = true;
+    report.analysisSamples = await js('qaAnalysisSamples');
+    await js('clearInterval(qaPaint);qaAudio.close()');
+    report.checks.push(
+      'mission ledger and app P survive preview hide/restore and native tab back; analysis samples and recording tracks continue until explicit broadcast stop',
+    );
     assert.deepEqual(report.errors, []);
     report.passed = true;
   } catch (error) {

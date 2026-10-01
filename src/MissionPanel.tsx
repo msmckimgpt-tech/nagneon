@@ -89,7 +89,7 @@ export function MissionPanel({
       <header className="mission-heading">
         <div>
           <b id="mission-panel-title">AI 관객 미션</b>
-          <small>관객의 가상 미션점 · 기존 앱 가상P와 별도</small>
+          <small>관객 미션점 · 기존 앱P와 별도</small>
         </div>
         <button
           className="secondary"
@@ -100,7 +100,8 @@ export function MissionPanel({
         </button>
       </header>
       <p className="mission-help">
-        모금은 부탁이에요. 수락은 자유이며 표시된 조건을 직접 확인한 뒤 예치를 소비해요.
+        미션점과 앱P는 현금 가치·구매·환전이 없어요. 모금은 부탁이며 수락은 자유예요. 표시된 조건을
+        직접 확인한 뒤 예치를 소비해요.
       </p>
       {(error || state.error) && <p role="alert">{error || state.error}</p>}
       {!state.campaigns.some(live) && (
