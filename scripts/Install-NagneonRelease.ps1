@@ -18,6 +18,35 @@ function Write-JsonAtomic($Path, $Value) {
     [IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
     if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temp,$Path,($Path + '.previous-' + [guid]::NewGuid().ToString('N'))) } else { [IO.File]::Move($temp,$Path) }
 }
+function Assert-NagneonInstallOutsideProfileData($SelectedProfile) {
+    $dataRoot = [IO.Path]::GetFullPath((Join-Path $SelectedProfile 'data')).TrimEnd('\')
+    if ([string]::Equals($InstallRoot.TrimEnd('\'),$dataRoot,[StringComparison]::OrdinalIgnoreCase) -or
+        ($InstallRoot.TrimEnd('\') + '\').StartsWith(($dataRoot + '\'),[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Install root must be outside profile data. Existing records were not changed.'
+    }
+}
+function Get-NagneonProfileInventory($DataFolder) {
+    $root = Get-Item -LiteralPath $DataFolder -Force
+    if (-not $root.PSIsContainer -or ($root.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Profile data must be a regular directory.' }
+    $prefix = $root.FullName.TrimEnd('\') + '\'
+    $files = New-Object 'System.Collections.Generic.List[object]'
+    $directories = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($entry in Get-ChildItem -LiteralPath $DataFolder -Force -Recurse) {
+        if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Profile links are not supported. Existing records were not changed.' }
+        if (-not $entry.FullName.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Profile inventory escaped its data folder.' }
+        $relative = $entry.FullName.Substring($prefix.Length)
+        if ($entry.PSIsContainer) { $directories.Add($relative) }
+        elseif ($entry -is [IO.FileInfo]) { $files.Add([pscustomobject]@{path=$relative;sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash}) }
+        else { throw 'Unsupported profile entry. Existing records were not changed.' }
+    }
+    return [pscustomobject]@{files=@($files | Sort-Object path);directories=@($directories | Sort-Object)}
+}
+function Assert-NagneonProfileInventory($DataFolder, $Expected, $Label) {
+    $observed = Get-NagneonProfileInventory $DataFolder
+    if (($observed | ConvertTo-Json -Depth 6 -Compress) -cne ($Expected | ConvertTo-Json -Depth 6 -Compress)) {
+        throw "Profile $Label file list or contents changed during update. Retry with the app closed; keep the existing profile and backups."
+    }
+}
 $PackageFolder = (Resolve-Path -LiteralPath $PackageFolder).Path
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 if (($InstallRoot.TrimEnd('\') + '\').StartsWith(($PackageFolder.TrimEnd('\') + '\'),[StringComparison]::OrdinalIgnoreCase)) { throw 'Install root must be outside the source package.' }
@@ -31,6 +60,7 @@ if ($Version -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]*$') { throw 'Invalid version.
 foreach ($item in @('Nagneon.exe','resources/app.asar')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PackageFolder $item) -PathType Leaf)) { throw "Incomplete package: $item" }
 }
+if ($Profile -and [IO.Path]::IsPathRooted($Profile)) { Assert-NagneonInstallOutsideProfileData $Profile }
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 $lock = [IO.File]::Open((Join-Path $InstallRoot 'update.lock'),'OpenOrCreate','ReadWrite','None')
 try {
@@ -55,17 +85,19 @@ try {
     if (-not [IO.Path]::IsPathRooted($Profile)) { throw 'An absolute profile is required.' }
     $Profile = (Resolve-Path -LiteralPath $Profile).Path
     if (-not (Test-Path -LiteralPath (Join-Path $Profile 'data'))) { throw 'Existing profile data is required.' }
+    Assert-NagneonInstallOutsideProfileData $Profile
     Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion (Get-Item -LiteralPath (Join-Path $PackageFolder 'Nagneon.exe')).VersionInfo.ProductVersion
     $active = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('Nagneon.exe','electron.exe') -and ($_.ExecutablePath -like ($InstallRoot + '\*') -or $_.CommandLine -like ('*' + $Profile + '*')) }
     if ($active) { throw 'Close Nagneon normally before updating. No processes were stopped.' }
+    $dataFolder = Join-Path $Profile 'data'
+    $profileInventory = Get-NagneonProfileInventory $dataFolder
     $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
     $backup = Join-Path $InstallRoot ('backups/update-' + $stamp)
     New-Item -ItemType Directory -Path $backup | Out-Null
-    Copy-Item -LiteralPath (Join-Path $Profile 'data') -Destination (Join-Path $backup 'data') -Recurse
-    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Profile 'data') -File -Recurse) {
-        $relative = $file.FullName.Substring((Join-Path $Profile 'data').Length).TrimStart('\')
-        if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path (Join-Path $backup 'data') $relative)).Hash) { throw 'Profile changed during backup. Retry with the app closed.' }
-    }
+    Copy-Item -LiteralPath $dataFolder -Destination (Join-Path $backup 'data') -Recurse -Force
+    Assert-NagneonProfileInventory $dataFolder $profileInventory 'source'
+    Assert-NagneonProfileInventory (Join-Path $backup 'data') $profileInventory 'backup'
+    Write-JsonAtomic (Join-Path $backup 'profile-inventory.json') $profileInventory
     if ($old) { Copy-Item -LiteralPath $configPath -Destination (Join-Path $backup 'current.json') }
     $relativeExe = 'versions/' + $Version + '-' + $stamp + '/Nagneon.exe'
     $destination = Split-Path (Join-Path $InstallRoot $relativeExe)
@@ -87,6 +119,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-InstalledNagneon.ps1') -Destination (Join-Path $InstallRoot 'Start-InstalledNagneon.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1') -Destination (Join-Path $InstallRoot 'Profile-Compatibility.ps1') -Force
     [IO.File]::WriteAllText((Join-Path $InstallRoot 'Start-Nagneon.cmd'), (Get-NagneonLauncherCommand -Installed), [Text.Encoding]::ASCII)
+    Assert-NagneonProfileInventory $dataFolder $profileInventory 'source'
+    Assert-NagneonProfileInventory (Join-Path $backup 'data') $profileInventory 'backup'
     Write-JsonAtomic $configPath ([ordered]@{version=$Version;executable=$relativeExe;profile=$Profile;exeSha256=(Get-FileHash -LiteralPath (Join-Path $destination 'Nagneon.exe')).Hash;backup=$backup})
     if ($Register) {
         if (-not (Test-Path -LiteralPath $storageFile)) {
