@@ -3,15 +3,19 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { selectPowerShellRuntime } from '../scripts/lib/powershell-runtime.mjs';
 
-test('Windows shortcuts preserve old links and follow the fixed launcher across releases', {
-  skip: process.platform !== 'win32',
-}, async () => {
-  // Keep the tiny fixture as evidence; never touch the real Desktop or Start menu.
-  await mkdir('artifacts/shortcut-tests', { recursive: true });
-  const root = await mkdtemp(resolve('artifacts/shortcut-tests/run-'));
-  const quote = text => "'" + text.replaceAll("'", "''") + "'";
-  const script = `
+test(
+  'Windows shortcuts preserve old links and follow the fixed launcher across releases',
+  {
+    skip: process.platform !== 'win32',
+  },
+  async () => {
+    // Keep the tiny fixture as evidence; never touch the real Desktop or Start menu.
+    await mkdir('artifacts/shortcut-tests', { recursive: true });
+    const root = await mkdtemp(resolve('artifacts/shortcut-tests/run-'));
+    const quote = (text) => "'" + text.replaceAll("'", "''") + "'";
+    const script = `
 $ErrorActionPreference = 'Stop'
 . ${quote(resolve('scripts/Register-NagneonShortcut.ps1'))}
 $root = ${quote(root)}
@@ -45,15 +49,34 @@ Register-NagneonShortcut -LinkPath $fresh -BackupPath (Join-Path $root 'fresh-ba
 if (-not (Test-Path -LiteralPath $fresh) -or (Test-Path -LiteralPath (Join-Path $root 'fresh-backup.lnk'))) { throw 'Fresh shortcut registration failed.' }
 Write-Output 'Shortcut fixture passed.'
 `;
-  const scriptPath = join(root, 'verify.ps1');
-  await writeFile(scriptPath, script);
-  // A PowerShell 7 parent may export a module path incompatible with Windows PowerShell.
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) if (key.toLowerCase() === 'psmodulepath') delete env[key];
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
-    encoding: 'utf8', windowsHide: true, timeout: 30000, env,
-  });
-  await writeFile(join(root, 'result.json'), JSON.stringify({ status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error?.message }, null, 2));
-  assert.equal(result.status, 0, result.stderr || result.error?.message);
-  assert.match(result.stdout, /Shortcut fixture passed/);
-});
+    const scriptPath = join(root, 'verify.ps1');
+    await writeFile(scriptPath, script);
+    const runtime = selectPowerShellRuntime();
+    console.log('Shortcut fixture host:', JSON.stringify(runtime));
+    const result = spawnSync(
+      runtime.executable,
+      ['-NoProfile', '-NonInteractive', '-File', scriptPath],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30000,
+      },
+    );
+    await writeFile(
+      join(root, 'result.json'),
+      JSON.stringify(
+        {
+          runtime,
+          status: result.status,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          error: result.error?.message,
+        },
+        null,
+        2,
+      ),
+    );
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+    assert.match(result.stdout, /Shortcut fixture passed/);
+  },
+);
