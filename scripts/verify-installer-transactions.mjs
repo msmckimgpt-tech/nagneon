@@ -1,5 +1,6 @@
 // Real Windows filesystem/HKCU/Start Menu transactions, isolated TEST identity.
 // No cleanup on failure: leave the exact root and reports for diagnosis.
+import {preflightPowerShellRuntime} from './lib/powershell-runtime.mjs';
 import {mkdir,readFile,writeFile,readdir,lstat,readlink,copyFile,chmod} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join,dirname,relative} from 'node:path';
@@ -9,6 +10,8 @@ import assert from 'node:assert/strict';
 import {createSyntheticPackage,resolveIdentity,buildFileEntries,verifyPackage} from './build-installer.mjs';
 import {buildInstallerEngine} from './build-installer-engine.mjs';
 if(process.platform!=='win32')throw Error('Run the real transaction acceptance on Windows');
+const powershell=preflightPowerShellRuntime();
+console.log('Verification host:',JSON.stringify(powershell));
 const id=new Date().toISOString().replace(/[:.]/g,'-'),base=resolve('artifacts','installer-txn-'+id);await mkdir(base);
 const engine=await buildInstallerEngine(join(base,'engine'),{sourceDir:process.env.BACKSEAT_INSTALLER_ENGINE_SOURCE||'installer/engine'}),checks=[],operations=[];
 const report={passed:false,base,engine:engine.sha256,engineSource:engine.sourceDir,checks,operations};
@@ -20,7 +23,7 @@ async function run(file,args,options={}){
   const log=join(base,'command-'+seq+'.log');await writeFile(log,output);operations.push({file,args,...result,log});return result;
 }
 async function snapshot(root){const found={};if(!existsSync(root))return found;async function walk(dir){for(const name of await readdir(dir)){const path=join(dir,name),info=await lstat(path),key=relative(root,path);if(info.isSymbolicLink())found[key]='link:'+await readlink(path);else if(info.isDirectory())await walk(path);else found[key]=hash(await readFile(path));}}await walk(root);return found;}
-async function external(name){const out=join(base,'external-'+name+'.json');const result=await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',out]);assert.equal(result.code,0);return json(out);}
+async function external(name){const out=join(base,'external-'+name+'.json');const result=await run(powershell.executable,['-NoLogo','-NoProfile','-NonInteractive','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',out]);assert.equal(result.code,0);return json(out);}
 async function call(op,root,req){const out=join(base,'result-'+operations.length+'.json');const args=op==='install'?[op,req,source,root,uninstaller,out]:[op,root,identity.appId,out];const result=await run(engine.file,args);return {...result,report:existsSync(out)?await json(out):null};}
 const source=join(base,'source'),target=join(base,'target root'),uninstaller=join(base,'fixture-uninstaller.exe');
 const {manifest}=await createSyntheticPackage(source);

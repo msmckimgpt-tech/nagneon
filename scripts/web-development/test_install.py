@@ -12,6 +12,15 @@ BEGIN = b'<!-- BEGIN WEB-DEVELOPMENT-COMPANION -->'
 END = b'<!-- END WEB-DEVELOPMENT-COMPANION -->'
 
 
+def powershell_host():
+    result = subprocess.run(['node', str(INSTALLER.parent.parent / 'powershell-preflight.mjs')],
+                            capture_output=True, text=True, encoding='utf-8', timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr)
+    return json.loads(result.stdout)['executable']
+
+
+
 class InstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -103,7 +112,7 @@ class InstallTests(unittest.TestCase):
         self.run_install()
         if os.name == 'nt':
             wrapper = self.home / '.local/share/ai-web-development/bin/web-development.ps1'
-            command = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(wrapper), '--help']
+            command = [powershell_host(), '-NoLogo', '-NoProfile', '-NonInteractive', '-File', str(wrapper), '--help']
         else:
             command = [str(self.home / '.local/bin/web-development'), '--help']
         env = dict(os.environ, HOME=str(self.home))
@@ -131,7 +140,7 @@ class InstallTests(unittest.TestCase):
                   "[System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null; "
                   "if($errors.Count){$errors | Out-String | Write-Error; exit 1}; $count++ }; "
                   "if($count -ne 6){exit 2}")
-        result = subprocess.run(['powershell', '-NoProfile', '-Command', script], env=env,
+        result = subprocess.run([powershell_host(), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], env=env,
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
 

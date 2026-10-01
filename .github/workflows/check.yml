@@ -10,6 +10,10 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        # Keep the policy-preserving host contract explicit across runner updates.
+        shell: pwsh -NoLogo -NoProfile -NonInteractive -Command ". '{0}'"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -17,6 +21,18 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
+      - name: Existing PowerShell host and policy preflight
+        run: |
+          $env:NAGNEON_TEST_POWERSHELL = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+          $runtime = node scripts/powershell-preflight.mjs | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell preflight failed' }
+          if (($runtime.policy.scopes | Where-Object scope -eq 'Process').policy -ne 'Undefined') {
+            throw 'An inherited process policy override cannot qualify this check'
+          }
+          $runtime | ConvertTo-Json -Depth 4
+          "NAGNEON_TEST_POWERSHELL=$($runtime.executable)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: PowerShell invocation and helper policy regression
+        run: node --test test/powershell-preflight.test.js
       - run: npm ci --no-audit --no-fund
       - name: Canonical Windows temporary directory for path safety checks
         run: node -e "const fs=require('node:fs');const p=fs.realpathSync.native(require('node:os').tmpdir());fs.appendFileSync(process.env.GITHUB_ENV,'TEMP='+p+'\nTMP='+p+'\n')"
