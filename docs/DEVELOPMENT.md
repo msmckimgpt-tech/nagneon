@@ -37,6 +37,22 @@ npm run check
 
 실제 UI 검사는 `scripts/verify-nagneon.cjs`를 격리 Electron에서 실행한다. 이 검사는 합성 프로필을 사용하며 실제 계정·마이크·OBS 검증을 대신하지 않는다. 결과와 캡처는 작업 worktree의 `artifacts/nagneon/`에 저장된다.
 
+### 런처 검사의 PowerShell 호스트
+
+검사는 표준 PowerShell 7, WindowsApps 별칭, Windows PowerShell 5.1 순서로 존재와 버전을 확인한 뒤 한 호스트만 실행한다. `ENOENT`와 `ENOTDIR`만 다음 후보 선택을 허용한다. `EACCES`·`EPERM`은 접근 거절로 중단하며 실행 정책 거절 뒤 다른 엔진으로 재시도하지 않는다.
+
+지원되는 별도 검사 호스트가 이미 있다면 검사 시작 전에 `NAGNEON_TEST_POWERSHELL`에 `pwsh.exe` 또는 `powershell.exe`의 절대 경로를 명시할 수 있다. 선택 경로와 실제 버전을 출력하며 PowerShell 7 이상 또는 Windows PowerShell 5.1만 허용한다. 실행 정책은 변경하지 않는다. 이 설정은 검사 프로세스에만 적용하며 설치 실행기의 호스트 선택이나 AppData 쓰기 경로를 변경하지 않는다. 패키지 에이전트에서는 별칭 접근·스크립트 정책·실제 쓰기 핸들 경로를 각각 확인해야 한다.
+
+```powershell
+# 이미 지원되는 호스트의 실제 절대 경로로 바꾸고, 검사 시작 전에 선택한다.
+$env:NAGNEON_TEST_POWERSHELL = '<지원되는 기존 호스트의 절대 경로>\pwsh.exe'
+npm run check
+```
+
+이 절차는 런처 검사의 준비 단계에만 적용한다. 제품 `Start-Nagneon.cmd`와 `Launcher-Command.ps1`의 호스트 선택은 그대로다. 경로 검사나 실행이 거절된 후 다른 엔진을 자동으로 시도하지 않는다. 검사 환경의 선택 실패와 제품 CMD의 실행 결과를 동일한 문제로 추정하지 않는다.
+
+도구의 승인된 비샌드박스 실행이나 패키지 신원 API의 `NO_PACKAGE` 결과도 일반 Windows 실행 문맥의 저장 경로를 보장하지 않는다. 설치 보호장치가 실제 파일 핸들 경로의 리디렉션을 확인하면 설치를 중단하고, 기존 데이터와 보호장치를 보존한다. 테스트 호스트 설정으로 이 보호장치를 우회하지 않는다.
+
 ### 개발 저장량 수명 관리
 
 패키징과 실행 구성 생성은 같은 입력을 반복 실행했을 때 새 타임스탬프 사본을 계속 만들지 않아야 한다. `package-windows.mjs`는 소스·lockfile·Electron/Codex·layout/runtime뿐 아니라 패키징 recipe 코드, 아이콘, Codex 실행 파일·관련 라이선스 자산까지 입력 지문에 포함한다. 이 전체 지문이 같고 파일 목록·크기·SHA-256이 다시 검증된 패키지만 재사용한다. 새 패키징은 `artifacts/package-scratch/`에서 트랜잭션으로 조립한 뒤 최종 `release/<run>/app`만 게시한다. 성공한 stage/runtime scratch는 게시 직후 제거하며 실패 scratch는 보존하고 다음 대형 패키징을 차단한다. 검증된 서로 다른 package 후보는 2개까지만 자동 생성하며 그 이후에는 명시적인 저장량 검토가 필요하다.
