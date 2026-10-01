@@ -89,7 +89,7 @@ export function MissionPanel({
       <header className="mission-heading">
         <div>
           <b id="mission-panel-title">AI 관객 미션</b>
-          <small>관객의 가상 미션점 · P 잔액과 별도</small>
+          <small>관객의 가상 미션점 · 기존 앱 가상P와 별도</small>
         </div>
         <button
           className="secondary"
