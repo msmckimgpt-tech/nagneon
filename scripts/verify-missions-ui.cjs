@@ -1,0 +1,533 @@
+// Owned hidden Electron renderer and authenticated loopback server. Everything
+// is synthetic; no user profile, real AI account, microphone or capture is used.
+const { app, BrowserWindow, session, ipcMain } = require('electron');
+const { createStudioSession } = require('../desktop/session.cjs');
+const { resolve, join } = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { mkdirSync, writeFileSync, readFileSync } = require('node:fs');
+const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const base = resolve('artifacts/mission-ui-' + Date.now());
+mkdirSync(base, { recursive: true });
+app.setPath('userData', join(base, 'profile'));
+const report = {
+  base,
+  passed: false,
+  syntheticModel: true,
+  nativeDevices: false,
+  realAccount: false,
+  checks: [],
+  errors: [],
+};
+let service,
+  win,
+  now = Date.now(),
+  nextActions = [],
+  replySpeech = '',
+  replyConsumed = false,
+  releaseResponse,
+  releaseRequest;
+ipcMain.handle('account:status', () => ({ status: 'idle' }));
+ipcMain.handle('capture:sources', () => []);
+ipcMain.handle('capture:previews', () => []);
+ipcMain.handle('storage:status', () => ({
+  profile: join(base, 'profile'),
+  defaultProfile: join(base, 'profile'),
+  isolated: true,
+}));
+app.on('window-all-closed', () => {});
+setTimeout(() => app.exit(2), 180000).unref();
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const js = (code) => win.webContents.executeJavaScript(code, true);
+async function until(code, timeout = 10000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (await js(code)) return;
+    await pause(30);
+  }
+  throw Error('UI timeout: ' + code);
+}
+async function button(text, twice = false) {
+  const find = `Array.from(document.querySelectorAll('.mission-panel button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled)`;
+  await until(`!!(${find})`);
+  await js(`{const b=${find};b.click();${twice ? 'b.click();' : ''}}`);
+}
+async function post(path, body = {}) {
+  const r = await fetch(service.url + '/api/' + path, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + service.accessToken,
+      'X-Backseat-Client': 'studio',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  return { status: r.status, body: await r.json() };
+}
+const payload = (values) => ({
+  kind: 'propose',
+  personaId: 'momo',
+  templateId: 'one-attempt',
+  target: 60,
+  amount: 20,
+  missionId: null,
+  reason: '재시작 없는 한 판을 보고 싶어서',
+  ...values,
+});
+async function react(actions, text) {
+  now += 20000;
+  nextActions = actions;
+  replySpeech = text;
+  replyConsumed = false;
+  assert.equal(
+    (await post('speech', { sessionId: service.studio.sessionId, id: randomUUID(), text })).status,
+    200,
+  );
+  // The renderer also polls /react. HTTP 200 with skipped:interval/busy is
+  // admission deferral, not completion. Keep this synthetic response pending
+  // until one actual model request consumes this exact speech, then settles.
+  const started = Date.now();
+  while ((!replyConsumed || service.studio.busy) && Date.now() - started < 10000) {
+    if (!service.studio.busy && !replyConsumed) {
+      now += 20000;
+      assert.equal((await post('react', {})).status, 200);
+    }
+    await pause(30);
+  }
+  assert.equal(replyConsumed, true, 'synthetic speech must reach one admitted request');
+  assert.equal(service.studio.busy, false);
+  nextActions = [];
+  replySpeech = '';
+  service.studio.publish();
+  await until(`!!document.querySelector('.mission-panel')`);
+}
+async function screenshot(name) {
+  await js(
+    `document.querySelector('.mission-panel').scrollIntoView({block:'start'});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`,
+  );
+  await pause(100);
+  writeFileSync(join(base, name), (await win.webContents.capturePage()).toPNG());
+}
+async function open(width = 860) {
+  const uiSession = createStudioSession(session, service);
+  uiSession.webRequest.onBeforeRequest(
+    { urls: [service.url + '/api/missions'] },
+    (_details, callback) => {
+      if (report.holdRequest)
+        releaseRequest = () => {
+          releaseRequest = null;
+          callback({});
+        };
+      else callback({});
+    },
+  );
+  uiSession.webRequest.onHeadersReceived(
+    { urls: [service.url + '/api/missions'] },
+    (_details, callback) => {
+      if (report.holdResponse)
+        releaseResponse = () => {
+          releaseResponse = null;
+          callback({});
+        };
+      else callback({});
+    },
+  );
+  win = new BrowserWindow({
+    width,
+    height: 960,
+    show: false,
+    webPreferences: {
+      session: uiSession,
+      preload: resolve('desktop/preload.cjs'),
+      sandbox: true,
+      contextIsolation: true,
+      backgroundThrottling: false,
+    },
+  });
+  win.setContentSize(width, 960);
+  win.webContents.on('console-message', (e) => {
+    if (e.level === 'error') report.errors.push(e.message);
+  });
+  await win.loadURL(service.url);
+  await until(`!!document.querySelector('.app-shell')`);
+}
+async function fresh() {
+  now += 600000;
+  assert.equal((await post('stop')).status, 200);
+  assert.equal((await post('start')).status, 200);
+}
+app.whenReady().then(async () => {
+  try {
+    const { startServer } = await import(pathToFileURL(resolve('server/index.js')));
+    const { Settings, Observation } = await import(pathToFileURL(resolve('server/schema.js')));
+    const { defaults } = await import(pathToFileURL(resolve('shared/defaults.js')));
+    const provider = {
+      status: () => ({
+        configured: true,
+        kind: 'codex',
+        model: 'Synthetic mission acceptance',
+        effort: 'low',
+      }),
+      react: async (args) => {
+        const matching = !replyConsumed && replySpeech && args.speech === replySpeech;
+        if (matching) replyConsumed = true;
+        return {
+          observation: Observation.parse({
+            game: '합성 게임',
+            scene: '공유한 합성 도전 장면',
+            confidence: 0.9,
+            excitement: 0.2,
+            messages: [],
+            missionActions: matching ? structuredClone(nextActions) : [],
+          }),
+        };
+      },
+    };
+    const start = async () => {
+      service = await startServer({
+        port: 0,
+        dataDir: join(base, 'data'),
+        localSpeech: false,
+        provider,
+      });
+      clearInterval(service.studio.timer);
+      service.studio.now = () => now;
+      service.studio.missions.board.clock = () => now;
+      service.studio.audience.random = () => 0.5;
+    };
+    await start();
+    service.studio.world.change((d) => {
+      d.settings = Settings.parse({
+        ...defaults,
+        mode: 'live',
+        category: 'gaming',
+        lurkRatio: 0,
+        communityActivityEnabled: false,
+        slowModeSeconds: 0,
+        chatPace: 8,
+      });
+      for (const p of d.settings.personas)
+        d.audience.members[p.id] = {
+          sessions: 1,
+          seconds: 300,
+          recognized: 0,
+          affinity: 0.5,
+          peers: {},
+          memories: [],
+        };
+    });
+    assert.equal((await post('onboarding', { skip: true })).status, 200);
+    await open();
+    assert.equal((await post('start')).status, 200);
+    await react([payload({})], '합성 미션을 보고 싶어요');
+    const missionId = service.studio.missions.board.data.campaigns.at(-1).id;
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('예치 20/60미션점')`,
+    );
+    await screenshot('proposal-860.png');
+    await react(
+      [
+        payload({
+          kind: 'join',
+          personaId: 'gg',
+          missionId,
+          templateId: null,
+          target: null,
+          amount: 15,
+          reason: '결과보다 긴장감이 재밌어서',
+        }),
+      ],
+      '다른 의견도 말해봐',
+    );
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('예치 35/60미션점')`,
+    );
+    assert.equal(service.studio.state().missions.campaigns.at(-1).supporterCount, 2);
+    await react(
+      [
+        payload({
+          kind: 'join',
+          personaId: 'pop',
+          missionId,
+          templateId: null,
+          target: null,
+          amount: 40,
+          reason: '한 번의 선택이 궁금해서',
+        }),
+      ],
+      '천천히 한 판 할게',
+    );
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('예치 60/60미션점')`,
+    );
+    assert.equal(
+      service.studio.missions.board.data.campaigns.at(-1).contributions.at(-1).amount,
+      25,
+    );
+    win.setContentSize(390, 844);
+    await pause(100);
+    await screenshot('ready-390.png');
+    const readyLayout = await js(
+      `(()=>{const p=document.querySelector('.mission-panel'),r=p.getBoundingClientRect();return {width:innerWidth,left:r.left,right:r.right,overflow:p.scrollWidth-p.clientWidth};})()`,
+    );
+    assert.equal(readyLayout.width, 390);
+    assert.ok(readyLayout.left >= 0 && readyLayout.right <= 391 && readyLayout.overflow <= 1);
+    assert.equal(
+      await js(
+        `!!Array.from(document.querySelectorAll('.mission-panel button')).find(b=>b.textContent.trim()==='이 조건 수락')`,
+      ),
+      true,
+    );
+    win.setContentSize(860, 960);
+    const P = service.studio.economy.data.balance;
+    await button('이 조건 수락', true);
+    await until(`document.querySelector('.mission-panel').textContent.includes('진행 중')`);
+    assert.equal(service.studio.missions.board.data.campaigns.at(-1).status, 'accepted');
+    await react(
+      [
+        payload({
+          kind: 'suggest-complete',
+          personaId: 'momo',
+          missionId,
+          templateId: null,
+          target: null,
+          amount: null,
+          reason: '한 번의 합성 도전이 끝난 후보 장면',
+        }),
+      ],
+      '재시작 없이 한 번 도전했어',
+    );
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('완료 확인 기다림')`,
+    );
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter((e) => e.kind === 'consume').length,
+      0,
+    );
+    report.holdResponse = true;
+    await button('조건을 지켰어요 · 예치 소비', true);
+    const waited = Date.now();
+    while (!releaseResponse && Date.now() - waited < 10000) await pause(30);
+    assert.equal(typeof releaseResponse, 'function');
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter((e) => e.kind === 'consume').length,
+      3,
+    );
+    report.holdResponse = false;
+    releaseResponse();
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('완료 · 예치 소비')`,
+    );
+    assert.equal(service.studio.economy.data.balance, P);
+    await screenshot('completed-860.png');
+    report.checks.push(
+      'proposal, partial pledge, clipped final contribution, server supporter count, explicit acceptance, AI candidate and one confirmed consumption under double clicks and held response',
+    );
+    win.setContentSize(390, 844);
+    await pause(150);
+    await js(`document.querySelector('.mission-panel').scrollIntoView({block:'start'})`);
+    const layout = await js(
+      `(()=>{const p=document.querySelector('.mission-panel'),r=p.getBoundingClientRect();return {width:innerWidth,left:r.left,right:r.right,overflow:p.scrollWidth-p.clientWidth};})()`,
+    );
+    assert.equal(layout.width, 390);
+    assert.ok(
+      layout.left >= 0 && layout.right <= 391 && layout.overflow <= 1,
+      JSON.stringify(layout),
+    );
+    await screenshot('completed-390.png');
+    report.checks.push(
+      '390px and 860px mission panel has visible terms and actions without panel horizontal overflow',
+    );
+    win.setContentSize(860, 960);
+    // Tab navigation and closing condition details must never settle a mission.
+    await fresh();
+    await react([payload({ templateId: 'no-items', target: 40 })], '아이템 없이 해볼까');
+    const old = service.studio.missions.board.data.campaigns.at(-1);
+    const previousPledges = old.contributions[0].amount;
+    await until(`!!document.querySelector('.mission-revision')`);
+    await js(`document.querySelector('.mission-revision').open=true`);
+    await js(
+      `{const s=document.querySelector('select[aria-label="새 미션 조건"]');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'boss-clear');s.dispatchEvent(new Event('change',{bubbles:true}));}`,
+    );
+    await button('예치 반환 후 새 조건 제안');
+    await until(`document.querySelector('.mission-panel').textContent.includes('조건 v2')`);
+    const revised = service.studio.missions.board.data.campaigns.at(-1);
+    assert.notEqual(revised.id, old.id);
+    assert.equal(revised.contributions.length, 0);
+    assert.equal(
+      service.studio.missions.board.data.ledger
+        .filter((e) => e.kind === 'release' && e.missionId === old.id)
+        .reduce((s, e) => s + e.amount, 0),
+      previousPledges,
+    );
+    const beforeNavigation = JSON.stringify(service.studio.missions.board.data);
+    await js(
+      `document.querySelectorAll('.mission-panel details').forEach(d=>d.open=false);Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='나의 관객').click()`,
+    );
+    await until(`!document.querySelector('.mission-panel')`);
+    await js(
+      `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='방송실').click()`,
+    );
+    await until(`!!document.querySelector('.mission-panel')`);
+    assert.equal(JSON.stringify(service.studio.missions.board.data), beforeNavigation);
+    await button('거절 · 예치 반환');
+    await until(`document.querySelector('.mission-panel').textContent.includes('거절 · 반환')`);
+    const count = service.studio.missions.board.data.campaigns.length;
+    await react(
+      [payload({ personaId: 'gg', templateId: 'boss-clear', target: 200 })],
+      '같은 조건을 더 모아서 다시 요구하지 마',
+    );
+    assert.equal(service.studio.missions.board.data.campaigns.length, count);
+    await screenshot('revised-rejected-860.png');
+    report.checks.push(
+      'revision releases old holds and requires fresh agreement; closing details and leaving/returning to studio preserve state; refusal blocks larger re-proposal',
+    );
+    await fresh();
+    await react([payload({ target: 40 })], '만료 반환 합성 확인');
+    const expired = service.studio.missions.board.data.campaigns.at(-1);
+    now = expired.fundingDeadline;
+    service.studio.missions.tick();
+    await until(
+      `document.querySelector('.mission-panel').textContent.includes('기한 종료 · 반환')`,
+    );
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter(
+        (e) => e.kind === 'release' && e.missionId === expired.id,
+      ).length,
+      1,
+    );
+    report.checks.push('funding expiry releases each pledge exactly once in the displayed state');
+    await fresh();
+    await react([payload({ target: 20 })], '중단 반환 합성 확인');
+    await button('이 조건 수락');
+    await until(`document.querySelector('.mission-panel').textContent.includes('진행 중')`);
+    const stopped = service.studio.missions.board.data.campaigns.at(-1);
+    await button('미션 전체 중지');
+    await until(`document.querySelector('.mission-panel').textContent.includes('미션 제안 켜기')`);
+    assert.equal(
+      service.studio.missions.board.data.campaigns.find((m) => m.id === stopped.id).status,
+      'cancelled',
+    );
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter(
+        (e) => e.kind === 'release' && e.missionId === stopped.id,
+      ).length,
+      1,
+    );
+    const disabled = JSON.stringify(service.studio.missions.board.data);
+    await react(
+      [
+        payload({ personaId: 'gg', templateId: 'no-items' }),
+        payload({
+          kind: 'join',
+          personaId: 'pop',
+          missionId: stopped.id,
+          templateId: null,
+          target: null,
+          amount: 20,
+        }),
+      ],
+      '중지된 동안 새로운 제안과 예치를 차단하는 합성 확인',
+    );
+    service.studio.missions.tick();
+    assert.equal(JSON.stringify(service.studio.missions.board.data), disabled);
+    assert.equal(service.studio.economy.data.balance, P);
+    await screenshot('globally-stopped-860.png');
+    await button('미션 제안 켜기');
+    report.checks.push(
+      'global stop releases accepted mission exactly once and blocks fresh proposals and pledges without altering P; explicit re-enable permits a fresh request',
+    );
+    // A click queued on the network before expiry must receive a refusal and
+    // the renderer must show the server's latest refunded state, not retry it.
+    await fresh();
+    await react([payload({ target: 20 })], '상태 변경 요청 거절 합성 확인');
+    const stale = service.studio.missions.board.data.campaigns.at(-1);
+    report.holdRequest = true;
+    await button('이 조건 수락');
+    const heldAt = Date.now();
+    while (!releaseRequest && Date.now() - heldAt < 10000) await pause(30);
+    assert.equal(typeof releaseRequest, 'function');
+    now = stale.fundingDeadline;
+    report.holdRequest = false;
+    releaseRequest();
+    await until(
+      `document.querySelector('.mission-panel [role="alert"]')?.textContent.includes('유효한 미션') && document.querySelector('.mission-panel').textContent.includes('기한 종료 · 반환')`,
+    );
+    assert.equal(
+      service.studio.missions.board.data.campaigns.find((m) => m.id === stale.id).status,
+      'expired',
+    );
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter(
+        (e) => e.kind === 'release' && e.missionId === stale.id,
+      ).length,
+      1,
+    );
+    assert.equal(service.studio.economy.data.balance, P);
+    await screenshot('stale-refused-860.png');
+    report.checks.push(
+      'a delayed acceptance at the exact deadline is refused; persisted refund and freshly published UI agree without implicit retry',
+    );
+    await fresh();
+    await react([payload({ target: 20 })], '재시작 반환 합성 확인');
+    await button('이 조건 수락');
+    const pending = JSON.stringify(service.studio.missions.board.data),
+      pendingId = service.studio.missions.board.data.campaigns.at(-1).id;
+    win.destroy();
+    win = null;
+    await service.close();
+    service = null;
+    // Restore only our synthetic pre-shutdown pending snapshot to model a crash.
+    writeFileSync(join(base, 'data', 'missions.json'), pending);
+    await start();
+    await open(860);
+    await until(`document.querySelector('.mission-panel').textContent.includes('앱 재시작으로')`);
+    assert.equal(
+      service.studio.missions.board.data.ledger.filter(
+        (e) => e.kind === 'release' && e.missionId === pendingId,
+      ).length,
+      1,
+    );
+    const recovered = JSON.stringify(service.studio.missions.board.data);
+    win.destroy();
+    win = null;
+    await service.close();
+    service = null;
+    await start();
+    await open(860);
+    assert.equal(JSON.stringify(service.studio.missions.board.data), recovered);
+    assert.equal(
+      service.studio.missions.board.data.campaigns.find((m) => m.id === missionId).status,
+      'completed',
+    );
+    assert.equal(service.studio.economy.data.balance, P);
+    await screenshot('restored-860.png');
+    report.checks.push(
+      'synthetic pending crash snapshot recovers once across two real service restarts while completed consumption survives',
+    );
+    report.profileFormat = JSON.parse(
+      readFileSync(join(base, 'data', 'profile-format.json'), 'utf8'),
+    );
+    assert.equal(report.profileFormat.minReader, 2);
+    assert.deepEqual(report.errors, []);
+    report.passed = true;
+  } catch (error) {
+    report.error = error.stack;
+    console.error(error.stack);
+    if (win && !win.isDestroyed()) {
+      writeFileSync(join(base, 'failure-dom.txt'), await js('document.body.innerText'));
+      writeFileSync(join(base, 'failure.png'), (await win.webContents.capturePage()).toPNG());
+    }
+  } finally {
+    if (releaseRequest) releaseRequest();
+    if (releaseResponse) releaseResponse();
+    if (win && !win.isDestroyed()) win.destroy();
+    if (service) await service.close();
+    writeFileSync(join(base, 'result.json'), JSON.stringify(report, null, 2));
+    writeFileSync(resolve('artifacts/mission-ui.json'), JSON.stringify(report, null, 2));
+    console.log(
+      JSON.stringify({ passed: report.passed, base, checks: report.checks, error: report.error }),
+    );
+    app.exit(report.passed ? 0 : 1);
+  }
+});
