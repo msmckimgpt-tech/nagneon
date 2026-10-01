@@ -289,7 +289,11 @@ async function startServerImpl(
   const journalStorage = persist ? new JournalStore(dataDir) : null;
   const journalStore = {
     data: journalStorage?.load() || emptyJournal(),
-    save: (value) => journalStorage?.save(value),
+    save: (value) => {
+      if (!journalStorage) return;
+      protectExpandedReaders(requiredProfileFormat('journal', value));
+      journalStorage.save(value);
+    },
   };
   if (journalStorage) stores.push(journalStorage);
   // Validate every existing store before writing anything. Then record the

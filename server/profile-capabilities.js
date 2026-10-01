@@ -4,7 +4,8 @@ import { JsonStore } from './storage.js';
 
 export const WORLD_PROFILE_FORMAT = Object.freeze({ minReader: 2, minAppVersion: '0.1.7' });
 export const UNLIMITED_READERS_FORMAT = Object.freeze({ minReader: 3, minAppVersion: '0.1.18' });
-export const PROFILE_READER = 3;
+export const LONG_SPEECH_FORMAT = Object.freeze({ minReader: 4, minAppVersion: '0.1.18' });
+export const PROFILE_READER = 4;
 const appVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;
@@ -80,6 +81,8 @@ export function writeProfileFormat(dataDir, required = WORLD_PROFILE_FORMAT) {
 // Viewer counts are durable history, unlike bounded request windows or retry queues.
 // Only representations that the previous reader cannot load raise the profile floor.
 export function requiredProfileFormat(name, value) {
+  if (name === 'journal')
+    return value.entries.some((entry) => entry.text.length > 3000) ? LONG_SPEECH_FORMAT : null;
   const expanded =
     name === 'clips'
       ? value.some((c) => [c.readings, c.votes, c.activityReads].some((rows) => rows?.length > 150))

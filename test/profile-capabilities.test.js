@@ -20,6 +20,7 @@ import {
   requiredProfileFormat,
   WORLD_PROFILE_FORMAT,
   UNLIMITED_READERS_FORMAT,
+  PROFILE_READER,
 } from '../server/profile-capabilities.js';
 
 const ids = Array.from({ length: 151 }, (_, i) => 'reader_' + i);
@@ -340,7 +341,7 @@ test('all stores, including native audio, validate before a high-count profile m
 
 test('unsupported, malformed or incomplete profile markers fail before provider checks and preserve original bytes', async (t) => {
   for (const marker of [
-    { minReader: 4, minAppVersion: '0.1.17' },
+    { minReader: PROFILE_READER + 1, minAppVersion: '0.1.17' },
     { minReader: 3, minAppVersion: '99.0.0' },
     { minReader: 2 },
     null,

@@ -1032,14 +1032,14 @@ export class Studio extends EventEmitter {
         if (operation.removedSource)
           this.reactions.reject(diagnosticId, 'cleared', error.aiGenerated);
       }
+      if (epoch !== this.epoch) {
+        diagnosticOutcome = 'stopped';
+        return { skipped: 'stopped' };
+      }
       if (['ai_blocked', 'ai_cancelled'].includes(error.code)) {
         diagnosticOutcome = 'stopped';
         this.speechInbox.acknowledge(speechBatch.ids);
         return { skipped: 'ai-blocked' };
-      }
-      if (epoch !== this.epoch) {
-        diagnosticOutcome = 'stopped';
-        return { skipped: 'stopped' };
       }
       diagnosticOutcome = operation.superseded
         ? 'superseded'

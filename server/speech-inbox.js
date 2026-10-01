@@ -17,6 +17,7 @@ function consecutiveSubscriptionSpeech(previous, next) {
 export class SpeechInbox {
   constructor(){this.pending=[];this.receipts=new Map();}
   receive(id,text,publish,source='keyboard',capture,hearers=[]){
+    if(text.length>4000)throw new Error('한 발언은 4,000자까지 전달할 수 있습니다.');
     const fingerprint=createHash('sha256').update(source+'\0'+text+(capture?'\0'+JSON.stringify([capture.startedAt,capture.endedAt,capture.screen?.sessionId,capture.screen?.sourceId,capture.screen?.frames.map(f=>[f.at,f.image]),capture.listening]):'')).digest('hex'),prior=this.receipts.get(id);
     if(prior){if(prior.fingerprint!==fingerprint)throw new Error('같은 발언 ID의 내용이 달라졌습니다.');return {messageId:prior.messageId,duplicate:true};}
     if(this.pending.length>=40)throw new Error('아직 답하지 못한 말이 많이 밀렸어요. 잠시 후 다시 전달해주세요.');
@@ -35,7 +36,9 @@ export class SpeechInbox {
       // Preserve each fragment's frozen screen and source clock while allowing
       // the slower audience model to consume a bounded continuous utterance.
       const subscriptionBatch=consecutiveSubscriptionSpeech(items.at(-1),item);
-      if(size+next>3000||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch&&!subscriptionBatch))))break;
+      // A valid provider fragment may contain 4000 characters. Consume a long
+      // head alone, preserving its final words and allowing later inputs through.
+      if((items.length&&size+next>3000)||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch&&!subscriptionBatch))))break;
       audience=key;size+=next;items.push(item);
     }
     return {...assembleSpeech(items),ids:items.map(e=>e.id)};
