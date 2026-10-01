@@ -1,19 +1,50 @@
 import { isChatQuestion } from './conversation-rhythm.js';
 import { repeatedChat } from './chat-quality.js';
 
-const requestsAnswer = (text = '') =>
+export const requestsAnswer = (text = '') =>
   isChatQuestion(text) ||
   /(?:설명해|알려|말해|답해|대답해|추천해)\s*(?:줘|주세요|줄래|주실)/u.test(text);
+
+// This is a request snapshot, not a model assertion or a search through old
+// questions. Only one freshly published, witnessed and addressed source qualifies.
+export function captureDirectQuestion(context, speech, sourceIds, now) {
+  if (!context.conversationRhythm?.addressed || !requestsAnswer(speech)) return;
+  const sources = context.chatHistory.filter(
+    (m) =>
+      sourceIds.includes(m.id) &&
+      m.kind === 'streamer' &&
+      !m.fictional &&
+      m.text === speech &&
+      Number.isFinite(m.time) &&
+      m.time <= now &&
+      now - m.time <= 20000,
+  );
+  if (sources.length === 1) return { id: sources[0].id, expiresAt: sources[0].time + 90000 };
+}
 
 // Model labels are suggestions. A durable reply also needs a real, witnessed
 // source from this request; a fabricated ID must never remove the deadline.
 export function replySource(message, context, speech = '') {
   const history = context?.chatHistory || [];
   const source = history.find((m) => m.id === message.replyTo && !m.fictional);
-  if (message.intent === 'reply')
-    return source && ['streamer', 'chat'].includes(source.kind) && requestsAnswer(source.text)
-      ? source
+  if (message.intent === 'reply') {
+    if (
+      message.replyTo != null &&
+      context?.directQuestion &&
+      source?.id !== context.directQuestion.id
+    )
+      return null;
+    if (message.replyTo != null)
+      return source && ['streamer', 'chat'].includes(source.kind) && requestsAnswer(source.text)
+        ? source
+        : null;
+    const direct = history.find((m) => m.id === context?.directQuestion?.id && !m.fictional);
+    return direct?.kind === 'streamer' &&
+      (!speech || direct.text === speech) &&
+      requestsAnswer(direct.text)
+      ? direct
       : null;
+  }
   // Compatibility for providers without the new optional field. Only an
   // explicit question/request can keep an unlabelled answer beyond scene TTL.
   if (message.intent) return null;
