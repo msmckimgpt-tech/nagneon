@@ -1,6 +1,7 @@
 // Whole delivered application acceptance. TEST identity only. Run install,
 // exercise the installed app separately, then run uninstall with --record=.
 // Failed operations leave the exact target and evidence intact.
+import {preflightPowerShellRuntime} from './lib/powershell-runtime.mjs';
 import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join,dirname,basename} from 'node:path';
@@ -15,6 +16,8 @@ const hash=b=>createHash('sha256').update(b).digest('hex');
 const phase=option('phase')||'install';
 assert.ok(['install','uninstall'].includes(phase));
 assert.equal(process.platform,'win32');
+const powershell=preflightPowerShellRuntime();
+console.log('Verification host:',JSON.stringify(powershell));
 const record=phase==='install'?null:await json(resolve(option('record')));
 const base=record?.base||resolve('artifacts','installer-full-test-'+new Date().toISOString().replace(/[:.]/g,'-'));
 // Keep the real install independent of the checkout's depth. The complete
@@ -38,7 +41,7 @@ async function run(file,args,options={}){
 }
 async function external(name){
   const path=join(base,'external-'+name+'.json');
-  assert.equal(await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);
+  assert.equal(await run(powershell.executable,['-NoLogo','-NoProfile','-NonInteractive','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);
   return json(path);
 }
 async function waitReport(path){

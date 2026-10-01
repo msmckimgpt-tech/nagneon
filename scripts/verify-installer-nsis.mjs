@@ -1,5 +1,6 @@
 // Actual silent NSIS install/update/uninstall, including the uninstaller's
 // normal temporary-copy process. TEST identity only; retain evidence on error.
+import {preflightPowerShellRuntime} from './lib/powershell-runtime.mjs';
 import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
@@ -9,11 +10,13 @@ import assert from 'node:assert/strict';
 import {createSyntheticPackage,generateInstaller,verifyPackage} from './build-installer.mjs';
 import {buildInstallerEngine} from './build-installer-engine.mjs';
 if(process.platform!=='win32')throw Error('Windows required');
+const powershell=preflightPowerShellRuntime();
+console.log('Verification host:',JSON.stringify(powershell));
 const base=resolve('artifacts','installer-nsis-'+new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(base);
 const result={passed:false,base,checks:[],operations:[]},hash=b=>createHash('sha256').update(b).digest('hex');
 const json=async path=>JSON.parse((await readFile(path,'utf8')).replace(/^\uFEFF/,''));
 async function run(file,args,options={}){let output='';const code=await new Promise((done,fail)=>{const child=spawn(file,args,{windowsHide:true,stdio:['ignore','pipe','pipe'],...options});child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);child.once('error',fail);child.once('close',done);});const log=join(base,'command-'+result.operations.length+'.log');await writeFile(log,output);result.operations.push({file,args,code,log});return code;}
-async function external(name){const path=join(base,'external-'+name+'.json');assert.equal(await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);return json(path);}
+async function external(name){const path=join(base,'external-'+name+'.json');assert.equal(await run(powershell.executable,['-NoLogo','-NoProfile','-NonInteractive','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);return json(path);}
 async function waitReport(path){for(let i=0;i<200;i++){try{return await json(path);}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('No completed operation report: '+path);}
 try{
   const before=await external('before');assert.equal(before.registries.Registry64,null);assert.equal(before.registries.Registry32,null);assert.equal(before.group.exists,false,'TEST identity already occupied; refusing');
