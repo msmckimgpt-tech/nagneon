@@ -7,6 +7,14 @@ const protectedWords=text=>(text.normalize('NFKC').toLowerCase().replace(/[‘�
 // Preserve pragmatic meaning as well as spelling: uncertainty, preferences,
 // emotional words, laughter and the speaker's register are not ASR noise.
 const stance=text=>(text.normalize('NFKC').match(/좋|싫|기쁘|슬프|무섭|재밌|재미|힘들|편하|불편|농담|장난|아마|혹시|같[아은]|겠|싶|까|[ㅋㅎ]{2,}|하하+|허허+|습니다|습니까|세요|줘|줄래|요(?=[.!?…\s]|$)/g)||[]).join('|');
+// Nearby syllables can still turn boredom into abuse or disappointment into
+// a different fact. These lexical roots are a bounded safeguard, not a full
+// emotion classifier. Spaces within an expressed emotion remain repairable.
+const emotionalStance=text=>(text.normalize('NFKC').match(/답답|담담|지루|짜증|신나|실망|행복|불행|억울|설레|설렘|심심|흥분|긴장|후회|기뻐|슬퍼|피곤|불안|낙담|기대|최고|최악|화(?:가\s*)?(?:나|났)/g)||[]).map(word=>word.replace(/\s+/g,'')).join('|');
+// Preserve the speaker's chosen self-address and case, including close
+// informal/polite substitutions (난/전, 내가/제가). Whole-word boundaries
+// avoid treating names such as 미나 as self-address; particle spacing is OK.
+const selfAddress=text=>(text.normalize('NFKC').match(/(?<![\p{L}\p{N}])(?:나(?:\s*(?:는|를|에게|한테))?|내(?:\s*(?:가|게))?|저(?:\s*(?:는|를|에게|한테))?|제(?:\s*(?:가|게))?|난|전)(?![\p{L}\p{N}])/gu)||[]).map(word=>word.replace(/\s+/g,'')).join('|');
 
 export function transcriptAnomaly(text){
   // A long decoder loop is uncertain, not proof the speaker repeated a word.
@@ -29,6 +37,7 @@ export function admitTranscriptCorrection(original,proposal){
   if(!corrected||corrected===original||corrected.length>3000||!left||!right||Math.max(left.length,right.length)>400)return false;
   if(protectedWords(original)!==protectedWords(corrected))return false;
   if(stance(original)!==stance(corrected)||transcriptAnomaly(original))return false;
+  if(emotionalStance(original)!==emotionalStance(corrected)||selfAddress(original)!==selfAddress(corrected))return false;
   if(requestsAdvice(original,'on-request')!==requestsAdvice(corrected,'on-request'))return false;
   if(/[?？]/.test(original)!==/[?？]/.test(corrected))return false;
   if(Math.min(left.length,right.length)/Math.max(left.length,right.length)<.7)return false;
