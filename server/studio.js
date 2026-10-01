@@ -29,7 +29,13 @@ import { CultureLearning } from './culture/learning.js';
 import { ClipPerception } from './clip-perception.js';
 import { ViewingContinuity, SCREEN_REACTION_TTL_MS } from './viewing-continuity.js';
 import { donationMessage } from './chat-attention.js';
-import { managerMaySpeak, replySource, repeatsDonation } from './live-response-policy.js';
+import {
+  managerMaySpeak,
+  replySource,
+  repeatsDonation,
+  requestsAnswer,
+  captureDirectQuestion,
+} from './live-response-policy.js';
 import { projectSpeech } from '../shared/speech-content.js';
 import { temporalVideo } from './temporal-video.js';
 import { VIDEO_REACTION_TTL_MS } from '../shared/temporal-policy.js';
@@ -154,6 +160,7 @@ export class Studio extends EventEmitter {
     this.audioBusy = false;
     this.lastRequest = 0;
     this.lastSpeaker = new Map();
+    this.directQuestionReplies = new Map();
     this.observation = null;
     this.lastError = '';
     this.sessionId = null;
@@ -314,6 +321,7 @@ export class Studio extends EventEmitter {
         m.origin !== 'live' ||
         (!cancelled &&
           m.replySourceId &&
+          !(m.inferredReply && requestsAnswer(speech)) &&
           this.messages.some((source) => source.id === m.replySourceId)),
     );
   }
@@ -628,7 +636,33 @@ export class Studio extends EventEmitter {
     for (const m of obs.messages.slice(0, this.settings.chatPace)) {
       const context = viewerContext?.[m.personaId];
       const durableReply = origin === 'live' && replySource(m, context, speech);
-      const messageExpiresAt = durableReply ? undefined : expiresAt;
+      const inferredReply = !!durableReply && m.intent === 'reply' && m.replyTo == null;
+      const replyKey = inferredReply ? `${m.personaId}:${durableReply.id}` : undefined;
+      if (
+        inferredReply &&
+        this.messages.findLast(
+          (source) => source.kind === 'streamer' && requestsAnswer(source.text),
+        )?.id !== durableReply.id
+      ) {
+        this.reactions.reject(diagnosticId, 'cleared');
+        continue;
+      }
+      if (
+        inferredReply &&
+        (this.directQuestionReplies.has(replyKey) ||
+          this.queue.some(
+            (q) =>
+              q.inferredReply && q.replySourceId === durableReply.id && q.personaId === m.personaId,
+          ))
+      ) {
+        this.reactions.reject(diagnosticId, 'duplicate');
+        continue;
+      }
+      const messageExpiresAt = durableReply
+        ? inferredReply
+          ? context.directQuestion.expiresAt
+          : undefined
+        : expiresAt;
       if (
         origin === 'live' &&
         Number.isFinite(messageExpiresAt) &&
@@ -697,6 +731,7 @@ export class Studio extends EventEmitter {
         ...(conversationSourceIds?.length ? { conversationSourceIds } : {}),
         ...(diagnosticId ? { diagnosticId } : {}),
         ...(durableReply ? { replySourceId: durableReply.id } : {}),
+        ...(inferredReply ? { inferredReply: true } : {}),
         ...(m.advice && adviceRequestId ? { adviceRequestId } : {}),
         ...(origin === 'live' && this.settings.mode === 'live'
           ? {
@@ -735,6 +770,8 @@ export class Studio extends EventEmitter {
       return;
     }
     const now = this.now();
+    for (const [key, expiresAt] of this.directQuestionReplies)
+      if (now >= expiresAt) this.directQuestionReplies.delete(key);
     this.tickAudience();
     const count = this.queue.length;
     this.queue = this.queue.filter((m) => {
@@ -744,7 +781,12 @@ export class Studio extends EventEmitter {
           this.settings.mode === 'live' &&
           !sameViewingVisit(this.audience, m.personaId, m.viewingVisit);
       const removedSource =
-        m.replySourceId && !this.messages.some((source) => source.id === m.replySourceId);
+        m.replySourceId &&
+        (!this.messages.some((source) => source.id === m.replySourceId) ||
+          (m.inferredReply &&
+            this.messages.findLast(
+              (source) => source.kind === 'streamer' && requestsAnswer(source.text),
+            )?.id !== m.replySourceId));
       if (expired || absent || removedSource) {
         this.reactions.drop(m.diagnosticId, expired ? 'expired' : absent ? 'absent' : 'cleared');
         return false;
@@ -785,6 +827,8 @@ export class Studio extends EventEmitter {
         ...(m.chatDriven ? { chatDriven: true } : {}),
       });
       this.reactions.delivered(m.diagnosticId);
+      if (m.inferredReply)
+        this.directQuestionReplies.set(`${m.personaId}:${m.replySourceId}`, m.expiresAt);
       this.inputLatency.publish(m.diagnosticId, delivered.id);
       this.trace.publishedMessage(m, delivered);
     } catch (error) {
@@ -1281,13 +1325,22 @@ export class Studio extends EventEmitter {
         clips: this.clips,
         speech,
         sound: this.sound,
-        now: capturedAt,
+        // The current speech may be published after the latest captured frame.
+        // Keep conversation cutoff separate from visual provenance and TTL.
+        now: this.now(),
         viewing,
         externalChat: this.externalChat,
         privateMembers: this.audience.data.members,
         addressViewers,
       },
     );
+    const questionSourceIds = speechBatch.ids.length
+      ? this.speechInbox.sources(speechBatch.ids).map((entry) => entry.messageId)
+      : [this.messages.findLast((m) => m.kind === 'streamer' && m.text === speech)?.id];
+    for (const packet of Object.values(personalContext.viewerContext)) {
+      const question = captureDirectQuestion(packet, speech, questionSourceIds, this.now());
+      if (question) packet.directQuestion = question;
+    }
     operation.externalIds = [
       ...new Set(
         Object.values(personalContext.viewerContext).flatMap((p) =>
