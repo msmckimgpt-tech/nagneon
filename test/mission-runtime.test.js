@@ -221,7 +221,7 @@ test('focused or uncertain scenes defer joining, opposing and completion candida
   assert.equal(s.missions.board.data.campaigns[0].status, 'accepted');
   assert.equal(s.missions.board.data.ledger.filter((e) => e.kind === 'consume').length, 0);
 });
-test('refusal drops queued and late mission pressure but preserves paid negotiations and advice permission rules', async (t) => {
+test('refusal drops queued and late mission pressure but preserves existing virtual-point negotiations and advice permission rules', async (t) => {
   const { s, send } = setup(t);
   const missionId = seed(s);
   s.accept(
@@ -314,16 +314,50 @@ test('deleted input and clear suppress mission actions from late responses; unre
     const receipt = send('새로운 게임 도전을 볼까?');
     const job = s.react({});
     if (removal === 'unrelated') {
+      const later = s.addMessage('pop', '요청이 시작된 뒤 올라온 무관한 인사');
       assert.equal(
-        Object.values(args.viewerContext).some((p) => p.chatHistory.some((m) => m.id === old.id)),
+        Object.values(args.viewerContext).some(
+          (p) =>
+            p.chatHistory.some((m) => m.id === later.id) ||
+            p.recollections.some((m) => m.sourceId === later.id),
+        ),
         false,
       );
-      s.moderate('delete', old.id);
+      s.moderate('delete', later.id);
     } else s.moderate(removal, receipt.messageId);
     finish({ observation: observation() });
     await job;
     assert.equal(s.missions.board.data.campaigns.length, removal === 'unrelated' ? 1 : 0, removal);
   }
+});
+test('deleted recollection cancels delayed mission funding without changing the existing ledger', async (t) => {
+  let finish, args;
+  const { s } = setup(t, (input) => {
+    args = input;
+    return new Promise((resolve) => (finish = resolve));
+  });
+  const sourceId = randomUUID();
+  s.journal.record(
+    {
+      id: sourceId,
+      personaId: 'momo',
+      name: '모모',
+      time: s.now() - 20000,
+      text: '비 오는 밤 산책을 좋아해요',
+      kind: 'chat',
+    },
+    { sessionId: randomUUID(), witnesses: ['momo', 'pop'], title: '지난 합성 방송' },
+  );
+  const before = structuredClone(s.missions.board.data);
+  const job = s.react({ speech: '모모, 비 오는 밤 산책 좋아했지?' });
+  assert.ok(args.viewerContext.momo.recollections.some((e) => e.sourceId === sourceId));
+  assert.ok(!s.messages.some((e) => e.id === sourceId));
+  s.moderate('delete', sourceId);
+  finish({ observation: observation() });
+  assert.deepEqual(await job, { skipped: 'superseded' });
+  assert.deepEqual(s.missions.board.data, before);
+  assert.equal(s.queue.length, 0);
+  assert.equal(s.running, true);
 });
 test('shutdown and a later broadcast never accept a late proposal or completion recommendation', async (t) => {
   let finish;

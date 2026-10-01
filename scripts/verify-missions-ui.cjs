@@ -2,6 +2,8 @@
 // is synthetic; no user profile, real AI account, microphone or capture is used.
 const { app, BrowserWindow, session, ipcMain } = require('electron');
 const { createStudioSession } = require('../desktop/session.cjs');
+const { attachNavigationHistory } = require('../desktop/navigation.cjs');
+const { spawnSync } = require('node:child_process');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { mkdirSync, writeFileSync, readFileSync } = require('node:fs');
@@ -51,6 +53,19 @@ async function button(text, twice = false) {
   const find = `Array.from(document.querySelectorAll('.mission-panel button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled)`;
   await until(`!!(${find})`);
   await js(`{const b=${find};b.click();${twice ? 'b.click();' : ''}}`);
+}
+async function nativeHistory(direction) {
+  const handle = win.getNativeWindowHandle();
+  const hwnd =
+    handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());
+  const command = direction === 'back' ? 1 : 2;
+  const script = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class MissionNavigationProbe { [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }'; if (-not [MissionNavigationProbe]::PostMessage([IntPtr]${hwnd}, 0x0319, [IntPtr]${hwnd}, [IntPtr]${command * 65536})) { exit 1 }`;
+  const sent = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    windowsHide: true,
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  assert.equal(sent.status, 0, sent.stderr || sent.error?.message);
 }
 async function post(path, body = {}) {
   const r = await fetch(service.url + '/api/' + path, {
@@ -145,6 +160,7 @@ async function open(width = 860) {
     },
   });
   win.setContentSize(width, 960);
+  attachNavigationHistory(win);
   win.webContents.on('console-message', (e) => {
     if (e.level === 'error') report.errors.push(e.message);
   });
@@ -370,6 +386,15 @@ app.whenReady().then(async () => {
     );
     await until(`!!document.querySelector('.mission-panel')`);
     assert.equal(JSON.stringify(service.studio.missions.board.data), beforeNavigation);
+    await nativeHistory('back');
+    await until(`!document.querySelector('.mission-panel') && location.hash === '#/audience'`);
+    assert.equal(JSON.stringify(service.studio.missions.board.data), beforeNavigation);
+    await nativeHistory('forward');
+    await until(`!!document.querySelector('.mission-panel') && location.hash === '#/studio'`);
+    assert.equal(JSON.stringify(service.studio.missions.board.data), beforeNavigation);
+    report.checks.push(
+      'native window back/forward preserves mission version, holds and ledger without duplicate settlement',
+    );
     await button('거절 · 예치 반환');
     await until(`document.querySelector('.mission-panel').textContent.includes('거절 · 반환')`);
     const count = service.studio.missions.board.data.campaigns.length;

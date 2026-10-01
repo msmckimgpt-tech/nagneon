@@ -126,6 +126,27 @@ app.whenReady().then(async () => {
     );
     const postIds = Array.from({ length: 40 }, () => randomUUID());
     const socialIds = Array.from({ length: 45 }, () => randomUUID());
+    const factTime = Date.now() - 60000;
+    const syntheticFact = {
+      id: 'navigation-synthetic-fact',
+      evidenceKind: 'synthetic',
+      sourceUrl: 'https://store.steampowered.com/news/app/570/view/123',
+      headline: '실제 최신 소식이 아닌 합성 탐색 검증 근거',
+      publishedAt: factTime - 1000,
+      observedAt: factTime,
+      expiresAt: factTime + 3600000,
+      tags: ['합성 게임'],
+      metrics: [
+        {
+          kind: 'concurrent-players',
+          scope: 'game',
+          value: 12345,
+          sourceUrl:
+            'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=570',
+          observedAt: factTime,
+        },
+      ],
+    };
     s.world.change((w) => {
       w.socialWorld.residents.push({
         id: residentId,
@@ -147,6 +168,7 @@ app.whenReady().then(async () => {
         comments: [],
         votes: [],
         attachments: [],
+        ...(i === 30 ? { trendFact: syntheticFact } : {}),
       }));
       w.audience.posts = postIds.map((id, i) => ({
         id,
@@ -302,6 +324,43 @@ app.whenReady().then(async () => {
     await until(`!!document.querySelector('.social-detail')`);
     await route(outsideDetail);
     report.checks.push('outside post detail survives native history and refresh');
+    await until(`!!document.querySelector('.community-fact')`);
+    const factCard = await js(`({
+      text:document.querySelector('.community-fact').textContent,
+      href:document.querySelector('.community-fact a').href,
+      times:[...document.querySelectorAll('.community-fact time')].map(t=>t.dateTime),
+      input:document.querySelector('.community-fact-input').textContent
+    })`);
+    assert.equal(factCard.href, syntheticFact.sourceUrl);
+    assert.ok(factCard.text.includes('합성 입력에 대한 가상 반응'));
+    assert.ok(factCard.text.includes('이슈 화제 규모: 미관측'));
+    assert.ok(factCard.text.includes('가상 인물의 개인 의견'));
+    for (const time of [
+      syntheticFact.publishedAt,
+      syntheticFact.observedAt,
+      syntheticFact.expiresAt,
+    ])
+      assert.ok(factCard.times.includes(new Date(time).toISOString()));
+    assert.ok(factCard.input.includes('사실 입력 미연결'));
+    const format = JSON.parse(fs.readFileSync(path.join(out, 'data/profile-format.json'), 'utf8'));
+    assert.equal(format.minReader, 4);
+    assert.deepEqual(s.world.data.socialWorld.threads[30].trendFact, syntheticFact);
+    main.setContentSize(390, 844);
+    await pause(180);
+    const factLayout = await js(`({width:innerWidth,
+      left:document.querySelector('.community-fact').getBoundingClientRect().left,
+      right:document.querySelector('.community-fact').getBoundingClientRect().right,
+      scroll:document.documentElement.scrollWidth})`);
+    assert.ok(
+      factLayout.left >= 0 && factLayout.right <= factLayout.width + 2,
+      JSON.stringify(factLayout),
+    );
+    assert.ok(factLayout.scroll <= factLayout.width + 2, JSON.stringify(factLayout));
+    await screenshot(main, 'after-synthetic-fact-detail-390');
+    main.setSize(1280, 900);
+    report.checks.push(
+      'synthetic fact provenance, exact timestamps and unobserved issue popularity survive native detail history and reload; Reader4 and 390px layout remain valid',
+    );
     await main.loadURL(service.url + '/#/community/broadcast');
     await until(`!!document.querySelector('.gallery-table td button')`);
     await button('후기');
