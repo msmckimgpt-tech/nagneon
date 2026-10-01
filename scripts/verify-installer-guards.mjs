@@ -1,5 +1,6 @@
 // Black-box mutation refusal against real installed TEST state. No cleanup on
 // failure; keep the exact corrupted fixture and reports for investigation.
+import {preflightPowerShellRuntime} from './lib/powershell-runtime.mjs';
 import {mkdir,readFile,writeFile,readdir,lstat,readlink,copyFile,rename,symlink,unlink,chmod} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join,relative} from 'node:path';
@@ -9,13 +10,15 @@ import assert from 'node:assert/strict';
 import {createSyntheticPackage,resolveIdentity,buildFileEntries,verifyPackage} from './build-installer.mjs';
 import {buildInstallerEngine} from './build-installer-engine.mjs';
 if(process.platform!=='win32')throw Error('Windows required');
+const powershell=preflightPowerShellRuntime();
+console.log('Verification host:',JSON.stringify(powershell));
 const base=resolve('artifacts','installer-guards-'+new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(base);
 const report={passed:false,base,checks:[],operations:[]},hash=b=>createHash('sha256').update(b).digest('hex');
 const json=async p=>JSON.parse((await readFile(p,'utf8')).replace(/^\uFEFF/,''));
 const source=join(base,'source'),target=join(base,'target'),uninstaller=join(base,'uninstaller.exe');
 let engine,identity,entries;
 async function run(file,args){let output='';const code=await new Promise((done,fail)=>{const p=spawn(file,args,{windowsHide:true,stdio:['ignore','pipe','pipe']});p.stdout.on('data',b=>output+=b);p.stderr.on('data',b=>output+=b);p.once('error',fail);p.once('close',done);});const log=join(base,'command-'+report.operations.length+'.log');await writeFile(log,output);report.operations.push({file,args,code,log});return code;}
-async function external(name){const path=join(base,'external-'+name+'.json');assert.equal(await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);return json(path);}
+async function external(name){const path=join(base,'external-'+name+'.json');assert.equal(await run(powershell.executable,['-NoLogo','-NoProfile','-NonInteractive','-File',resolve('scripts/installer-snapshot.ps1'),'-OutputPath',path]),0);return json(path);}
 async function snapshot(root){const data={};if(!existsSync(root))return data;async function walk(dir){for(const name of await readdir(dir)){const path=join(dir,name),info=await lstat(path),key=relative(root,path);if(info.isSymbolicLink())data[key]='link:'+await readlink(path);else if(info.isDirectory())await walk(path);else data[key]={bytes:info.size,hash:hash(await readFile(path))};}}await walk(root);return data;}
 async function request(build='one',fault){const path=join(base,'request-'+build+'-'+(fault?.replace(':','-')||'normal')+'.json');await writeFile(path,JSON.stringify({schema:1,identity:resolveIdentity({mode:'test',version:'0.1.0',buildId:build}),engineSha256:engine.sha256,files:entries.map(({path,bytes,sha256})=>({path,bytes,sha256})),...(fault?{testFault:fault}:{})}));return path;}
 async function call(operation,{root=target,build='one',fault}={}){const path=join(base,'result-'+report.operations.length+'.json');const args=operation==='install'?[operation,await request(build,fault),source,root,uninstaller,path]:[operation,root,identity.appId,path];const code=await run(engine.file,args);return {code,report:existsSync(path)?await json(path):null};}
@@ -25,7 +28,7 @@ async function unchanged(label,operations=['recover','uninstall','install']){
   assert.deepEqual(await external(label+'-after'),ext,label+': publication changed');report.checks.push(label+' refused without file/publication changes');
 }
 async function tamperFile(file,label,mutate){const original=await readFile(file);const changed=JSON.parse(original.toString('utf8'));mutate(changed);await writeFile(file,JSON.stringify(changed));await unchanged(label);await writeFile(file,original);}
-async function publication(action){assert.equal(await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/installer-test-publication.ps1'),'-Action',action,'-InstallRoot',target]),0,action);}
+async function publication(action){assert.equal(await run(powershell.executable,['-NoLogo','-NoProfile','-NonInteractive','-File',resolve('scripts/installer-test-publication.ps1'),'-Action',action,'-InstallRoot',target]),0,action);}
 try{
   const before=await external('before');assert.equal(before.registries.Registry64,null);assert.equal(before.registries.Registry32,null);assert.equal(before.group.exists,false,'TEST identity occupied');
   engine=await buildInstallerEngine(join(base,'engine'));report.engine=engine.sha256;

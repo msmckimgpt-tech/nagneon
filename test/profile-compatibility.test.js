@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { selectPowerShellRuntime } from '../scripts/lib/powershell-runtime.mjs';
+import { preflightPowerShellRuntime } from '../scripts/lib/powershell-runtime.mjs';
 
-const runtime = process.platform === 'win32' ? selectPowerShellRuntime() : null;
+const runtime = process.platform === 'win32' ? preflightPowerShellRuntime() : null;
 if (runtime) console.log('Profile fixture host:', JSON.stringify(runtime));
 
 test(

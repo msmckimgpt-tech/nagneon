@@ -2,16 +2,10 @@ import { statSync } from 'node:fs';
 import { win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-export function readPowerShellVersion(executable) {
-  const result = spawnSync(
+function queryHost(executable, command, run = spawnSync) {
+  const result = run(
     executable,
-    [
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      '$PSVersionTable.PSVersion.ToString()',
-    ],
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command],
     {
       encoding: 'utf8',
       windowsHide: true,
@@ -19,12 +13,67 @@ export function readPowerShellVersion(executable) {
       maxBuffer: 8192,
     },
   );
-  if (result.error || result.status !== 0)
-    throw new Error(
-      `PowerShell 버전 조회 실패: ${executable}. ${result.error?.message || result.stderr || result.status}`,
+  if (result.error || result.status !== 0) {
+    const error = new Error(
+      `PowerShell 조회 실패 (${result.error?.code || result.status}): ${executable}. ${result.error?.message || result.stderr || result.status}. 정책 변경이나 다른 엔진 재시도를 하지 않았습니다.`,
       { cause: result.error },
     );
+    error.code = result.error?.code;
+    error.executable = executable;
+    throw error;
+  }
   return result.stdout.trim();
+}
+
+export function readPowerShellVersion(executable) {
+  return queryHost(executable, '$PSVersionTable.PSVersion.ToString()');
+}
+
+export function readPowerShellPolicy(executable, run = spawnSync) {
+  const output = queryHost(
+    executable,
+    '[pscustomobject]@{effective=(Get-ExecutionPolicy).ToString();scopes=@(Get-ExecutionPolicy -List | ForEach-Object { [pscustomobject]@{scope=$_.Scope.ToString();policy=$_.ExecutionPolicy.ToString()} })} | ConvertTo-Json -Depth 4 -Compress',
+    run,
+  );
+  try {
+    return JSON.parse(output);
+  } catch (cause) {
+    throw new Error(`PowerShell 정책 JSON을 읽을 수 없습니다: ${executable}`, { cause });
+  }
+}
+
+// Read-only preflight; success does not replace signature/zone checks by -File.
+export function preflightPowerShellRuntime({ policy = readPowerShellPolicy, ...options } = {}) {
+  const runtime = selectPowerShellRuntime(options);
+  const observed = policy(runtime.executable);
+  if (
+    !['Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass'].includes(
+      observed?.effective,
+    ) ||
+    !Array.isArray(observed.scopes) ||
+    observed.scopes.length !== 5 ||
+    new Set(observed.scopes.map((row) => row?.scope)).size !== 5 ||
+    observed.scopes.some(
+      (row) =>
+        !['MachinePolicy', 'UserPolicy', 'Process', 'CurrentUser', 'LocalMachine'].includes(
+          row?.scope,
+        ) ||
+        ![
+          'Undefined',
+          'Restricted',
+          'AllSigned',
+          'RemoteSigned',
+          'Unrestricted',
+          'Bypass',
+        ].includes(row?.policy),
+    )
+  )
+    throw new Error(`PowerShell 정책 조회 결과가 유효하지 않습니다: ${runtime.executable}`);
+  if (observed.effective === 'Restricted')
+    throw new Error(
+      `PowerShell 파일 실행이 Restricted 정책으로 차단됩니다: ${runtime.executable} (${runtime.version}). scopes=${JSON.stringify(observed.scopes)}. 정책 변경이나 다른 엔진 재시도를 하지 않았습니다.`,
+    );
+  return { ...runtime, policy: observed };
 }
 
 // Resolve once, before executing a file script. Permission errors are not an

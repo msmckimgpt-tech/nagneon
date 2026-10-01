@@ -33,6 +33,29 @@ npm run format
 npm run check
 ```
 
+수동 설치 검증 4개(`verify-full-installer.mjs`, `verify-installer-guards.mjs`,
+`verify-installer-nsis.mjs`, `verify-installer-transactions.mjs`)와 임시 HOME 기반
+`scripts/web-development/test_install.py`도 같은 지원 호스트 계약을 사용한다.
+검증 프로세스 시작 전에 `NAGNEON_TEST_POWERSHELL`에 이미 설치된 지원 실행 파일의
+절대 경로를 명시한다. 패키지 업데이트 후 경로와 버전을 다시 확인하며 캐시 경로를
+코드에 고정하지 않는다. `node scripts/powershell-preflight.mjs`는 파일 스크립트를
+실행하지 않고 선택 경로·버전·유효 실행 정책·5개 scope를 JSON으로 출력한다.
+
+버전/정책 조회의 접근 거절은 실행 파일 부재와 다르다. 선택기에서 `ENOENT`와
+`ENOTDIR`만 다음 존재 후보를 허용하며 명시된 경로에는 이 탐색도 없다.
+`EACCES`/`EPERM`, 지원하지 않는 버전, 조회 실패는 해당 경로와 원인을 유지하여
+중단한다. preflight의 `Restricted`도 파일 실행 전에 중단하며 다른 엔진으로
+재시도하거나 정책을 변경하지 않는다. `RemoteSigned`/`AllSigned`의 서명·다운로드
+영역 검사 등은 실제 `-File` 실행에서 계속 적용된다. preflight 성공만으로 파일
+실행 성공을 단정하지 않는다.
+
+`node --test test/powershell-preflight.test.js`로 호출과 하위 도우미의 정책 덮어쓰기
+정적 회귀 검사를 먼저 수행한 뒤 관련 합성 fixture 검사와 `npm run check`를 실행한다.
+수동 설치 검증은 TEST 레지스트리·바로가기와 설치 상태를 변경하므로 별도 설치
+검증 범위가 승인됐을 때만 실행한다. 실제 사용자 기록은 fixture로 사용하지 않는다.
+과거 정책 덮어쓰기 또는 상속된 우회 정책으로 통과한 결과는 정책 옵션 없는 새
+검증 결과로 재사용하지 않는다. 실패·미실행·전체 check·별도 build를 구분해 기록한다.
+
 `check`는 주요 진입점의 서식 검사, 서버 회귀 검사, TypeScript 검사와 Vite 빌드를 수행한다. 서식 대상은 현재 `App.tsx`, `style.css`, `types.ts`, `studio.js`, `index.js`다. 새 모듈도 고정된 Prettier 설정으로 정리하며, 기존 모듈은 관련 수정 때 점진적으로 편입한다. 포매터는 개발 의존성으로만 설치한다.
 
 실제 UI 검사는 `scripts/verify-nagneon.cjs`를 격리 Electron에서 실행한다. 이 검사는 합성 프로필을 사용하며 실제 계정·마이크·OBS 검증을 대신하지 않는다. 결과와 캡처는 작업 worktree의 `artifacts/nagneon/`에 저장된다.

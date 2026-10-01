@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { selectPowerShellRuntime } from '../scripts/lib/powershell-runtime.mjs';
+import { preflightPowerShellRuntime } from '../scripts/lib/powershell-runtime.mjs';
 
 test(
   'Windows shortcuts preserve old links and follow the fixed launcher across releases',
@@ -51,7 +51,7 @@ Write-Output 'Shortcut fixture passed.'
 `;
     const scriptPath = join(root, 'verify.ps1');
     await writeFile(scriptPath, script);
-    const runtime = selectPowerShellRuntime();
+    const runtime = preflightPowerShellRuntime();
     console.log('Shortcut fixture host:', JSON.stringify(runtime));
     const result = spawnSync(
       runtime.executable,
