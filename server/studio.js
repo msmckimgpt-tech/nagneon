@@ -283,13 +283,16 @@ export class Studio extends EventEmitter {
       capture,
       hearers,
     );
+    const projection = projectSpeech({ text, source, capture });
+    const annotationOnly = !!projection.nonverbal?.length && !projection.text.trim();
     if (!result.duplicate) {
       this.inputLatency.receive(id, capture);
       this.trace.inputReceived(this.sessionId, id, capture, source, result.messageId);
-      this.clearMomentQueue(text);
+      if (!annotationOnly) this.clearMomentQueue(text);
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
       if (
+        !annotationOnly &&
         this.liveReaction &&
         (!this.liveReaction.hasSpeech || revisesLiveSituation(text) || adviceIntent(text).refused)
       ) {
@@ -844,11 +847,17 @@ export class Studio extends EventEmitter {
     }
     if (this.busy) return { skipped: 'busy' };
     if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
-    const speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
+    let speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
     speech = speechBatch.text;
-    if (!speech.trim() && speechBatch.ids.length && speechBatch.nonverbal?.length) {
+    const annotationOnly =
+      !speech.trim() && speechBatch.ids.length && speechBatch.nonverbal?.length;
+    if (annotationOnly) {
       this.speechInbox.acknowledge(speechBatch.ids);
-      return { ok: true, nonSpeech: true };
+      speech = '';
+      // These receipts contain no words. Their hearer boundary must not trim
+      // independent current screen/sound/chat input to the earlier listeners.
+      speechBatch = { text: '', ids: [] };
+      if (this.settings.mode !== 'live') return { ok: true, nonSpeech: true };
     }
     const uncertain = this.speechInbox
       .sources(speechBatch.ids)
@@ -874,7 +883,8 @@ export class Studio extends EventEmitter {
       return { skipped: 'interval' };
     if (speech && this.now() - this.lastRequest < 2000) return { skipped: 'interval' };
     const epoch = this.epoch;
-    const prepared = this.prepareReactionViewing({ image, video, speech });
+    const prepared = this.prepareReactionViewing({ image, video, speech, annotationOnly });
+    if (prepared.annotationOnly) return { ok: true, nonSpeech: true };
     if (prepared.skipped) return prepared;
     const { viewing, frames, screenTimeline, idleConversation, watchingCompany } = prepared;
     image = prepared.image;
@@ -1044,7 +1054,7 @@ export class Studio extends EventEmitter {
       }
     }
   }
-  prepareReactionViewing({ image, video, speech }) {
+  prepareReactionViewing({ image, video, speech, annotationOnly }) {
     let viewing,
       frames = [],
       screenTimeline,
@@ -1106,6 +1116,9 @@ export class Studio extends EventEmitter {
         ),
       ))
         peerIds.push(id);
+      const ambient = this.autonomy ? this.ambient.snapshot() : null;
+      if (annotationOnly && !image && !soundIds.length && !peerIds.length && !ambient?.active)
+        return { annotationOnly: true };
       viewing = this.viewing.observe({
         image,
         frames,
@@ -1117,7 +1130,6 @@ export class Studio extends EventEmitter {
         at: this.now(),
       });
       if (!image) this.knowledge.lastSeen = null;
-      const ambient = this.autonomy ? this.ambient.snapshot() : null;
       if (!speech.trim() && !ambient?.active) {
         // Animated menus and repeated music change samples without necessarily
         // changing the conversation. Offer company without dropping fresh input.
