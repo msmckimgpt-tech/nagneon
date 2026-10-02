@@ -4,8 +4,11 @@ import { JsonStore } from './storage.js';
 
 export const WORLD_PROFILE_FORMAT = Object.freeze({ minReader: 2, minAppVersion: '0.1.7' });
 export const UNLIMITED_READERS_FORMAT = Object.freeze({ minReader: 3, minAppVersion: '0.1.18' });
-export const LONG_SPEECH_FORMAT = Object.freeze({ minReader: 4, minAppVersion: '0.1.18' });
-export const PROFILE_READER = 4;
+export const TREND_FACTS_FORMAT = Object.freeze({ minReader: 4, minAppVersion: '0.1.18' });
+// Reader 4 was already used by the sourced-community preview. Its journal
+// cannot load long originals, so those require a distinct, cumulative reader.
+export const LONG_SPEECH_FORMAT = Object.freeze({ minReader: 5, minAppVersion: '0.1.18' });
+export const PROFILE_READER = 5;
 const appVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;
@@ -83,6 +86,8 @@ export function writeProfileFormat(dataDir, required = WORLD_PROFILE_FORMAT) {
 export function requiredProfileFormat(name, value) {
   if (name === 'journal')
     return value.entries.some((entry) => entry.text.length > 3000) ? LONG_SPEECH_FORMAT : null;
+  if (name === 'world' && value.socialWorld?.threads?.some((thread) => thread.trendFact))
+    return TREND_FACTS_FORMAT;
   const expanded =
     name === 'clips'
       ? value.some((c) => [c.readings, c.votes, c.activityReads].some((rows) => rows?.length > 150))

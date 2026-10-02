@@ -302,10 +302,15 @@ async function startServerImpl(
     onboardingStore.save(onboardingStore.data);
   if (persist) {
     backupWorldV1(dataDir);
-    protectExpandedReaders(
-      requiredProfileFormat('world', worldStore.data) ||
-        requiredProfileFormat('clips', clipsStore.data),
-    );
+    // A world with reader-4 source metadata can also contain a long journal.
+    // Inspect every validated representation, including journals already saved
+    // by builds that assigned both capabilities the same reader number.
+    for (const [name, data] of [
+      ['world', worldStore.data],
+      ['clips', clipsStore.data],
+      ['journal', journalStore.data],
+    ])
+      protectExpandedReaders(requiredProfileFormat(name, data));
     profileFormat = markWorldFormat(dataDir);
   }
   if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);

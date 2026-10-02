@@ -242,7 +242,7 @@ test('a 4000-character original survives journal restart with its final refusal 
   const previous = remember(journal, utterance(3000));
   journal.pin(previous.id, true);
   const current = remember(journal, utterance(4000));
-  assert.deepEqual(readProfileFormat(dir), { minReader: 4, minAppVersion: '0.1.18' });
+  assert.deepEqual(readProfileFormat(dir), { minReader: 5, minAppVersion: '0.1.18' });
   const loaded = new JournalStore(dir).load();
   assert.deepEqual(loaded, journal.data);
   const original = loaded.entries.find(e => e.id === current.id);
@@ -292,9 +292,9 @@ test('an unsupported future profile floor refuses journal loading without restor
 test('the profile floor remains monotone after the last long original is forgotten', async () => {
   const { dir, journal } = await journalFixture();
   const previous = remember(journal, utterance(3000)), current = remember(journal, utterance(4000));
-  assert.deepEqual(readProfileFormat(dir), { minReader: 4, minAppVersion: '0.1.18' });
+  assert.deepEqual(readProfileFormat(dir), { minReader: 5, minAppVersion: '0.1.18' });
   journal.forget([current.id]);
-  assert.deepEqual(readProfileFormat(dir), { minReader: 4, minAppVersion: '0.1.18' });
+  assert.deepEqual(readProfileFormat(dir), { minReader: 5, minAppVersion: '0.1.18' });
   const loaded = new JournalStore(dir).load();
   assert.deepEqual(loaded, journal.data);
   assert.deepEqual(loaded.entries.map(e => e.id), [previous.id]);
@@ -313,7 +313,7 @@ test('a fresh service materializes its required empty clip store before a long j
     const source = remember(service.studio.journal, utterance(4000));
     const expected = structuredClone(service.studio.journal.data);
     assert.deepEqual(JSON.parse(await readFile(join(dir, 'clips.json'), 'utf8')), []);
-    assert.deepEqual(readProfileFormat(dir), { minReader: 4, minAppVersion: '0.1.18' });
+    assert.deepEqual(readProfileFormat(dir), { minReader: 5, minAppVersion: '0.1.18' });
     await service.close(); service = null;
     service = await startServer(options);
     assert.deepEqual(service.studio.journal.data, expected);
