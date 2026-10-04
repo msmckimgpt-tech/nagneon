@@ -103,5 +103,5 @@ if(!app.requestSingleInstanceLock())app.quit();else{
       const observed=await background.ready({app,window:main,profile:app.getPath('userData')});
       if(!observed&&!shutdown.quitting&&!main.isDestroyed())main.show();
     }
-  }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;if(!background.active)dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});
+  }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;if(background.startupFailure({app,profile:app.getPath('userData')}))return;dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});
 }

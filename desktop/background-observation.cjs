@@ -1,8 +1,20 @@
 const FLAG='--backseat-background-observe';
+const DELAY_FLAG='--backseat-background-observe-delay-ms';
+const DEFAULT_DELAY=1500;
+const delayError='진단 종료 대기 시간은 1500~10000밀리초 정수 하나로 지정해주세요.';
+function observationDelay(argv,active){
+  const values=argv.filter(value=>value===DELAY_FLAG||value.startsWith(DELAY_FLAG+'='));
+  if(!active||!values.length)return {milliseconds:DEFAULT_DELAY,error:null};
+  const value=values.length===1?values[0].slice(DELAY_FLAG.length+1):'';
+  const milliseconds=/^[1-9]\d*$/.test(value)?Number(value):NaN;
+  if(!Number.isSafeInteger(milliseconds)||milliseconds<DEFAULT_DELAY||milliseconds>10000)return {milliseconds:DEFAULT_DELAY,error:delayError};
+  return {milliseconds,error:null};
+}
 const rendererState="(()=>({ready:!!document.querySelector('.app-shell,.welcome-shell'),version:document.querySelector('[aria-label=\"앱 버전\"]')?.textContent,bridge:!!window.backseat}))()";
 
 function createBackgroundObservation(argv,{schedule=setTimeout,cancel=clearTimeout,pause=clearInterval,resume=setInterval,delay=ms=>new Promise(done=>setTimeout(done,ms)),write=value=>console.log(JSON.stringify(value))}={}){
   let active=argv.includes(FLAG),quitTimer,studio;
+  const timing=observationDelay(argv,active);
   return {
     get active(){return active;},
     windowOptions(){return active?{show:false}:{};},
@@ -21,10 +33,17 @@ function createBackgroundObservation(argv,{schedule=setTimeout,cancel=clearTimeo
       return true;
     },
     dispose(){active=false;cancel(quitTimer);quitTimer=undefined;},
+    startupFailure({app,profile}){
+      if(!active)return false;
+      try{write({kind:'background-observation',passed:false,stage:'startup',version:app.getVersion(),profile,error:'앱 시작을 완료하지 못했습니다.'});}
+      finally{app.quit();}
+      return true;
+    },
     async ready({app,window,profile}){
       if(!active)return false;
-      let result={kind:'background-observation',passed:false,version:app.getVersion(),profile};
+      let result={kind:'background-observation',passed:false,version:app.getVersion(),profile,shutdownDelayMs:timing.milliseconds};
       try{
+        if(timing.error)throw Error(timing.error);
         let renderer;
         for(let attempt=0;attempt<100&&active;attempt++){
           renderer=await window.webContents.executeJavaScript(rendererState);
@@ -41,7 +60,7 @@ function createBackgroundObservation(argv,{schedule=setTimeout,cancel=clearTimeo
         result={...result,passed:true,visible:false,rendererReady:true,displayedVersion:renderer.version||null,running:false,periodicWorkPaused:studio.timer===null,provider:{kind:provider.kind,model:provider.model,effort:provider.effort}};
       }catch(error){result.error=error.message;}
       if(!active)return false;
-      try{write(result);}finally{quitTimer=schedule(()=>{quitTimer=undefined;if(active)app.quit();},1500);quitTimer?.unref?.();}
+      try{write(result);}finally{quitTimer=schedule(()=>{quitTimer=undefined;if(active)app.quit();},timing.milliseconds);quitTimer?.unref?.();}
       return true;
     },
   };
