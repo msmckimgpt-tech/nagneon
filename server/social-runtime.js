@@ -7,6 +7,11 @@ import { socialContentHash, socialDiscussionHash, similarSocialText } from './so
 import { Persona, Observation } from './schema.js';
 import { communities, digest, SocialPreferencePatch } from './social-runtime-state.js';
 import { transcriptAnomaly } from './transcript-correction.js';
+import {
+  publicStoredTrendFact,
+  isCurrentStoredTrendFact,
+  STORED_TREND_INSTRUCTION,
+} from './culture/trend-fact-context.js';
 
 const normalize = (s) => s.normalize('NFKC').toLocaleLowerCase();
 const querySchema = z
@@ -119,6 +124,7 @@ export class SocialRuntime {
   }
   projection(t) {
     const r = this.data().residents.find((r) => r.id === t.residentId);
+    const externalFact = publicStoredTrendFact(t.trendFact);
     return {
       id: t.id,
       communityId: t.communityId,
@@ -137,6 +143,17 @@ export class SocialRuntime {
         : this.validSource(t.source)
           ? 'public-broadcast'
           : 'historical',
+      ...(externalFact
+        ? {
+            externalFact,
+            externalFactStatus: isCurrentStoredTrendFact(externalFact, this.s.now())
+              ? externalFact.evidenceKind === 'synthetic'
+                ? 'synthetic'
+                : 'observed'
+              : 'expired',
+            reactionKind: 'fictional-personal-reaction',
+          }
+        : {}),
       bookmarked: this.data().preferences.bookmarks.includes(t.id),
       comments: (t.comments || []).map((c) => ({
         ...c,
@@ -342,6 +359,12 @@ export class SocialRuntime {
       out = [];
     if (d.threads.length >= 2000 || d.receipts.length >= 8000 || d.tombstones.length >= 4000)
       return out;
+    // Validate each stored observation once in this sweep, using the caller's clock.
+    const inactiveFactThreads = new Set(
+      d.threads
+        .filter((t) => t.trendFact !== undefined && !isCurrentStoredTrendFact(t.trendFact, now))
+        .map((t) => t.id),
+    );
     const activeCommunities = communities.filter(
       (c) => !d.preferences.mutedCommunities.includes(c.id),
     );
@@ -414,6 +437,7 @@ export class SocialRuntime {
             (t) =>
               t.communityId === c.id &&
               this.visible(t) &&
+              !inactiveFactThreads.has(t.id) &&
               !d.preferences.mutedTopics.includes(t.topicId) &&
               (t.comments || []).length < 150 &&
               (t.residentId !== r.id ||
@@ -520,6 +544,8 @@ export class SocialRuntime {
       thread = input.threadId ? d.threads.find((t) => t.id === input.threadId) : null;
     const original = source ? s.journal.data.entries.find((e) => e.id === source.id) : null;
     const discussing = target.kind === 'social-discuss';
+    const hasStoredFact = thread?.trendFact !== undefined;
+    const externalFact = publicStoredTrendFact(thread?.trendFact);
     const delivered = thread
       ? {
           id: thread.id,
@@ -544,7 +570,9 @@ export class SocialRuntime {
       : original
         ? { text: original.text.slice(0, 600), speaker: original.name }
         : null;
-    const valid = () =>
+    // The provider receives a separate copy; only delivered IDs can authorize a reply.
+    const deliveredCommentIds = new Set(delivered?.comments?.map((c) => c.id) || []);
+    const valid = (now) =>
       !signal.aborted &&
       !s.communityActivity.closed &&
       s.epoch === operation.epoch &&
@@ -553,6 +581,7 @@ export class SocialRuntime {
       !this.data().preferences.mutedCommunities.includes(c.id) &&
       !this.data().preferences.mutedTopics.includes(topic.id) &&
       (!source || this.validSource(source)) &&
+      (!hasStoredFact || isCurrentStoredTrendFact(externalFact, now ?? s.now())) &&
       (!thread ||
         this.data().threads.some(
           (t) => t.id === thread.id && socialContentHash(t) === input.threadHash && this.visible(t),
@@ -591,40 +620,47 @@ export class SocialRuntime {
           : target.kind === 'social-mention'
             ? '제공된 공개 방송 발언만 직접 목격 근거다. 공동체 취향에 맞는 짧은 감상 글 하나를 messages에 쓰거나 침묵한다. 다른 사건/영상/관객/친분을 지어내지 않는다.'
             : '이곳은 특정 방송인의 팬 게시판이 아니다. 방송을 보거나 관객이 되지 않아도 계속 머무는 일반 주민으로서, 방송인과 무관한 이 공동체의 일상 글 하나를 messages에 쓴다. 공동체의 말투와 규범을 반영하되 홍보나 방문 예고로 마무리하지 않는다. 주제에 대한 독립적인 취향·시행착오를 한국어 게시글 말투로 표현한다. 현실 뉴스/유행/날짜/실제 사이트 방문을 지어내지 않는다. 침묵도 정상이다.';
-    s.reserveCall();
-    const result = await s.provider.react(
-      {
-        aiFeature: 'community',
-        settings,
-        history: [],
-        previous: null,
-        speech: '',
-        offStream: true,
-        frames: [],
-        culture: { enabled: false },
-        special: {
-          kind: target.kind,
-          community: { name: c.name, norms: c.norms },
-          topic,
-          delivered,
-          recentPosts: !thread
-            ? d.threads
-                .filter((t) => this.visible(t) && t.kind === 'daily' && s.now() - t.at < 86400000)
-                .slice(-12)
-                .map((t) => ({ communityId: t.communityId, topicId: t.topicId, text: t.text }))
-            : [],
-          instruction:
-            instruction +
-            (!birth && !thread
-              ? ' 최근 글과 같은 사건·질문·결론을 표현만 바꿔 반복하지 않는다. 다른 관심사나 구체적인 소재를 선택하고 차이가 없으면 침묵한다.'
-              : '') +
-            (d.preferences.creativeImages && target.kind === 'social-daily'
-              ? ' 창작 이미지 옵션이 켜져 있다. 이번 일상 글과 관련된 작은 창작 픽셀 그림을 직접 구성하고 scene 문자열에 JSON으로 담는다: {"palette":["#112233","#aabbcc"],"pixels":["0000000000000000",...16줄]}. palette는 2~8색, pixels는 0~7 색번호 16글자씩 정확히16줄이다. scene에는 설명이나 코드펜스 없이 JSON만 쓴다. 그림을 언급만 하고 실제 데이터를 생략하지 않는다. 글은 messages에 쓴다. 글 자체를 쓰지 않으면 그림도 생략한다.'
-              : ''),
-        },
+    const request = structuredClone({
+      aiFeature: 'community',
+      settings,
+      history: [],
+      previous: null,
+      speech: '',
+      offStream: true,
+      frames: [],
+      culture: { enabled: false },
+      special: {
+        kind: target.kind,
+        community: { name: c.name, norms: c.norms },
+        topic,
+        delivered,
+        ...(externalFact ? { externalFact } : {}),
+        recentPosts: !thread
+          ? d.threads
+              .filter(
+                (t) =>
+                  this.visible(t) &&
+                  t.kind === 'daily' &&
+                  t.trendFact === undefined &&
+                  s.now() - t.at < 86400000,
+              )
+              .slice(-12)
+              .map((t) => ({ communityId: t.communityId, topicId: t.topicId, text: t.text }))
+          : [],
+        instruction:
+          instruction +
+          (externalFact ? ' ' + STORED_TREND_INSTRUCTION : '') +
+          (!birth && !thread
+            ? ' 최근 글과 같은 사건·질문·결론을 표현만 바꿔 반복하지 않는다. 다른 관심사나 구체적인 소재를 선택하고 차이가 없으면 침묵한다.'
+            : '') +
+          (d.preferences.creativeImages && target.kind === 'social-daily'
+            ? ' 창작 이미지 옵션이 켜져 있다. 이번 일상 글과 관련된 작은 창작 픽셀 그림을 직접 구성하고 scene 문자열에 JSON으로 담는다: {"palette":["#112233","#aabbcc"],"pixels":["0000000000000000",...16줄]}. palette는 2~8색, pixels는 0~7 색번호 16글자씩 정확히16줄이다. scene에는 설명이나 코드펜스 없이 JSON만 쓴다. 그림을 언급만 하고 실제 데이터를 생략하지 않는다. 글은 messages에 쓴다. 글 자체를 쓰지 않으면 그림도 생략한다.'
+            : ''),
       },
-      signal,
-    );
+    });
+    if (!valid()) return;
+    s.reserveCall();
+    const result = await s.provider.react(request, signal);
     if (!valid()) return;
     s.ai.assertCurrent(result);
     const observation = Observation.parse(result.observation);
@@ -659,8 +695,8 @@ export class SocialRuntime {
     }
     try {
       this.change((next, w) => {
-        if (!valid()) throw Error('커뮤니티 작업의 상태가 바뀌었습니다.');
         const now = s.now();
+        if (!valid(now)) throw Error('커뮤니티 작업의 상태가 바뀌었습니다.');
         let resident = next.residents.find((r) => r.id === input.residentId);
         if (birth) {
           const p = Persona.parse({
@@ -706,7 +742,10 @@ export class SocialRuntime {
           const t = next.threads.find((t) => t.id === thread.id),
             comments = (t.comments ||= []);
           let m = message,
-            parent = m?.replyTo ? comments.find((c) => c.id === m.replyTo && !c.deleted) : null;
+            parent =
+              m?.replyTo && deliveredCommentIds.has(m.replyTo)
+                ? comments.find((c) => c.id === m.replyTo && !c.deleted)
+                : null;
           if (m?.replyTo && !parent) m = null;
           if (m && comments.some((c) => !c.deleted && similarSocialText(c.text, m.text))) m = null;
           if (m && comments.length < 150)
