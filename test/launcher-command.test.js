@@ -95,7 +95,9 @@ class Recorder {
         'set "ProgramFiles=%~dp0program files"',
         'set "LOCALAPPDATA=%~dp0local"',
         'set "SystemRoot=%~dp0windows"',
-        'call "%~dp0Start-Nagneon.cmd"', 'exit /b %errorlevel%', ''].join('\r\n'), 'ascii');
+        // The product intentionally pauses on failure. A synthetic caller must
+        // supply deterministic EOF, rather than racing a pre-fed console key.
+        'call "%~dp0Start-Nagneon.cmd" <nul', 'exit /b %errorlevel%', ''].join('\r\n'), 'ascii');
       const run = spawnSync(join(process.env.SystemRoot, 'System32/cmd.exe'),
         ['/d', '/s', '/c', `""${driver}""`], {
           encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true,

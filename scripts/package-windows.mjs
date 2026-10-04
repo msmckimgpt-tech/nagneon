@@ -11,6 +11,7 @@ import {flipFuses,getCurrentFuseWire,FuseVersion,FuseV1Options} from '@electron/
 import {installMicrophoneModel} from './lib/microphone-model.mjs';
 import {packageSources,verifyPackageSources,packageSourceRoots,packageBuildInput} from './lib/package-sources.mjs';
 import {distributionComponents} from './lib/distribution-components.mjs';
+import {writePackageCapabilities,verifyPackageCapabilities} from './lib/package-capabilities.mjs';
 import {packageLayout,validatePackageCatalog,stageComponentRuntime} from './lib/package-layout.mjs';
 import {
   createPackageScratch,
@@ -55,6 +56,7 @@ async function packageRecipeIdentity(codexRoot){
     'scripts/lib/electron-locales.mjs',
     'scripts/lib/microphone-model.mjs',
     'scripts/lib/storage-maintenance.mjs',
+    'scripts/lib/package-capabilities.mjs',
     'server/runtime-pack.js',
   ];
   const inputs=[];
@@ -110,6 +112,7 @@ const storageBefore=await freeSpace(root);
 const gate=await packageGate(root,buildFingerprint);
 if(gate.reused){
   const {build,folder,manifestPath,manifest}=gate.reused;
+  await verifyPackageCapabilities(folder);
   await writeFile(join(root,'artifacts/latest-package.json'),JSON.stringify({folder,manifest:manifestPath,build,reused:true},null,2));
   console.log(JSON.stringify({
     folder,manifest:manifestPath,bytes:manifest.files.reduce((s,f)=>s+f.bytes,0),files:manifest.files.length,signed:false,reused:true,
@@ -217,11 +220,14 @@ if(gate.reused){
     const inventory=[];
     const sourceCheck=await verifyPackageSources(root,folder,sourceManifest);
     if(!sourceCheck.passed)throw Error(sourceCheck.failures.join('\n'));
+    const packageCapabilities=await writePackageCapabilities(folder);
+    if(packageCapabilities.appVersion!==pkg.version)throw Error('Packaged application version differs.');
+    await verifyPackageCapabilities(folder);
     for(const name of await files(folder))inventory.push({path:name,bytes:(await lstat(join(folder,name))).size,sha256:await hash(join(folder,name))});
     const [stageStorage,runtimeStorage,appStorage]=await Promise.all([treeStats(stage),treeStats(resources),treeStats(appOutput)]);
     const runtimeFiles=await files(resources);
     const report={version:pkg.version,builtAt:new Date().toISOString(),platform:'win32-x64',signed:false,layout:modular?'components':'bundled',acceptance:'not yet verified',localePruning,electron:electronVersion,codex:codexPkg.version,
-      buildFingerprint,packageRecipe:packagingRecipe,
+      buildFingerprint,packageRecipe:packagingRecipe,packageCapabilities,
       speech:modular?{mode:'components',contentIds:catalog.components.map(({id,contentId})=>({id,contentId}))}:speechManifest.pythonVersion||speechManifest.python,sourceManifest,sourceArchiveFiles:archiveFiles.length,fuses:await getCurrentFuseWire(exe),files:inventory,components:distributionComponents(inventory),
       storage:{schema:'nagneon.package-storage/1',runId:id,policy:'scratch-is-transactional; successful scratch is removed; failed scratch blocks the next package until explicit maintenance',stage:stageStorage,runtime:runtimeStorage,app:appStorage,runtimeFiles}
     };

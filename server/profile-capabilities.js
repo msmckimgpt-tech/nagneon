@@ -8,7 +8,17 @@ export const TREND_FACTS_FORMAT = Object.freeze({ minReader: 4, minAppVersion: '
 // Reader 4 was already used by the sourced-community preview. Its journal
 // cannot load long originals, so those require a distinct, cumulative reader.
 export const LONG_SPEECH_FORMAT = Object.freeze({ minReader: 5, minAppVersion: '0.1.18' });
-export const PROFILE_READER = 5;
+const readerCapability = JSON.parse(
+  readFileSync(new URL('../shared/profile-reader.json', import.meta.url), 'utf8'),
+);
+if (
+  readerCapability.schema !== 'nagneon.profile-reader/1' ||
+  !Number.isSafeInteger(readerCapability.reader) ||
+  readerCapability.reader < LONG_SPEECH_FORMAT.minReader ||
+  Object.keys(readerCapability).length !== 2
+)
+  throw Error('앱의 기록 호환성 정보를 확인하세요. 검증된 배포본을 다시 적용하세요.');
+export const PROFILE_READER = readerCapability.reader;
 const appVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;

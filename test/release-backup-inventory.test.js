@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createPackage } from '@electron/asar';
+import { writePackageCapabilities } from '../scripts/lib/package-capabilities.mjs';
 
 test('Windows fixed installer validates a complete immutable backup before advancing its pointer', {
   skip: process.platform !== 'win32',
@@ -99,7 +101,13 @@ catch { $fixtureRejected=$true; $fixtureMessage=$_.Exception.Message }
       await mkdir(dir, { recursive: true });
     }
     await copyFile(executable, join(pack, 'Nagneon.exe'));
-    await writeFile(join(pack, 'resources/app.asar'), 'Synthetic payload; never launched.');
+    const app = join(folder, 'synthetic-app');
+    await mkdir(join(app, 'shared'), { recursive: true });
+    await writeFile(join(app, 'package.json'), JSON.stringify({ version: '0.1.18' }));
+    await writeFile(join(app, 'shared/profile-reader.json'), JSON.stringify({ schema: 'nagneon.profile-reader/1', reader: 5 }));
+    await createPackage(app, join(pack, 'resources/app.asar'));
+    await writePackageCapabilities(pack);
+    const originalArchive = await readFile(join(pack, 'resources/app.asar'));
     if (scenario !== 'empty') {
       await writeFile(join(data, 'world.json'), '{"fixture":"방송 기록"}');
       await writeFile(join(data, 'nested/notes.txt'), '별명과 관계 기억');
@@ -135,7 +143,7 @@ catch { $fixtureRejected=$true; $fixtureMessage=$_.Exception.Message }
       const inventory = JSON.parse(await readFile(join(pointer.backup, 'profile-inventory.json'), 'utf8'));
       assert.equal(inventory.files.length, scenario === 'empty' ? 0 : 3);
       assert.deepEqual(inventory.directories, ['empty', 'hidden', 'nested']);
-      assert.equal(await readFile(join(dirname(join(install, pointer.executable)), 'resources/app.asar'), 'utf8'), 'Synthetic payload; never launched.');
+      assert.deepEqual(await readFile(join(dirname(join(install, pointer.executable)), 'resources/app.asar')), originalArchive);
       // A second real invocation must release its previous update lock and preserve the same data.
       const next = invoke(folder, scenario);
       assert.equal(next.status, 0, next.stdout + next.stderr);

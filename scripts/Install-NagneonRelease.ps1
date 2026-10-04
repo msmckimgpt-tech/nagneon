@@ -61,8 +61,12 @@ foreach ($item in @('Nagneon.exe','resources/app.asar')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PackageFolder $item) -PathType Leaf)) { throw "Incomplete package: $item" }
 }
 if ($Profile -and [IO.Path]::IsPathRooted($Profile)) { Assert-NagneonInstallOutsideProfileData $Profile }
+$packageCapability = Get-NagneonPackageCapabilities $PackageFolder $Version
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 $lock = [IO.File]::Open((Join-Path $InstallRoot 'update.lock'),'OpenOrCreate','ReadWrite','None')
+$entrypointBackup = @()
+$entrypointWrites = $false
+$pointerCommitted = $false
 try {
     $configPath = Join-Path $InstallRoot 'current.json'
     $old = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
@@ -86,11 +90,13 @@ try {
     $Profile = (Resolve-Path -LiteralPath $Profile).Path
     if (-not (Test-Path -LiteralPath (Join-Path $Profile 'data'))) { throw 'Existing profile data is required.' }
     Assert-NagneonInstallOutsideProfileData $Profile
-    Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion (Get-Item -LiteralPath (Join-Path $PackageFolder 'Nagneon.exe')).VersionInfo.ProductVersion
+    $packageCapability = Get-NagneonPackageCapabilities $PackageFolder $Version $packageCapability.receiptSha256
+    Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion $packageCapability.appVersion -PackageFolder $PackageFolder -ExpectedReceiptSha256 $packageCapability.receiptSha256
     $active = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('Nagneon.exe','electron.exe') -and ($_.ExecutablePath -like ($InstallRoot + '\*') -or $_.CommandLine -like ('*' + $Profile + '*')) }
     if ($active) { throw 'Close Nagneon normally before updating. No processes were stopped.' }
     $dataFolder = Join-Path $Profile 'data'
     $profileInventory = Get-NagneonProfileInventory $dataFolder
+    $packageInventory = Get-NagneonProfileInventory $PackageFolder
     $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
     $backup = Join-Path $InstallRoot ('backups/update-' + $stamp)
     New-Item -ItemType Directory -Path $backup | Out-Null
@@ -99,10 +105,24 @@ try {
     Assert-NagneonProfileInventory (Join-Path $backup 'data') $profileInventory 'backup'
     Write-JsonAtomic (Join-Path $backup 'profile-inventory.json') $profileInventory
     if ($old) { Copy-Item -LiteralPath $configPath -Destination (Join-Path $backup 'current.json') }
+    foreach ($name in @('Start-Nagneon.cmd','Start-InstalledNagneon.ps1','Profile-Compatibility.ps1','Package-Capabilities.ps1')) {
+        $previous = Join-Path $InstallRoot $name
+        $saved = Join-Path $backup $name
+        $existed = Test-Path -LiteralPath $previous -PathType Leaf
+        if (Test-Path -LiteralPath $previous) {
+            if (-not $existed -or ((Get-Item -LiteralPath $previous -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Installation entrypoints must be regular files.' }
+            Copy-Item -LiteralPath $previous -Destination $saved
+            if ((Get-NagneonFileDigest $previous) -cne (Get-NagneonFileDigest $saved)) { throw 'Launcher changed during backup. Retry with the app closed.' }
+        }
+        $entrypointBackup += [pscustomobject]@{path=$previous;saved=$saved;existed=$existed}
+    }
     $relativeExe = 'versions/' + $Version + '-' + $stamp + '/Nagneon.exe'
     $destination = Split-Path (Join-Path $InstallRoot $relativeExe)
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
     Get-ChildItem -LiteralPath $PackageFolder -Force | Copy-Item -Destination $destination -Recurse
+    Assert-NagneonProfileInventory $PackageFolder $packageInventory 'package source'
+    Assert-NagneonProfileInventory $destination $packageInventory 'package copy'
+    $copiedCapability = Get-NagneonPackageCapabilities $destination $Version $packageCapability.receiptSha256
     $inventory = foreach ($file in Get-ChildItem -LiteralPath $PackageFolder -File -Recurse -Force) {
         $relative = $file.FullName.Substring($PackageFolder.TrimEnd('\').Length).TrimStart('\')
         $hash = (Get-FileHash -LiteralPath $file.FullName).Hash
@@ -110,18 +130,22 @@ try {
         [pscustomobject]@{path=$relative;sha256=$hash}
     }
     Write-JsonAtomic (Join-Path $backup 'package-inventory.json') $inventory
-    $oldCommand = Join-Path $InstallRoot 'Start-Nagneon.cmd'
-    if (Test-Path -LiteralPath $oldCommand -PathType Leaf) {
-        $savedCommand = Join-Path $backup 'Start-Nagneon.cmd'
-        Copy-Item -LiteralPath $oldCommand -Destination $savedCommand
-        if ((Get-FileHash -LiteralPath $oldCommand).Hash -ne (Get-FileHash -LiteralPath $savedCommand).Hash) { throw 'Launcher changed during backup. Retry with the app closed.' }
-    }
+    Assert-NagneonProfileInventory $dataFolder $profileInventory 'source'
+    Assert-NagneonProfileInventory (Join-Path $backup 'data') $profileInventory 'backup'
+    Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion $copiedCapability.appVersion -PackageFolder $destination -ExpectedReceiptSha256 $packageCapability.receiptSha256
+    $entrypointWrites = $true
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-InstalledNagneon.ps1') -Destination (Join-Path $InstallRoot 'Start-InstalledNagneon.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1') -Destination (Join-Path $InstallRoot 'Profile-Compatibility.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Package-Capabilities.ps1') -Destination (Join-Path $InstallRoot 'Package-Capabilities.ps1') -Force
     [IO.File]::WriteAllText((Join-Path $InstallRoot 'Start-Nagneon.cmd'), (Get-NagneonLauncherCommand -Installed), [Text.Encoding]::ASCII)
     Assert-NagneonProfileInventory $dataFolder $profileInventory 'source'
     Assert-NagneonProfileInventory (Join-Path $backup 'data') $profileInventory 'backup'
-    Write-JsonAtomic $configPath ([ordered]@{version=$Version;executable=$relativeExe;profile=$Profile;exeSha256=(Get-FileHash -LiteralPath (Join-Path $destination 'Nagneon.exe')).Hash;backup=$backup})
+    Assert-NagneonProfileInventory $PackageFolder $packageInventory 'package source'
+    Assert-NagneonProfileInventory $destination $packageInventory 'package copy'
+    $copiedCapability = Get-NagneonPackageCapabilities $destination $Version $packageCapability.receiptSha256
+    Assert-NagneonProfileCompatibility -Profile $Profile -AppVersion $copiedCapability.appVersion -PackageFolder $destination -ExpectedReceiptSha256 $packageCapability.receiptSha256
+    Write-JsonAtomic $configPath ([ordered]@{version=$Version;executable=$relativeExe;profile=$Profile;exeSha256=$copiedCapability.exeSha256;asarSha256=$copiedCapability.asarSha256;packageCapabilitySha256=$copiedCapability.receiptSha256;backup=$backup})
+    $pointerCommitted = $true
     if ($Register) {
         if (-not (Test-Path -LiteralPath $storageFile)) {
             New-Item -ItemType Directory -Path (Split-Path $storageFile) -Force | Out-Null
@@ -134,4 +158,19 @@ try {
         Register-NagneonShortcut -LinkPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'Nagneon.lnk') -BackupPath (Join-Path $backup 'StartMenu-Nagneon.lnk') -InstallRoot $InstallRoot -Executable (Join-Path $destination 'Nagneon.exe')
     }
     Get-Content -LiteralPath $configPath
+} catch {
+    $updateError = $_
+    if ($entrypointWrites -and -not $pointerCommitted) {
+        $restorationFailures = @()
+        foreach ($entry in $entrypointBackup) {
+            try {
+                if ($entry.existed) {
+                    [IO.File]::WriteAllBytes($entry.path,[IO.File]::ReadAllBytes($entry.saved))
+                    if ((Get-NagneonFileDigest $entry.path) -cne (Get-NagneonFileDigest $entry.saved)) { throw 'Restored launcher hash mismatch.' }
+                } elseif (Test-Path -LiteralPath $entry.path -PathType Leaf) { [IO.File]::Delete($entry.path) }
+            } catch { $restorationFailures += ($entry.path + ': ' + $_.Exception.Message) }
+        }
+        if ($restorationFailures.Count) { throw ("Update failed: " + $updateError.Exception.Message + ". Unrestored entrypoints: " + ($restorationFailures -join '; ') + '. Preserve the profile and backup; reapply the previous verified launcher.') }
+    }
+    throw $updateError
 } finally { $lock.Dispose() }
