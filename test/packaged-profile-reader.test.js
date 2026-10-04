@@ -47,25 +47,25 @@ test('artifact ancestors are checked without writes before creating a missing ro
   assert.throws(() => unredirectedArtifactRoot('relative', regular));
 });
 
-test('read-only restart accepts exactly one distinguishable backup rotation and a fresh lifecycle trace', () => {
+test('read-only restart preserves every durable byte and accepts only a fresh lifecycle trace', () => {
   const row = (path, letter) => ({ path, bytes: letter.charCodeAt(0), sha256: letter.repeat(64) });
   const before = [
     row('world.json', 'a'),
-    row('world.json.bak.1', 'a'),
-    row('world.json.bak.2', 'b'),
-    row('world.json.bak.3', 'c'),
+    row('world.json.bak.1', 'b'),
+    row('world.json.bak.2', 'c'),
+    row('world.json.bak.3', 'd'),
     row('profile-format.json', 'd'),
     row('conversation-journal-index.json', 'e'),
     row('conversation-journal-chunks/' + 'f'.repeat(64) + '.json', 'f'),
     row('desktop-origin.json', 'd'),
     row('missions.json', 'e'),
   ];
-  // Independent expected vector: [P=A,B1=A,B2=B,B3=C] -> [A,A,A,B].
+  // Independent forbidden vectors: [A,B,C,D] -> [A,A,B,C] -> [A,A,A,B].
   const once = [
     row('world.json', 'a'),
     row('world.json.bak.1', 'a'),
-    row('world.json.bak.2', 'a'),
-    row('world.json.bak.3', 'b'),
+    row('world.json.bak.2', 'b'),
+    row('world.json.bak.3', 'c'),
     ...before.slice(4),
   ];
   const trace = {
@@ -74,12 +74,24 @@ test('read-only restart accepts exactly one distinguishable backup rotation and 
     sha256: 'b'.repeat(64),
   };
   assert.doesNotThrow(() => assertRestartWitness(before));
-  assert.doesNotThrow(() => assertRestartInventory(before, [...once, trace]));
-  assert.throws(() => assertRestartInventory(before, before)); // zero saves
-  const twice = [...once];
-  twice[3] = row('world.json.bak.3', 'a');
+  assert.doesNotThrow(() => assertRestartInventory(before, before));
+  assert.doesNotThrow(() => assertRestartInventory(before, [...before, trace]));
+  assert.throws(() => assertRestartInventory(before, once));
+  const twice = [
+    row('world.json', 'a'),
+    row('world.json.bak.1', 'a'),
+    row('world.json.bak.2', 'a'),
+    row('world.json.bak.3', 'b'),
+    ...before.slice(4),
+  ];
   assert.throws(() => assertRestartInventory(before, twice));
-  assert.throws(() => assertRestartInventory(before, once.slice(1)));
+  for (let index = 0; index < before.length; index++)
+    assert.throws(() =>
+      assertRestartInventory(
+        before,
+        before.filter((_, other) => other !== index),
+      ),
+    );
   for (const path of [
     'world.json.bak.4',
     'world.json.tmp',
@@ -87,17 +99,27 @@ test('read-only restart accepts exactly one distinguishable backup rotation and 
     'unknown.json',
     'broadcast-trace/unexpected.json',
   ])
-    assert.throws(() => assertRestartInventory(before, [...once, row(path, 'd')]));
-  for (let index = 0; index < once.length; index++) {
-    const changed = structuredClone(once);
-    changed[index].sha256 = '0'.repeat(64);
-    assert.throws(() => assertRestartInventory(before, changed));
+    assert.throws(() => assertRestartInventory(before, [...before, row(path, 'd')]));
+  for (let index = 0; index < before.length; index++) {
+    for (const field of ['sha256', 'bytes']) {
+      const changed = structuredClone(before);
+      changed[index][field] = field === 'sha256' ? '0'.repeat(64) : changed[index].bytes + 1;
+      assert.throws(() => assertRestartInventory(before, changed));
+    }
   }
   const ambiguous = before.map((r) =>
     r.path.startsWith('world.json') ? { ...r, sha256: 'a'.repeat(64) } : r,
   );
   assert.throws(() => assertRestartWitness(ambiguous));
-  assert.throws(() => assertRestartInventory(before, [...once, once[0]]));
+  for (let generation = 1; generation <= 3; generation++) {
+    const duplicate = structuredClone(before);
+    duplicate[generation].sha256 = duplicate[generation - 1].sha256;
+    assert.throws(() => assertRestartWitness(duplicate));
+    assert.throws(() => assertRestartWitness(before.filter((_, index) => index !== generation)));
+  }
+  assert.throws(() => assertRestartWitness([...before, before[0]]));
+  assert.throws(() => assertRestartInventory(before, [...before, before[0]]));
+  assert.throws(() => assertRestartInventory(before, [...before, trace, trace]));
 });
 
 test('packaged profile guards reject artifact root, relative paths and sibling escapes', () => {

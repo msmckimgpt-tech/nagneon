@@ -143,6 +143,7 @@ async function startServerImpl(
       validate: (value) => schema.parse(value),
       initial,
       backupCount: 3,
+      skipUnchanged: name === 'world',
       forbidRecovery:
         (name === 'world' && worldFormat.protected) ||
         (name === 'clips' && profileFormat?.minReader >= 3),
@@ -333,7 +334,14 @@ async function startServerImpl(
   world.recover();
   const knowledge = new Knowledge(knowledgeStore.data, knowledgeStore.save);
   const audience = new Audience(world.data.audience, (value) => world.part('audience', value));
-  const journal = new ConversationJournal(journalStore.data, journalStore.save);
+  const journal = new ConversationJournal(journalStore.data, journalStore.save, {
+    legacyAudienceIds: () => {
+      const settings = world.snapshot().settings;
+      return settings.personas
+        .filter((persona) => persona.role === 'viewer' && persona.id !== settings.managerId)
+        .map((persona) => persona.id);
+    },
+  });
   const economy = new Economy(world.data.economy, (value) => world.part('economy', value));
   const clips = new Clips({
     data: clipsStore.data,

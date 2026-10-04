@@ -397,11 +397,16 @@ async function fixture(output, name, { long = false, sourced = false, stale = fa
     await writeFile(join(data, 'conversation-journal-index.json.bak.1'), shortIndex);
     if (stale)
       await save(join(data, 'profile-format.json'), { minReader: 4, minAppVersion: '0.1.18' });
-    if (sourced) {
+    // Genuine saves may leave fewer generations after unchanged saves become
+    // no-ops. Seed three valid, distinct synthetic recovery points explicitly.
+    for (let generation = 1; generation <= 3; generation++) {
       const backup = structuredClone(expected.world);
-      backup.socialWorld.threads = backup.socialWorld.threads.filter((t) => !t.trendFact);
-      await save(join(data, 'world.json.bak.1'), backup);
+      backup.settings.title = '합성 이전 저장 세대 ' + generation;
+      if (sourced && generation === 1)
+        backup.socialWorld.threads = backup.socialWorld.threads.filter((t) => !t.trendFact);
+      await save(join(data, 'world.json.bak.' + generation), WorldData.parse(backup));
     }
+    assertRestartWitness(await inventory(data));
     assert.equal(calls, 0);
     expected.floor = long ? 5 : sourced ? 4 : 2;
     await save(join(path, 'expected.json'), expected);
@@ -912,12 +917,12 @@ async function positive(pkg, output, seed, name) {
     first: first.lifecycle,
     restart: second.lifecycle,
     backupRotation:
-      'exactly one existing world three-generation backup rotation; primary and every other existing durable hash unchanged',
+      'zero world backup rotations; primary, all three backup generations and every other existing durable hash unchanged',
     checks: [
       'actual GET→pin POST→GET',
       'actual settings PUT',
       'source world otherwise preserved',
-      'native restart originals, primary and other durable hashes preserved with exact world backup rotation',
+      'native read-only restart preserves originals and every existing durable hash without backup rotation',
     ],
   };
 }

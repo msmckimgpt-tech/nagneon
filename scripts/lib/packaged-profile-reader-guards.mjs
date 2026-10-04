@@ -149,28 +149,30 @@ export function assertDurableInventory(before, after, referencedChunkHashes, des
 }
 
 export function assertRestartWitness(before) {
+  assert.equal(
+    new Set(before.map((row) => row.path)).size,
+    before.length,
+    'Restart inventory contains duplicate paths',
+  );
   const names = ['world.json', 'world.json.bak.1', 'world.json.bak.2', 'world.json.bak.3'];
   const rows = names.map((name) => before.find((row) => row.path === name));
   assert.ok(rows.every(Boolean), 'Restart requires all three world backup generations');
-  assert.notEqual(
-    rows[2].sha256,
-    rows[0].sha256,
-    'Restart backup witness cannot distinguish zero/one/two rotations',
+  assert.equal(
+    new Set(rows.map((row) => row.sha256)).size,
+    names.length,
+    'Restart requires distinct primary and backup witnesses to detect every rotation',
   );
   return rows;
 }
 
 export function assertRestartInventory(before, after) {
-  const world = assertRestartWitness(before);
-  assert.equal(new Set(before.map((row) => row.path)).size, before.length);
+  assertRestartWitness(before);
   assert.equal(new Set(after.map((row) => row.path)).size, after.length);
   for (const row of before) {
-    const index = world.findIndex((item) => item.path === row.path);
-    const expected = index > 0 ? { ...world[index - 1], path: row.path } : row;
     assert.deepEqual(
       after.find((other) => other.path === row.path),
-      expected,
-      'Restart changed durable input outside exact world backup rotation: ' + row.path,
+      row,
+      'Read-only restart changed durable input: ' + row.path,
     );
   }
   for (const row of after) {

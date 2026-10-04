@@ -27,7 +27,7 @@ function terms(text){const set=new Set();for(let word of normalize(text).split(/
 // Exact public quotes and the identities present when they were published.
 // No inferred emotional state, secret interview, or invented recollection enters here.
 export class ConversationJournal {
-  constructor(data=emptyJournal(),save=()=>{}){this.data=JournalData.parse(data);this.save=save;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(memoryText(e))]));}
+  constructor(data=emptyJournal(),save=()=>{},{legacyAudienceIds=()=>[]}={}){this.data=JournalData.parse(data);this.save=save;this.legacyAudienceIds=legacyAudienceIds;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(memoryText(e))]));}
   change(edit){const next=copyJournal(this.data);const changed=edit(next);if(changed===false)return;next.revision++;const checked=JournalData.parse(next);this.save(copyJournal(checked));this.data=checked;const active=new Set(checked.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
   record(message,{sessionId,witnesses,title=''}){
     const existing=this.data.entries.find(e=>e.id===message.id);
@@ -79,7 +79,7 @@ export class ConversationJournal {
       // and do not add this fallback to frame-only requests with no speech.
       if(query.trim())take(scored.slice(-3).reverse(),3);
     }
-    const continued=recallContinuations([...selected.values()],this.data.entries,candidates);
+    const continued=recallContinuations([...selected.values()],this.data.entries,candidates,8,{legacyAudienceIds:this.legacyAudienceIds()});
     if(this.normalized.size>JOURNAL_LIMIT){const active=new Set(this.data.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
     let remaining=1800;const chosen=continued.sort((a,b)=>a.at-b.at);
     return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title,...(e.kind?{kind:e.kind}:{}),...(e.donation?{donation:{...e.donation}}:{}),...(e.transcription?.correction?{transcriptionCorrection:{text:e.transcription.correction.text.slice(0,600),confidence:e.transcription.correction.confidence,source:"contextual-stt"}}:{})};});
