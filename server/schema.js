@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MissionActions } from './mission-observation.js';
 import { domainOrigin } from './culture/source.js';
 import { CultureAnalysis } from './culture/learning.js';
 import {VIDEO_MAX_FRAMES,VIDEO_FRAME_CHARS,VIDEO_WINDOW_MS} from '../shared/temporal-policy.js';
@@ -35,6 +36,7 @@ export const Settings = z.object({
   if (!s.personas.some(p=>p.id===s.managerId && p.enabled)) ctx.addIssue({code:'custom',message:'활성 관객 중 매니저를 선택하세요.'});
 });
 export const Observation = z.object({
+  missionActions: MissionActions,
   cultureAnalysis:CultureAnalysis.nullable().default(null),
   communityVotes:z.array(z.object({personaId:short(40),recommended:z.boolean()})).max(3).default([]),
   transcriptCorrections:z.array(z.object({messageId:z.string().uuid(),text:short(3000),confidence:z.number().min(0).max(1),reason:short(240)})).max(4).default([]),
@@ -44,7 +46,7 @@ export const Observation = z.object({
   game: z.string().max(120), scene: z.string().max(600), confidence: z.number().min(0).max(1),
   excitement: z.number().min(0).max(1),
   positiveMoment:z.object({positive:z.boolean(),impact:z.number().min(0).max(1),reason:z.string().max(200),signature:z.string().max(160),supporters:z.array(short(40)).max(8),donations:z.array(z.object({personaId:short(40),message:z.string().trim().max(200),anonymous:z.boolean()})).max(2).default([])}).default({positive:false,impact:0,reason:'',signature:'',supporters:[],donations:[]}),
-  messages: z.array(z.object({ meme:z.boolean().default(false), personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional(),advice:z.boolean().default(false),intent:z.enum(['reaction','reply','initiative','moderation']).optional(),donationFollowup:z.boolean().optional() })).max(8)
+  messages: z.array(z.object({ missionTopic:z.boolean().default(false),missionId:z.string().uuid().nullable().default(null),meme:z.boolean().default(false), personaId: short(40), text: short(240), kind: z.enum(['chat','notice']), spoiler: z.boolean(),replyTo:z.string().uuid().nullable().optional(),advice:z.boolean().default(false),intent:z.enum(['reaction','reply','initiative','moderation']).optional(),donationFollowup:z.boolean().optional() })).max(8)
 });
 const imageData=(max)=>z.string().max(max).regex(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/);
 export const Frame = z.object({obsSourceId:z.string().uuid().optional(),image:imageData(2_800_000).optional(),speech:z.string().max(3000).default(''),

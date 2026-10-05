@@ -8,6 +8,7 @@ import { Knowledge } from './knowledge.js';
 import { Audience } from './audience.js';
 import { viewerKnowledgeByPersona, liveViewerContext } from './viewer-context.js';
 import { Economy } from './economy.js';
+import { MissionRuntime } from './mission-runtime.js';
 import { SpecialFeatures } from './special-features.js';
 import { Clips, ClipFeatures } from './clips.js';
 import { SoundScene } from './sound-scene.js';
@@ -49,6 +50,7 @@ export class Studio extends EventEmitter {
     audience = new Audience(),
     journal = new ConversationJournal(),
     economy,
+    missions,
     clips,
     clipPerception,
     cultureLearning,
@@ -78,6 +80,7 @@ export class Studio extends EventEmitter {
     this.epoch = 0;
     this.economy = economy || new Economy(undefined, () => {}, now);
     this.economy.ensureWallets(this.settings.personas);
+    this.missions = new MissionRuntime(this, missions);
     this.special = new SpecialFeatures(this);
     this.clips = clips || new Clips({ now });
     this.clipFeatures = new ClipFeatures(this, this.clips);
@@ -200,6 +203,7 @@ export class Studio extends EventEmitter {
       economy: this.economy.snapshot(this.settings.personas, {
         sessionId: this.running ? this.sessionId : null,
       }),
+      missions: this.missions.snapshot(),
       audience: this.world?.publicAudience() || {
         ...this.audience.data,
         communityActivity: undefined,
@@ -289,6 +293,7 @@ export class Studio extends EventEmitter {
       this.inputLatency.receive(id, capture);
       this.trace.inputReceived(this.sessionId, id, capture, source, result.messageId);
       if (!annotationOnly) this.clearMomentQueue(text);
+      if (!annotationOnly) this.missions.speech(text);
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
       if (
@@ -446,6 +451,7 @@ export class Studio extends EventEmitter {
     }
     // Storage failure must never keep the live session or its pending model alive.
     for (const [label, save] of [
+      ['미션 예치 반환', () => this.missions.stop()],
       ['관객', () => this.audience.stop()],
       ['시청 시간', () => this.autonomy?.stop()],
     ]) {
@@ -630,6 +636,8 @@ export class Studio extends EventEmitter {
       Math.max(0, obs.messages.length - this.settings.chatPace),
     );
     for (const m of obs.messages.slice(0, this.settings.chatPace)) {
+      if (m.missionTopic && (!m.missionId || !this.missions.allowsMessage(m))) continue;
+      if (m.missionTopic && this.queue.some((q) => q.missionTopic)) continue;
       const context = viewerContext?.[m.personaId];
       const durableReply = origin === 'live' && replySource(m, context, speech);
       const messageExpiresAt = durableReply ? undefined : expiresAt;
@@ -732,6 +740,11 @@ export class Studio extends EventEmitter {
     }
   }
   pump() {
+    try {
+      this.missions.tick();
+    } catch (error) {
+      this.lastError = '미션 반환 기록 저장 실패: ' + error.message;
+    }
     this.culture?.tick();
     this.externalChat?.prune();
     if (!this.running) {
@@ -749,7 +762,7 @@ export class Studio extends EventEmitter {
           !sameViewingVisit(this.audience, m.personaId, m.viewingVisit);
       const removedSource =
         m.replySourceId && !this.messages.some((source) => source.id === m.replySourceId);
-      if (expired || absent || removedSource) {
+      if (expired || absent || removedSource || !this.missions.allowsMessage(m)) {
         this.reactions.drop(m.diagnosticId, expired ? 'expired' : absent ? 'absent' : 'cleared');
         return false;
       }
@@ -986,6 +999,7 @@ export class Studio extends EventEmitter {
             viewerKnowledge,
             adviceRequested,
             advicePolicy,
+            missions: this.missions.packet(eligiblePersonas, personalContext.viewerContext),
             ...personalContext,
             liveSpeech,
             transcriptCandidates,
@@ -1349,6 +1363,12 @@ export class Studio extends EventEmitter {
       advicePolicy = { allowed: false, scope: 'response-reserved', maxMessages: 0 };
     return {
       game,
+      missionSources: new Set([
+        ...this.speechInbox.sources(speechBatch.ids).map((m) => m.messageId),
+        ...Object.values(personalContext.viewerContext).flatMap((p) =>
+          (p.chatHistory || []).map((m) => m.id),
+        ),
+      ]),
       audience,
       eligiblePersonas,
       eligibleSettings,
@@ -1392,6 +1412,7 @@ export class Studio extends EventEmitter {
       witnessVisits,
       personalContext,
       game,
+      missionSources,
     } = context;
     this.reactions.generated(diagnosticId, result.observation.messages.length);
     this.inputLatency.response(diagnosticId);
@@ -1420,8 +1441,13 @@ export class Studio extends EventEmitter {
       return { outcome: 'stale-screen', result: { skipped: 'stale-screen' } };
     }
     const observation = retainPresentReactions(result.observation, visits, this.audience);
-    const eligibleMessages = observation.messages.filter((m) =>
-      audience.eligible.includes(m.personaId),
+    const eligibleMessages = observation.messages.filter(
+      (m) =>
+        audience.eligible.includes(m.personaId) &&
+        !(
+          m.missionTopic &&
+          [...missionSources].some((id) => !this.messages.some((source) => source.id === id))
+        ),
     );
     this.reactions.reject(
       diagnosticId,
@@ -1509,6 +1535,7 @@ export class Studio extends EventEmitter {
       game,
       diagnosticId,
       stale: this.now() >= visualExpiresAt,
+      missionSources,
     });
   }
   recordReactionExperience({
@@ -1525,7 +1552,27 @@ export class Studio extends EventEmitter {
     game,
     diagnosticId,
     stale = false,
+    missionSources,
   }) {
+    try {
+      this.missions.observe(observation.missionActions, {
+        diagnosticId,
+        witnessVisits,
+        capturedAt,
+        scene: observation.scene,
+        confidence: observation.confidence,
+        excitement: observation.excitement,
+        image,
+        stale,
+        chatDriven,
+        sourceRemoved:
+          missionSources &&
+          [...missionSources].some((id) => !this.messages.some((m) => m.id === id)),
+        eligible: Object.keys(personalContext.viewerContext),
+      });
+    } catch (error) {
+      this.log('미션 경험 저장 보류: ' + error.message);
+    }
     this.audience.observePresence(observation, witnesses, capturedAt, this.now(), {
       visual: !!image,
       chatActivity: this.messages.slice(-60),
