@@ -1,0 +1,31 @@
+.community-fact-input,
+.community-fact-summary {
+  color: var(--quiet);
+  font-size: 12px;
+}
+.community-fact-summary {
+  display: block;
+  margin: 5px 0;
+}
+.community-fact {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.community-fact p {
+  margin: 8px 0;
+}
+.community-fact a {
+  color: var(--neon);
+}
+.community-fact dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 12px;
+}
+.community-fact dd {
+  margin: 0;
+}

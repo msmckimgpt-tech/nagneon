@@ -140,6 +140,7 @@ export type State = BroadcastSessionState & {
     blockedReason: string;
     residents: number;
     threads: number;
+    trendInput?: import('./CommunityFact').TrendInputStatus;
   } | null;
   ai?: import('./ai-types').AiState;
   runtimeComponents?: {
