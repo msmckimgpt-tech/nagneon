@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { SubscriptionVoiceHost } from '../server/subscription-voice-host.js';
 
 const sdp = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n';
@@ -57,6 +57,10 @@ function fake(options = {}) {
             respond({ account: { type: options.api ? 'apiKey' : 'chatgpt', planType: 'pro' } });
             break;
           case 'account/rateLimits/read':
+            if (Object.hasOwn(options, 'limits')) {
+              respond(options.limits);
+              break;
+            }
             respond({
               rateLimits: {
                 credits: {
@@ -130,7 +134,19 @@ function fake(options = {}) {
   };
 }
 async function make(t, options = {}) {
-  const dir = await mkdtemp(join(tmpdir(), 'nagneon-voice-host-test-'));
+  const tempRoot = await realpath(tmpdir());
+  assert.equal(await realpath(tempRoot), tempRoot);
+  assert.equal((await lstat(tempRoot)).isSymbolicLink(), false);
+  const dir = await mkdtemp(join(tempRoot, 'nagneon-voice-host-test-'));
+  const verifyOwnedDirectory = async () => {
+    assert.equal(dirname(dir), tempRoot);
+    assert.match(basename(dir), /^nagneon-voice-host-test-[A-Za-z0-9]{6}$/);
+    const info = await lstat(dir);
+    assert.equal(info.isDirectory(), true);
+    assert.equal(info.isSymbolicLink(), false);
+    assert.equal(await realpath(dir), resolve(dir));
+  };
+  await verifyOwnedDirectory();
   const f = fake(options),
     events = [],
     errors = [];
@@ -146,7 +162,8 @@ async function make(t, options = {}) {
   });
   t.after(async () => {
     await host.close();
-    await rm(dir, { recursive: true, force: true });
+    await verifyOwnedDirectory();
+    await rm(dir, { recursive: true });
   });
   return { host, f, events, errors };
 }
@@ -238,3 +255,89 @@ test('transport failure closes the session once without exposing raw account dia
   );
   assert.equal(p.host.state, 'stopped');
 });
+
+for (const [name, limits] of [
+  ['null metadata', null],
+  ['null keyed bucket', { rateLimitsByLimitId: { synthetic: null } }],
+  ['missing window', { rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' } } }],
+  ['string usage', { rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' }, primary: { usedPercent: '5' } } }],
+  ['ordinary usage false', { ordinaryUsageAllowed: false, rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' }, primary: { usedPercent: 5 } } }],
+  ['ordinary usage null', { ordinaryUsageAllowed: null, rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' }, primary: { usedPercent: 5 } } }],
+  ['reached included limit', { rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' }, primary: { usedPercent: 5 }, rateLimitReachedType: 'rate_limit_reached' } }],
+  ['reached spend control', { rateLimits: { credits: { hasCredits: false, unlimited: false, balance: '0' }, primary: { usedPercent: 5 }, spendControlReached: true } }],
+])
+  test(`real host startup refuses ${name} before threads and closes normally`, async (t) => {
+    const p = await make(t, { limits });
+    await assert.rejects(p.host.start({ sdp }), { code: 'VOICE_ALLOWANCE' });
+    assert.deepEqual(p.f.requests.map((request) => request.method), [
+      'initialize', 'initialized', 'account/read', 'account/rateLimits/read',
+    ]);
+    assert.equal(p.f.kills, 0);
+    assert.deepEqual(p.host.exitResult, { code: 0, signal: null });
+    assert.equal(p.host.pending.size, 0);
+    assert.equal(p.host.closed, true);
+    assert.equal(p.host.state, 'stopped');
+  });
+
+for (const frame of [null, [], 'synthetic-private-frame', 4, false])
+  test(`nonobject JSON frame ${JSON.stringify(frame)} closes through VOICE_PROTOCOL`, async (t) => {
+    const p = await make(t, { hold: 'synthetic/pending' });
+    await p.host.start({ sdp });
+    const pending = p.host.rpc('synthetic/pending').catch((error) => error);
+    assert.doesNotThrow(() => p.f.child.stdout.emit('data', Buffer.from(JSON.stringify(frame) + '\n')));
+    const outcome = await pending;
+    assert.equal(outcome.code, 'VOICE_PROTOCOL');
+    await p.host.close();
+    assert.equal(p.errors.length, 1);
+    assert.equal(p.errors[0].code, 'VOICE_PROTOCOL');
+    assert.equal(JSON.stringify([...p.errors.map((error) => error.message), ...p.events]).includes('synthetic-private-frame'), false);
+    assert.equal(p.host.pending.size, 0);
+    assert.equal(p.f.kills, 0);
+    assert.deepEqual(p.host.exitResult, { code: 0, signal: null });
+  });
+
+test('a generic null RPC result remains valid and does not fail the transport', async (t) => {
+  const p = await make(t, { hold: 'synthetic/null-result' });
+  await p.host.start({ sdp });
+  const result = p.host.rpc('synthetic/null-result');
+  const request = p.f.requests.at(-1);
+  p.f.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: request.id, result: null }) + '\n'));
+  assert.equal(await result, null);
+  assert.equal(p.host.state, 'connected');
+  assert.equal(p.errors.length, 0);
+  assert.equal(p.host.pending.size, 0);
+});
+
+for (const frame of [
+  { method: 'thread/realtime/sdp' },
+  { method: 'thread/realtime/sdp', params: null },
+  { method: 'thread/realtime/sdp', params: {} },
+  { method: 'thread/realtime/started', params: {} },
+  { method: 'thread/realtime/error', params: {} },
+])
+  test(`preparing host ignores unaddressed ${JSON.stringify(frame)} notification`, async (t) => {
+    const p = await make(t, { hold: 'initialize' });
+    const starting = p.host.start({ sdp });
+    const settled = starting.then((result) => ({ result }), (error) => ({ error }));
+    while (!p.f.requests.length) await tick();
+    assert.equal(p.host.state, 'preparing');
+    assert.equal(p.host.threadId, undefined);
+    const initialize = p.f.requests[0];
+    const pending = p.host.pending.get(initialize.id);
+    assert.doesNotThrow(() => p.f.child.stdout.emit('data', Buffer.from(JSON.stringify(frame) + '\n')));
+    assert.equal(p.host.pending.size, 1);
+    assert.equal(p.host.pending.get(initialize.id), pending);
+    assert.equal(p.host.closed, false);
+    assert.equal(p.events.length, 0);
+    assert.deepEqual(p.f.requests.map((request) => request.method), ['initialize']);
+    p.f.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: initialize.id, result: { userAgent: 'synthetic-host' } }) + '\n'));
+    const outcome = await settled;
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.sdp, sdp);
+    assert.equal(p.host.state, 'connected');
+    assert.equal(p.errors.length, 0);
+    assert.equal(p.host.pending.size, 0);
+    await p.host.close();
+    assert.equal(p.f.kills, 0);
+    assert.deepEqual(p.host.exitResult, { code: 0, signal: null });
+  });

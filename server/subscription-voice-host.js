@@ -29,6 +29,7 @@ const noTools =
 // underflow a positive decimal. Unrecognized protocol values stay refused.
 const knownZeroBalance = (balance) =>
   typeof balance === 'string' && /^[+-]?0+(?:\.0+)?$/.test(balance.trim());
+const objectRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // The official CLI owns authentication. This adapter never reads credentials,
 // constructs provider endpoints, or delegates a spoken request to a Codex turn.
@@ -214,23 +215,46 @@ export class SubscriptionVoiceHost {
   }
 
   async checkAllowance() {
-    const { account } = await this.rpc('account/read', { refreshToken: false });
-    if (account?.type !== 'chatgpt')
+    const authentication = await this.rpc('account/read', { refreshToken: false });
+    const account = objectRecord(authentication) ? authentication.account : undefined;
+    if (!objectRecord(account) || account.type !== 'chatgpt')
       throw failure(
         'ChatGPT 구독 계정을 먼저 연결해주세요. API 키로 대신 연결하지 않습니다.',
         'VOICE_AUTH',
       );
     const result = await this.rpc('account/rateLimits/read');
-    const buckets = Object.values(result.rateLimitsByLimitId || {});
-    if (result.rateLimits) buckets.push(result.rateLimits);
+    if (
+      !objectRecord(result) ||
+      (Object.hasOwn(result, 'ordinaryUsageAllowed') && result.ordinaryUsageAllowed !== true) ||
+      (result.rateLimitsByLimitId != null && !objectRecord(result.rateLimitsByLimitId))
+    )
+      throw failure(
+        '구독 포함량만 사용하는 상태를 확인하지 못해 음성 연결을 중단했습니다.',
+        'VOICE_ALLOWANCE',
+      );
+    const buckets = Object.values(result.rateLimitsByLimitId ?? {});
+    if (result.rateLimits != null) buckets.push(result.rateLimits);
     if (
       !buckets.length ||
       buckets.some(
         (bucket) =>
-          !bucket.credits ||
+          !objectRecord(bucket) ||
+          !objectRecord(bucket.credits) ||
           bucket.credits.hasCredits !== false ||
           bucket.credits.unlimited !== false ||
-          !knownZeroBalance(bucket.credits.balance),
+          !knownZeroBalance(bucket.credits.balance) ||
+          bucket.rateLimitReachedType != null ||
+          (bucket.spendControlReached != null && bucket.spendControlReached !== false) ||
+          ![bucket.primary, bucket.secondary].some((window) => window != null) ||
+          [bucket.primary, bucket.secondary].some(
+            (window) =>
+              window != null &&
+              (!objectRecord(window) ||
+                typeof window.usedPercent !== 'number' ||
+                !Number.isFinite(window.usedPercent) ||
+                !Number.isInteger(window.usedPercent) ||
+                window.usedPercent < 0),
+          ),
       )
     )
       throw failure(
@@ -290,6 +314,10 @@ export class SubscriptionVoiceHost {
       } catch {
         continue;
       }
+      if (!objectRecord(message)) {
+        this.fail(failure('구독 음성 응답 형식을 확인하지 못했습니다.', 'VOICE_PROTOCOL'));
+        return;
+      }
       if (message.id !== undefined && message.method) {
         // Bidirectional request IDs may collide with our own pending requests.
         try {
@@ -317,7 +345,7 @@ export class SubscriptionVoiceHost {
         else pending.resolve(message.result);
         continue;
       }
-      if (this.closed || message.params?.threadId !== this.threadId) continue;
+      if (this.closed || !this.threadId || message.params?.threadId !== this.threadId) continue;
       if (message.method === 'thread/realtime/sdp') {
         const sdp = message.params.sdp;
         if (typeof sdp === 'string' && sdp.length <= 65536 && sdp.startsWith('v=0'))
