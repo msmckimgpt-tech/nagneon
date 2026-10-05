@@ -44,6 +44,7 @@ import { api } from './api';
 import { DonationBadge } from './DonationBadge';
 import { SpecialStudio } from './SpecialStudio';
 import { DonationToast, DonationHistory } from './Donations';
+import { MissionPanel } from './MissionPanel';
 import { HotClips } from './HotClips';
 import { CommunityGallery } from './CommunityGallery';
 import { SettingsDialog } from './SettingsDialog';
@@ -883,6 +884,12 @@ export function App() {
                       <span>마음에 든 순간은 관객이 핫클립으로 남겨요.</span>
                       <span>{state.economy.balance}P · 포인트</span>
                     </div>
+                    <MissionPanel
+                      state={state.missions}
+                      running={state.running}
+                      sessionId={state.sessionId}
+                      gameId={s.gameId}
+                    />
                     <section className="panel perception">
                       <div className="panel-heading">
                         <div>

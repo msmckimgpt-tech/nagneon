@@ -216,7 +216,7 @@ test('reader4 source metadata, replies, recommendations and an unrelated durable
   write(f.dir, 'clips', []);
   write(f.dir, 'profile-format', trendFloor);
   const unrelated = '{"version":1,"synthetic":"unrelated durable state"}';
-  writeFileSync(join(f.dir, 'missions.json'), unrelated);
+  writeFileSync(join(f.dir, 'unrelated-test-sidecar.json'), unrelated);
   const s = await f.open();
   assert.deepEqual(s.studio.world.data.socialWorld, expected.socialWorld);
   s.studio.world.change((w) => {
@@ -226,7 +226,7 @@ test('reader4 source metadata, replies, recommendations and an unrelated durable
   const restarted = await f.open();
   assert.deepEqual(restarted.studio.world.data.socialWorld, expected.socialWorld);
   assert.equal(socialContentHash(restarted.studio.world.data.socialWorld.threads[0]), contentHash);
-  assert.equal(readFileSync(join(f.dir, 'missions.json'), 'utf8'), unrelated);
+  assert.equal(readFileSync(join(f.dir, 'unrelated-test-sidecar.json'), 'utf8'), unrelated);
   assert.deepEqual(readProfileFormat(f.dir), trendFloor);
   assert.equal(f.modelCalls(), 0);
 });

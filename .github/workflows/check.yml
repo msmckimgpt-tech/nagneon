@@ -47,3 +47,5 @@ jobs:
 
       - name: Point negotiation lifetime, settlement, refund and restart
         run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-point-negotiation-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"
+      - name: Synthetic audience mission funding, refusal, settlement and restart
+        run: node -e "const {spawnSync}=require('node:child_process');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;delete env.OPENAI_API_KEY;const r=spawnSync('node_modules/electron/dist/electron.exe',['scripts/verify-missions-ui.cjs'],{env,stdio:'inherit',windowsHide:true});process.exit(r.status??1)"

@@ -34,6 +34,7 @@ import { MicrophoneConfig, defaultMicrophoneConfig } from '../shared/microphone-
 import { SpeechRetentionConfig, defaultSpeechRetention } from '../shared/speech-retention.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
+import { MissionBoard, MissionData, MissionUserCommand, emptyMissions } from './mission-board.js';
 import { Clips } from './clips.js';
 import { ClipPerception } from './clip-perception.js';
 import { ClipInspector } from './clip-inspector.js';
@@ -145,10 +146,15 @@ async function startServerImpl(
       backupCount: 3,
       skipUnchanged: name === 'world',
       forbidRecovery:
+        (name === 'missions' &&
+          [name + '.json', name + '.json.bak.1', name + '.json.bak.2', name + '.json.bak.3'].some(
+            (n) => existsSync(resolve(dataDir, n)),
+          )) ||
         (name === 'world' && worldFormat.protected) ||
         (name === 'clips' && profileFormat?.minReader >= 3),
     });
     const data = store.load();
+    if (name === 'missions') store.forbidRecovery = true;
     stores.push(store);
     namedStores.set(name, { store, data });
     return {
@@ -257,6 +263,7 @@ async function startServerImpl(
   );
   const debugStore = useStore('debug', DebugConfig, initialDebug);
   const knowledgeStore = useStore('knowledge', KnowledgeData, () => ({}));
+  const missionsStore = useStore('missions', MissionData, emptyMissions);
   const audienceStore = hasWorld
     ? null
     : useStore('audience', AudienceData, () => new Audience().data);
@@ -301,6 +308,10 @@ async function startServerImpl(
   // first-run identity so a partial completion cannot become a legacy profile.
   if (persist && !existsSync(resolve(dataDir, 'onboarding.json')))
     onboardingStore.save(onboardingStore.data);
+  // Materialize the empty sidecar before the first hold. Its next write creates
+  // a backup, so a missing financial primary cannot silently become a new pool.
+  if (persist && !existsSync(resolve(dataDir, 'missions.json')))
+    missionsStore.save(missionsStore.data);
   if (persist) {
     backupWorldV1(dataDir);
     // A world with reader-4 source metadata can also contain a long journal.
@@ -370,6 +381,7 @@ async function startServerImpl(
     audience,
     journal,
     economy,
+    missions: new MissionBoard(missionsStore.data, missionsStore.save),
     clips,
     clipPerception: new ClipPerception(runtime),
     storageStatus,
@@ -955,6 +967,11 @@ async function startServerImpl(
       ),
     ),
   );
+  // Authenticated streamer commands only. A model cannot call this route and
+  // viewer proposals/pledges are admitted from the captured live request below.
+  app.post('/api/missions', (req, res) => {
+    res.json(studio.missions.command(MissionUserCommand.parse(req.body)));
+  });
   app.post('/api/special/quote', (req, res) =>
     res.json(
       studio.special.quote(

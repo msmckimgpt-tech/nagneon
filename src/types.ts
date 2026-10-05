@@ -201,6 +201,7 @@ export type State = BroadcastSessionState & {
   storage: { warnings: string[]; recovered: string[] };
   clips: ClipSummary[];
   economy: EconomyState;
+  missions?: import('./MissionPanel').MissionState;
   settings: Settings;
   culture?: {
     active: string | null;
