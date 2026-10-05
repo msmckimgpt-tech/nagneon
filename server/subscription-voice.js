@@ -6,6 +6,7 @@ import { SubscriptionVoiceHost } from './subscription-voice-host.js';
 import { SubscriptionInputEvent, SubscriptionTranscript } from '../shared/subscription-voice.js';
 import { SpeechCapture } from './speech-screen.js';
 import { observePcmAmplitude } from '../shared/audio-observation.js';
+import { AudioLifetime, AudioClosingError, throwAudioFailures } from './audio-lifetime.js';
 
 const RATE = 16000,
   RETENTION = 86400000,
@@ -76,6 +77,23 @@ export class SubscriptionVoice {
     this.applied = 0;
     this.error = '';
     this.closed = false;
+    this.lifetime = new AudioLifetime();
+    this.lifetime.wrap(this, [
+      'start',
+      'connect',
+      'clock',
+      'stored',
+      'events',
+      'pump',
+      'prepareRecovery',
+      'recoveryAudio',
+      'connectRecovery',
+      'finishRecovery',
+      'finishRun',
+      'refreshRetainedAudio',
+      'restore',
+      'expire',
+    ]);
     this.ready = this.restore();
     this.timer = setInterval(() => {
       void this.pump();
@@ -87,7 +105,8 @@ export class SubscriptionVoice {
     return this.config().mode === 'remote' && this.config().transport === 'subscription';
   }
   allowed() {
-    if (this.closed || this.ledgerFailed || this.stopUnconfirmed)
+    if (this.closed) throw new AudioClosingError();
+    if (this.ledgerFailed || this.stopUnconfirmed)
       throw Error('음성 복구 기록을 확인하지 못했습니다. 마이크 연결을 중단했습니다.');
     if (!this.selected() || !this.config().consent)
       throw Error('연결 설정에서 구독 음성 전송 안내를 확인해주세요.');
@@ -246,6 +265,7 @@ export class SubscriptionVoice {
     return { accepted: true };
   }
   capture(entry) {
+    this.lifetime.assertOpen();
     const s = this.inputs.get(entry.inputEpoch);
     if (!s || s.sessionId !== entry.sessionId) return;
     if (
@@ -293,6 +313,7 @@ export class SubscriptionVoice {
       if (context.capture.endedAt < this.now() - SCREEN_RETENTION) s.contexts.delete(frame);
   }
   attachContext(value) {
+    this.lifetime.assertOpen();
     const entry = z
       .object({
         sessionId: z.string().uuid(),
@@ -324,6 +345,9 @@ export class SubscriptionVoice {
       this.markTail(s);
     }
     void this.pump();
+  }
+  acceptInput(_entry, work) {
+    return this.lifetime.run(work, { preserveErrors: true });
   }
   isRunActive(run) {
     return (
@@ -476,8 +500,8 @@ export class SubscriptionVoice {
         });
       }
       if (plan.nextAt && this.now() < plan.nextAt) return;
-      this.allowed();
       if (!this.isRunActive(run)) return;
+      this.allowed();
       await this.receivePlan(plan, s);
       if (!this.isRunActive(run)) return;
       s.lastMeaningAt = this.now();
@@ -603,6 +627,7 @@ export class SubscriptionVoice {
         leadMs: run.leadMs,
         attempt: piece.attempts,
       });
+      if (!this.isRunActive(run)) return { recovery: null };
       run.deadline = setTimeout(() => {
         void this.finishRun(run, 'recovery-timeout');
       }, 60000);
@@ -996,28 +1021,46 @@ export class SubscriptionVoice {
     s.controller?.abort();
     this.markTail(s);
     this.closing = (async () => {
-      const owned = [...this.runs.values()].filter((run) => run.owner === s);
-      for (const run of owned) {
-        run.active = false;
-        run.stoppedAt = s.stoppedAt;
-        clearTimeout(run.deadline);
-      }
-      const results = await Promise.allSettled(owned.map((run) => run.host?.close(reason)));
+      const owned = await this.stopOwnedHosts(s, reason);
       for (const run of owned.filter((run) => run.kind === 'recovery')) {
         this.markTail(run.input);
         await this.record(run.input, { type: 'unresolved', ranges: run.input.unresolved });
-      }
-      if (
-        results.some((result) => result.status === 'rejected' || result.value?.exited === false)
-      ) {
-        this.error = '음성 호스트 종료를 확인하지 못했습니다. 앱을 종료한 뒤 다시 연결해주세요.';
-        this.stopUnconfirmed = true;
       }
       await this.record(s, { type: 'stopped', reason, at: s.stoppedAt, ranges: s.unresolved });
       this.studio.publish();
     })();
     this.closing.catch(() => {});
     return this.closing;
+  }
+  async stopOwnedHosts(s, reason) {
+    s.active = false;
+    s.stoppedAt ??= this.now();
+    s.controller?.abort();
+    const owned = [...this.runs.values()].filter((run) => run.owner === s);
+    for (const run of owned) {
+      run.active = false;
+      run.stoppedAt = s.stoppedAt;
+      clearTimeout(run.deadline);
+    }
+    const results = await Promise.allSettled(
+      owned.map((run) => Promise.resolve().then(() => run.host?.close(reason))),
+    );
+    const failures = results.flatMap((result) => {
+      if (result.status === 'rejected') return [result.reason];
+      if (result.value?.exited === false) {
+        const error = new Error('음성 호스트 종료를 확인하지 못했습니다.');
+        error.code = 'AUDIO_STOP_UNCONFIRMED';
+        return [error];
+      }
+      return [];
+    });
+    this.hostStopDoneFor = s;
+    if (failures.length) {
+      this.stopErrors = failures;
+      this.error = '음성 호스트 종료를 확인하지 못했습니다. 앱을 종료한 뒤 다시 연결해주세요.';
+      this.stopUnconfirmed = true;
+    }
+    return owned;
   }
   snapshot() {
     const s = this.session,
@@ -1038,11 +1081,15 @@ export class SubscriptionVoice {
       active: !!s?.active,
       stage: s?.stage || 'stopped',
       error: this.error,
-      ...(s ? { inputEpoch: s.inputEpoch, startedAt: s.startedAt,
-        ...(s.stopReason ? { stopReason: s.stopReason, stoppedAt: s.stoppedAt } : {}),
-        ...(s.lastMeaningAt ? { lastMeaningAt: s.lastMeaningAt } : {}),
-        ...(s.lastInputAt ? { lastInputAt: s.lastInputAt } : {}),
-      } : {}),
+      ...(s
+        ? {
+            inputEpoch: s.inputEpoch,
+            startedAt: s.startedAt,
+            ...(s.stopReason ? { stopReason: s.stopReason, stoppedAt: s.stoppedAt } : {}),
+            ...(s.lastMeaningAt ? { lastMeaningAt: s.lastMeaningAt } : {}),
+            ...(s.lastInputAt ? { lastInputAt: s.lastInputAt } : {}),
+          }
+        : {}),
       captured: s?.frame || 0,
       durable: s?.durable || 0,
       pending: unresolved.length,
@@ -1051,12 +1098,14 @@ export class SubscriptionVoice {
     };
   }
   record(s, value) {
-    if (this.ledgerFailed) return Promise.reject(Error('음성 복구 기록 저장이 중단됐습니다.'));
+    if (this.ledgerFailed)
+      return Promise.reject(this.ledgerWriteError || Error('음성 복구 기록 저장이 중단됐습니다.'));
     if (++this.pendingWrites > 200) {
       this.pendingWrites--;
       this.ledgerFailed = true;
+      this.ledgerWriteError = Error('음성 복구 기록 저장이 밀려 연결을 중단했습니다.');
       void this.stop('ledger-backpressure');
-      return Promise.reject(Error('음성 복구 기록 저장이 밀려 연결을 중단했습니다.'));
+      return Promise.reject(this.ledgerWriteError);
     }
     const at = this.now(),
       line =
@@ -1069,7 +1118,8 @@ export class SubscriptionVoice {
       });
     });
     this.writes = operation
-      .catch(() => {
+      .catch((error) => {
+        this.ledgerWriteError ||= error;
         this.ledgerFailed = true;
         this.error = '음성 복구 기록을 저장하지 못해 전송을 중단했습니다.';
         void this.stop('ledger-failed');
@@ -1217,11 +1267,36 @@ export class SubscriptionVoice {
       this.sweeping = false;
     }
   }
-  async close() {
-    if (this.closed) return;
-    await this.stop('app-close');
+  close() {
+    if (this.closeOperation) return this.closeOperation;
+    let resolve, reject;
+    this.closeOperation = new Promise((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
     this.closed = true;
+    this.lifetime.seal();
     clearInterval(this.timer);
-    await this.writes;
+    (async () => {
+      const errors = [];
+      const attempt = async (work) => {
+        try {
+          await work();
+        } catch (error) {
+          errors.push(error);
+        }
+      };
+      await attempt(() => this.stop('app-close'));
+      if (this.session && this.hostStopDoneFor !== this.session)
+        await attempt(() => this.stopOwnedHosts(this.session, 'app-close'));
+      await attempt(() => this.ready);
+      errors.push(...(await this.lifetime.drain()));
+      // Recovery preparation may have been awaiting a record when stop ran.
+      for (const run of this.runs.values()) clearTimeout(run.deadline);
+      await attempt(() => this.writes);
+      errors.push(this.ledgerWriteError, ...(this.stopErrors || []));
+      throwAudioFailures(errors);
+    })().then(resolve, reject);
+    return this.closeOperation;
   }
 }

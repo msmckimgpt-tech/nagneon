@@ -9,6 +9,7 @@ import {
 } from './native-audio-provider.js';
 import { SpeechCapture } from './speech-screen.js';
 import { SubscriptionVoice } from './subscription-voice.js';
+import { AudioLifetime, AudioClosingError, throwAudioFailures } from './audio-lifetime.js';
 
 export const NativeAudioConfig = z
   .object({
@@ -126,6 +127,8 @@ export class NativeAudio {
     this.error = '';
     this.writes = Promise.resolve();
     this.closed = false;
+    this.lifetime = new AudioLifetime();
+    this.lifetime.wrap(this, ['start', 'connection', 'pump', 'sweep']);
     this.subscription = new SubscriptionVoice({
       studio,
       recovery,
@@ -152,6 +155,7 @@ export class NativeAudio {
     this.timer.unref?.();
   }
   configure(value) {
+    this.lifetime.assertOpen();
     if (this.studio.running || this.studio.busy || this.context)
       throw fault('방송과 마이크를 마친 뒤 음성 연결을 변경하세요.');
     const { apiKey, ...config } = z
@@ -182,7 +186,7 @@ export class NativeAudio {
   }
   allowed() {
     if (this.subscription.selected()) return this.subscription.allowed();
-    if (this.closed) throw fault('앱이 종료 중입니다.');
+    if (this.closed) throw new AudioClosingError();
     if (this.ledgerFailed) throw fault('청취 처리 기록 저장 실패로 원격 처리를 중단했습니다.');
     if (this.config.mode !== 'remote' || !this.config.consent)
       throw fault('연결 설정에서 마이크 원음 전송 안내를 확인해주세요.');
@@ -291,6 +295,7 @@ export class NativeAudio {
   }
   capture(entry) {
     if (this.subscription.inputs.has(entry.inputEpoch)) return this.subscription.capture(entry);
+    this.lifetime.assertOpen();
     const s = this.inputs.get(entry.inputEpoch);
     if (!s || s.sessionId !== entry.sessionId || this.closed) return;
     if (
@@ -340,6 +345,7 @@ export class NativeAudio {
   attachContext(value) {
     if (this.subscription.inputs.has(value?.inputEpoch))
       return this.subscription.attachContext(value);
+    this.lifetime.assertOpen();
     const entry = z
       .object({
         sessionId: z.string().uuid(),
@@ -358,11 +364,18 @@ export class NativeAudio {
   stored(entry, result) {
     if (this.subscription.inputs.has(entry.inputEpoch))
       return this.subscription.stored(entry, result);
-    const s = this.inputs.get(entry.inputEpoch);
-    if (!s || s.sessionId !== entry.sessionId) return;
-    s.durable = Math.max(s.durable, result.durableThrough);
-    this.trimMemory();
-    void this.pump();
+    return this.lifetime.run(() => {
+      const s = this.inputs.get(entry.inputEpoch);
+      if (!s || s.sessionId !== entry.sessionId) return;
+      s.durable = Math.max(s.durable, result.durableThrough);
+      this.trimMemory();
+      void this.pump();
+    });
+  }
+  acceptInput(entry, work) {
+    return this.subscription.inputs.has(entry.inputEpoch)
+      ? this.subscription.acceptInput(entry, work)
+      : this.lifetime.run(work, { preserveErrors: true });
   }
   finishWindow(s) {
     if (s.frame <= s.windowStart) return;
@@ -657,7 +670,8 @@ export class NativeAudio {
         await mkdir(this.dir, { recursive: true });
         await appendFile(join(this.dir, `listening-${minute}.jsonl`), line, { mode: 0o600 });
       })
-      .catch(() => {
+      .catch((error) => {
+        this.ledgerWriteError ||= error;
         this.ledgerFailed = true;
         this.error =
           '청취 처리 기록 저장 실패로 원격 처리를 중단했습니다. 원음 보존 상태를 확인해주세요.';
@@ -742,16 +756,42 @@ export class NativeAudio {
         await unlink(join(this.dir, file));
     }
   }
-  async close() {
-    if (this.closed) return;
-    await this.stop('app-close');
-    await this.subscription.close();
+  close() {
+    if (this.closeOperation) return this.closeOperation;
+    let resolve, reject;
+    this.closeOperation = new Promise((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
     this.closed = true;
+    this.lifetime.seal();
     this.key = '';
     clearInterval(this.timer);
-    await this.pendingCleanup;
-    await this.writes;
-    this.inputs.clear();
-    this.session = null;
+    const context = this.context;
+    this.context = null;
+    (async () => {
+      const errors = [];
+      const attempt = async (work) => {
+        try {
+          await work();
+        } catch (error) {
+          errors.push(error);
+        }
+      };
+      await Promise.all([
+        attempt(() => this.stop('app-close')),
+        attempt(() => context?.controller.abort()),
+        attempt(() => context?.provider?.close()),
+        attempt(() => this.subscription.close()),
+      ]);
+      errors.push(...(await this.lifetime.drain()));
+      await attempt(() => this.pendingCleanup);
+      await attempt(() => this.writes);
+      this.inputs.clear();
+      this.session = null;
+      errors.push(this.ledgerWriteError);
+      throwAudioFailures(errors);
+    })().then(resolve, reject);
+    return this.closeOperation;
   }
 }
