@@ -813,7 +813,12 @@ export function App() {
                                 );
                                 return;
                               }
-                              if (!tutorialActive && s.mode === 'live' && !media.soundSharing) {
+                              if (
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                s.category === 'gaming' &&
+                                !media.soundSharing
+                              ) {
                                 broadcastAfterCapture.current = true;
                                 await screen(true);
                                 return;
