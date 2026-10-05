@@ -5,6 +5,8 @@ import { resolve, dirname, basename } from 'node:path';
 // 생성자 옵션 fs 로 부분 덮어쓰기가 가능하다.
 const nodeFs = { existsSync, readFileSync, readdirSync, writeSync, renameSync, mkdirSync, unlinkSync, copyFileSync, openSync, fsyncSync, closeSync };
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const windowsRenameDelays = [10, 20, 40];
+const renameWait = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
 
 // 로컬 JSON 저장을 위한 견고한 building block.
 // - 저장은 임시 파일 → fsync → rename 으로 원자적으로 커밋한다.
@@ -101,7 +103,7 @@ export class JsonStore {
         if (this._primaryIsValid()) { if (this.backupCount > 0) this._backupCurrent(); }
         else this._preserve(); // load 없이 저장했거나 외부 변조된 손상 원본도 보존, 백업 오염 방지
       }
-      this.fs.renameSync(this._tmp, this.file); // 원자적 커밋
+      this._commitTemp(); // 원자적 커밋
     } catch (e) {
       this._safeUnlink(this._tmp);
       throw e;
@@ -113,6 +115,18 @@ export class JsonStore {
   }
 
   _bakPath(n) { return this.file + '.bak.' + n; }
+
+  _commitTemp() {
+    for (let attempt = 0; ; attempt++) {
+      try { this.fs.renameSync(this._tmp, this.file); return; }
+      catch (error) {
+        // Windows의 짧은 공유 핸들 충돌만 재시도한다. 기본 파일을 삭제하거나
+        // 임시 기록·백업 회전을 반복하지 않으며, 마지막 오류를 그대로 전달한다.
+        if (process.platform !== 'win32' || error?.code !== 'EPERM' || attempt >= windowsRenameDelays.length) throw error;
+        Atomics.wait(renameWait, 0, 0, windowsRenameDelays[attempt]);
+      }
+    }
+  }
 
   _read(path, encoding = 'utf8') {
     try { return this.fs.readFileSync(path, encoding); }
