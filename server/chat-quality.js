@@ -9,6 +9,10 @@ const numbers=text=>(text.match(/\d+(?:[.,]\d+)*/g)||[]).join('|');
 // preserves an explicit lexical difference; it does not infer a sentiment.
 const negations=text=>(text.normalize('NFKC').toLowerCase().replace(/[‘’ʼ]/g,"'").match(/\b(?:not|no|never|cannot|[a-z]+n't)\b|(?:^|\s)(?:안|못)(?=[가-힣\s.!?…]|$)|아니|않|없/gu)||[]).length;
 
+// NFKC turns compatibility ㅋ/ㅎ into canonical Hangul choseong. Long
+// laughter is still a shared reaction; its character count is not prose.
+const laughterOnly=text=>/^[\u110f\u1112]{2,}$/u.test(text.normalize('NFKC').replace(/[!?.,~…。！？\s]/gu,''));
+
 export function repeatedChat(candidate,recent,now,{addressViewers}={}){
   const core=compact(candidate.text);
   // Punctuation attached only to ㅋ/ㅎ or symbols must keep the original
@@ -26,6 +30,7 @@ export function repeatedChat(candidate,recent,now,{addressViewers}={}){
     if(prior.kind==='streamer')return false;
     const age=now-(prior.time??prior.createdAt??now);if(age<0||age>45000)return false;
     if(question!==questionCue(prior.text)||negativeCount!==negations(prior.text))return false;
+    if(laughterOnly(candidate.text)&&laughterOnly(prior.text))return age<=8000&&prior.personaId===candidate.personaId&&sameTargets(prior.text);
     const other=compact(prior.text);
     // Short cheers are a shared crowd response, not a paraphrased analysis.
     // The same person still cannot spam an identical cheer every pump tick.
