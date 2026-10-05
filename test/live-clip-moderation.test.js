@@ -71,8 +71,27 @@ test('rejected title and reason leave the next valid choice available; accepted 
   for(const input of [observation('synthblock','합성 이유'),observation('합성 제목','ＳＹＮＴＨＢＬＯＣＫ')]){await f.react(input);assert.deepEqual(f.clips.data,[]);assert.equal(f.clipSaves,0);}
   await f.react(observation('SYNTHCLOCK','합성 원문 이유'));assert.equal(f.clips.data.length,1);assert.equal(f.clipSaves,1);
   const original=structuredClone(f.clips.data[0]);
-  f.setTime(T+35000);await f.react(observation('새 정상 선택','아직 같은 관객 쿨다운','synthetic-two'));assert.deepEqual(f.clips.data,[original]);assert.equal(f.clipSaves,1);
+  // Keep this choice outside the original context window to exercise creation cooldown.
+  f.setTime(original.observedAt+20000);await f.react(observation('새 정상 선택','아직 같은 관객 쿨다운','synthetic-two'));assert.deepEqual(f.clips.data,[original]);assert.equal(f.clipSaves,1);
   f.setTime(original.createdAt+300000);await f.react(observation('새 정상 선택','같은 관객 쿨다운 경계','synthetic-two'));assert.equal(f.clips.data.length,2);assert.equal(f.clipSaves,2);assert.equal(f.calls,5);
+});
+
+test('normalized blocked nominations cannot expand an existing pending context; benign overlap preserves originals',async t=>{
+  const f=fixture(t,['SYNTHBLOCK']);
+  await f.react(observation('원래 제목','원래 이유','original-event'));
+  const original=structuredClone(f.clips.data[0]);
+  assert.deepEqual([original.recordingWindow.startedAt,original.recordingWindow.endedAt],[T+22000,T+36000]);
+  for(const [at,title,reason] of [[T+32000,'synthblock','합성 이유'],[T+34000,'합성 제목','ＳＹＮＴＨＢＬＯＣＫ']]){
+    f.setTime(at);await f.react(observation(title,reason,'blocked-overlap'));
+    assert.deepEqual(f.clips.data,[original]);assert.equal(f.clipSaves,1,'blocked overlap never persists');
+  }
+  f.setTime(T+36000);await f.react(observation('SYNTHCLOCK','허용된 겹침','benign-overlap'));
+  assert.equal(f.clips.data.length,1);assert.equal(f.clipSaves,2);
+  const merged=ClipsData.parse(structuredClone(f.clips.data))[0];
+  assert.equal(merged.id,original.id);assert.equal(merged.title,original.title);assert.deepEqual(merged.creator,original.creator);
+  assert.equal(merged.observedAt,original.observedAt);assert.deepEqual(merged.participants,original.participants);
+  assert.deepEqual([merged.recordingWindow.startedAt,merged.recordingWindow.endedAt],[T+22000,T+42000]);
+  assert.equal(f.calls,4,'one shared response per nomination');
 });
 
 test('accepted Unicode originals and metadata survive ordinary save and world/clip store reload',async t=>{

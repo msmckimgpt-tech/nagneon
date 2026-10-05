@@ -4,6 +4,7 @@ import {join,resolve} from 'node:path';
 import {clipTextSnapshot,assertClipSnapshot,recordClipReading,recallClips,reuseClipMemoryIndex} from './clip-memory.js';
 import {recallArrivalClip} from './arrival-clip-memory.js';
 import {recordActivityRead} from './community-activity-state.js';
+import {clipWindow,mergeClipWindows} from './clip-window.js';
 const MAX_STORAGE=500*1024*1024;
 const mediaFs={openSync,writeFileSync,fsyncSync,closeSync,renameSync,unlinkSync};
 export class Clips {
@@ -32,15 +33,27 @@ export class Clips {
       throw error;
     }
   }
-  create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature,creator,audioEligible=false}){
+  create({title,game,participants,messages,scene,image,sessionId,source='manual',observedAt,startedAt,signature,creator,audioEligible=false,recordingWindow}){
     if(this.data.length>=100)throw new Error('핫클립 100개에 도달했습니다. 이전 클립을 정리하세요.');
     if(signature){const duplicate=this.data.find(c=>c.signature===signature&&this.now()-c.createdAt<3600000);if(duplicate)return duplicate;}
     // 방송 날짜(day)는 클립을 저장한 시각이 아니라 세션이 시작된 시각(startedAt)을 따른다.
     // 자정을 넘긴 뒤 수동 저장하거나, 방송 종료 후 저장해도 방송이 열린 날짜로 기록된다.
     const id=randomUUID(),at=this.now(),broadcastAt=Number.isFinite(startedAt)?startedAt:at,date=new Date(broadcastAt),day=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
     const clip={id,title:title?.trim().slice(0,100)||scene?.slice(0,70)||'함께한 순간',game:game||'Just Chatting',participants,sessionId,createdAt:at,updatedAt:at,startedAt:Number.isFinite(startedAt)?startedAt:null,observedAt:observedAt||at,day,scene:scene||'함께 나눈 대화',source,signature,creator,comments:[],messages:messages.slice(-25),video:false,audio:false,audioEligible:!!audioEligible,thumbnail:null};
+    if(recordingWindow)clip.recordingWindow=recordingWindow;
     if(image&&this.dir){const extension=image.startsWith('data:image/png')?'png':'jpg';this.writeMedia(id,extension,Buffer.from(image.split(',')[1],'base64'));clip.thumbnail=extension;}
     try{return this.change(data=>{data.push(clip);return clip;});}catch(error){if(clip.thumbnail)try{unlinkSync(this.file(id,clip.thumbnail));}catch{}throw error;}
+  }
+  mergePending(id,window,messages){
+    return this.change(data=>{
+      const c=data.find(c=>c.id===id);
+      if(!c||c.video||c.audio||c.voice)throw Error('저장 전인 클립만 맥락을 합칠 수 있습니다.');
+      c.recordingWindow=window;
+      // Participants witnessed this clip's original moment; a later arrival is
+      // not promoted to a witness merely because a nearby nomination overlaps.
+      c.messages=[...new Map([...c.messages,...messages].map(m=>[m.id,m])).values()].slice(-25);
+      c.updatedAt=this.now();return c;
+    });
   }
   video(id,buffer,metadata){return this.recording(id,buffer,{...metadata,kind:'video'});}
   recording(id,buffer,{startedAt,endedAt,hasAudio,kind='video',audioLayout='mixed'}){
@@ -51,7 +64,7 @@ export class Clips {
     if(!Buffer.isBuffer(buffer)||buffer.length<100||buffer.length>20*1024*1024||buffer.subarray(0,4).toString('hex')!=='1a45dfa3')throw new Error('20MB 이하 WebM 클립을 사용하세요.');
     if(!Number.isFinite(startedAt)||!Number.isFinite(endedAt)||endedAt<=startedAt||endedAt-startedAt>45000||Math.abs(this.now()-endedAt)>120000)throw new Error('최근 45초 이하의 클립만 연결할 수 있습니다.');
     if(voice&&(!Number.isFinite(clip.observedAt)||startedAt>clip.observedAt||endedAt<clip.observedAt))throw Error('선택한 순간을 포함한 마이크 클립이 필요합니다.');
-    const ext=voice?'voice.webm':'webm';this.writeMedia(id,ext,buffer);try{return this.change(data=>{const c=data.find(c=>c.id===id);c[kind]=true;c[kind+'StartedAt']=startedAt;c[kind+'EndedAt']=endedAt;if(!voice){c.hasAudio=!!hasAudio;c.audioLayout=audioLayout;}c.updatedAt=this.now();return c;});}catch(error){try{unlinkSync(this.file(id,ext));}catch{}throw error;}
+    const ext=voice?'voice.webm':'webm';this.writeMedia(id,ext,buffer);try{return this.change(data=>{const c=data.find(c=>c.id===id);c[kind]=true;c[kind+'StartedAt']=startedAt;c[kind+'EndedAt']=endedAt;if(!voice){c.hasAudio=!!hasAudio;c.audioLayout=audioLayout;if(c.recordingWindow)c.recordingContext={requestedStartedAt:c.recordingWindow.startedAt,requestedEndedAt:c.recordingWindow.endedAt,truncatedStart:startedAt>c.recordingWindow.startedAt,truncatedEnd:endedAt<c.recordingWindow.endedAt};}c.updatedAt=this.now();return c;});}catch(error){try{unlinkSync(this.file(id,ext));}catch{}throw error;}
   }
   comment(id,{text,name,personaId='streamer',parentId=null,kind='streamer'}){
     if(!text.trim()||text.length>1000)throw new Error('댓글은 1~1,000자로 작성하세요.');
@@ -94,17 +107,30 @@ export class ClipFeatures {
       if(pick.speechId&&!spoken)continue;
       const capture=spoken?.source==='microphone'?spoken.capture:null;
       if(capture&&!spoken.hearers?.includes(p.id))continue;
+      if(capture&&(!Number.isFinite(capture.startedAt)||!Number.isFinite(capture.endedAt)||capture.endedAt<=capture.startedAt||capture.endedAt>capturedAt||Number.isFinite(s.startedAt)&&capture.startedAt<s.startedAt))continue;
       const sound=pick.soundId?(heardByViewer[p.id]||[]).find(e=>e.id===pick.soundId&&e.source==='system-output'&&!e.silent&&Number.isFinite(e.startedAt)&&Number.isFinite(e.endedAt)&&e.endedAt>e.startedAt&&e.endedAt<=capturedAt&&capturedAt-e.endedAt<30000):null;
       if(pick.soundId&&!sound)continue;
       if(!sound&&!speech&&(!image||observation.confidence<.55))continue;
       const pickedAt=sound?Math.round((sound.startedAt+sound.endedAt)/2):capture?Math.round((capture.startedAt+capture.endedAt)/2):capturedAt;
+      if(!Number.isFinite(pickedAt)||pickedAt>capturedAt||pickedAt>s.now()||Number.isFinite(s.startedAt)&&pickedAt<s.startedAt)continue;
       const listeners=sound?witnesses.filter(id=>(heardByViewer[id]||[]).some(e=>e.id===sound.id)):capture?witnesses.filter(id=>spoken.hearers.includes(id)):witnesses;
-      if(this.clips.data.some(c=>c.creator&&s.now()-c.createdAt<(c.creator.id===p.id?300000:60000)))continue;
       const signature=s.sessionId+':'+pick.signature.normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu,'');
+      const recordingWindow=clipWindow(pickedAt,sound||capture,s.startedAt);
+      const participants=s.settings.personas.filter(p=>listeners.includes(p.id)&&!p.system).map(p=>({id:p.id,name:p.name}));
+      const messages=s.messages.filter(m=>m.time>=recordingWindow.startedAt&&m.time<=recordingWindow.endedAt||m.id===spoken?.messageId);
+      const pending=this.clips.data.find(c=>c.source==='spectator'&&c.sessionId===s.sessionId&&!c.video&&!c.audio&&!c.voice&&s.now()-c.createdAt<120000
+        &&c.audioEligible===(!!sound||!!capture)&&c.game===(observation.game||'Just Chatting')&&mergeClipWindows(c.recordingWindow,recordingWindow));
+      if(pending){
+        const merged=mergeClipWindows(pending.recordingWindow,recordingWindow);
+        // Ignore repeated nominations which contribute no additional context.
+        if(merged.startedAt===pending.recordingWindow.startedAt&&merged.endedAt===pending.recordingWindow.endedAt)continue;
+        created.push(this.clips.mergePending(pending.id,merged,messages));continue;
+      }
       if(this.clips.data.some(c=>c.signature===signature))continue;
-      const clip=this.clips.create({title:pick.title,scene:sound||capture?pick.reason:observation.scene,game:observation.game,participants:s.settings.personas.filter(p=>listeners.includes(p.id)&&!p.system).map(p=>({id:p.id,name:p.name})),messages:s.messages.filter(m=>m.time<=pickedAt||m.id===spoken?.messageId),image:sound||capture?undefined:image,audioEligible:!!sound||!!capture,sessionId:s.sessionId,source:'spectator',creator:{id:p.id,name:p.name,reason:pick.reason},signature,startedAt:s.startedAt,observedAt:pickedAt});
+      if(this.clips.data.some(c=>c.creator&&s.now()-c.createdAt<(c.creator.id===p.id?300000:60000)))continue;
+      const clip=this.clips.create({title:pick.title,scene:sound||capture?pick.reason:observation.scene,game:observation.game,participants,messages,image:sound||capture?undefined:image,audioEligible:!!sound||!!capture,sessionId:s.sessionId,source:'spectator',creator:{id:p.id,name:p.name,reason:pick.reason},signature,startedAt:s.startedAt,observedAt:pickedAt,recordingWindow});
       created.push(clip);s.log(`${p.name} 관객이 핫클립을 남겼습니다: ${pick.title}`);
-    }if(created.length)s.publish();return created;
+    }if(created.length)s.publish();return [...new Map(created.map(c=>[c.id,c])).values()];
   }
   save({title,image}={}){const s=this.studio;if(!s.sessionId||(!s.messages.length&&!s.observation))throw new Error('방송에서 함께한 장면이나 대화가 먼저 필요합니다.');const participants=s.settings.personas.filter(p=>s.audience.data.members[p.id]?.joinedAt>=s.startedAt).map(p=>({id:p.id,name:p.name}));const clip=this.clips.create({title,image,game:s.observation?.game||'Just Chatting',participants,messages:s.messages,scene:s.observation?.scene,sessionId:s.sessionId,source:'manual',startedAt:s.startedAt});s.publish();return clip;}
   async comments({id,parentId,targets}){

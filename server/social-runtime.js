@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import express from 'express';
 import { existsSync, statSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 import { SocialMedia, pixelPng } from './social-media.js';
 import { socialContentHash, socialDiscussionHash, similarSocialText } from './social-content.js';
 import { Persona, Observation } from './schema.js';
@@ -950,7 +951,7 @@ export function socialRoutes(app, studio, mediaDir) {
     res.set('X-Content-Type-Options', 'nosniff');
     res.type(a.mime);
     const file = studio.social.mediaFile(a);
-    if (file) return res.sendFile(file);
+    if (file) return res.sendFile(basename(file), { root: dirname(file) });
     if (!a.clipId && studio.social.media.exists(a)) return res.send(studio.social.media.read(a));
     res.status(404).json({ error: '원본 첨부파일이 없습니다.' });
   });

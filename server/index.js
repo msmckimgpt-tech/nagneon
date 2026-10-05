@@ -18,7 +18,7 @@ import { decodeFrameWire } from './frame-wire.js';
 import { FRAME_WIRE_TYPE, FRAME_JSON_LIMIT } from '../shared/frame-wire.js';
 import { createServer } from 'node:http';
 import { listenBrowserLoopback, validateBrowserListenPort } from './browser-loopback.js';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenAIProvider } from './provider.js';
 import { ProviderChoice, ProviderSelection, hostedModelEnv } from './provider-choice.js';
@@ -943,7 +943,8 @@ async function startServerImpl(
             : null;
     if (!ext) throw new Error('클립 미디어가 없습니다.');
     if (kind === 'audio' || kind === 'voice') res.type('audio/webm');
-    res.sendFile(clips.file(c.id, ext));
+    const file = clips.file(c.id, ext);
+    res.sendFile(basename(file), { root: dirname(file) });
   });
   clipRecordingRoutes(app, { studio, clips, inspector: clipInspector });
   app.post('/api/clips/:id/comments', (req, res) => {
