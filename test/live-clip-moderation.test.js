@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
-import {join,resolve,sep} from 'node:path';
+import {createClipFixtureFiles} from './lib/clip-moderation-fixture-paths.js';
 import {Studio} from '../server/studio.js';
 import {Clips} from '../server/clips.js';
 import {Audience} from '../server/audience.js';
@@ -16,12 +15,9 @@ function settingsFor(words){
   return Settings.parse({...structuredClone(defaults),mode:'live',category:'just-chatting',gameId:'auto',autoHighlights:true,communityActivityEnabled:false,memesEnabled:false,contextualTranscription:false,pointsEnabled:false,lurkRatio:0,intervalSeconds:5,slowModeSeconds:0,chatPace:3,blockedWords:words,discovery:{enabled:false},personas:defaults.personas.filter(p=>['momo','new','luna'].includes(p.id))});
 }
 function fixture(t,words,{disk=false}={}){
-  let at=T,output,calls=0,clipSaves=0,folder;
-  if(disk){
-    const artifacts=resolve('artifacts');mkdirSync(artifacts,{recursive:true});
-    folder=mkdtempSync(join(artifacts,'clip-moderation-'));
-  }
-  const persist=(name,data)=>{if(folder)writeFileSync(join(folder,name),JSON.stringify(data));};
+  let at=T,output,calls=0,clipSaves=0;
+  const files=disk?createClipFixtureFiles():null,folder=files?.folder;
+  const persist=(name,data)=>{files?.write(name,data);};
   const settings=settingsFor(words),members={};
   for(const p of settings.personas)members[p.id]={sessions:1,seconds:600,recognized:0,affinity:.8,peers:{},memories:[],origin:{key:'direct',label:'합성 기존 관객',firstSeenAt:1}};
   const initialEconomy=new Economy(undefined,()=>{},()=>at);initialEconomy.ensureWallets(settings.personas);
@@ -33,9 +29,9 @@ function fixture(t,words,{disk=false}={}){
   const provider={status:()=>({configured:true,label:'synthetic-stub'}),react:async()=>{calls++;return {observation:structuredClone(output),usage:{total_tokens:0}};}};
   const studio=new Studio({settings,provider,world,audience,economy,clips,now:()=>at,random:()=>.5,persist:d=>world.part('settings',d)});
   clearInterval(studio.timer);
-  t.after(async()=>{try{await studio.close();await studio.culture.close();await studio.clipPerception.close();}finally{if(folder){const absolute=realpathSync.native(folder),base=realpathSync.native(resolve('artifacts'));assert.ok(absolute.toLowerCase().startsWith((base+sep).toLowerCase()));assert.equal(absolute.toLowerCase(),resolve(folder).toLowerCase());rmSync(absolute,{recursive:true});}}});
+  t.after(async()=>{try{await studio.close();await studio.culture.close();await studio.clipPerception.close();}finally{files?.remove();}});
   studio.start();at=T+30000;
-  return {studio,clips,world,folder,get calls(){return calls;},get clipSaves(){return clipSaves;},setTime(value){at=value;},async react(observation){at=Math.max(at,studio.lastRequest+2000);output=Observation.parse(observation);const before=structuredClone(output);const result=await studio.react({speech:'합성 방송 장면입니다'});assert.equal(result.ok,true);assert.deepEqual(output,before);return result;}};
+  return {studio,clips,world,folder,files,get calls(){return calls;},get clipSaves(){return clipSaves;},setTime(value){at=value;},async react(observation){at=Math.max(at,studio.lastRequest+2000);output=Observation.parse(observation);const before=structuredClone(output);const result=await studio.react({speech:'합성 방송 장면입니다'});assert.equal(result.ok,true);assert.deepEqual(output,before);return result;}};
 }
 function observation(title,reason,signature='synthetic-one'){
   return {game:'Just Chatting',scene:'관객이 함께 본 합성 장면',confidence:.8,excitement:.2,messages:[],clipPicks:[{personaId:'momo',title,reason,signature,soundId:'',speechId:''}]};
@@ -84,7 +80,7 @@ test('accepted Unicode originals and metadata survive ordinary save and world/cl
   await f.react(observation(title,reason));
   assert.equal(f.clipSaves,1);const before=structuredClone(f.clips.data);
   await f.studio.stop();
-  const clips=ClipsData.parse(JSON.parse(readFileSync(join(f.folder,'clips.json'),'utf8'))),world=WorldData.parse(JSON.parse(readFileSync(join(f.folder,'world.json'),'utf8')));
+  const clips=ClipsData.parse(JSON.parse(f.files.read('clips.json'))),world=WorldData.parse(JSON.parse(f.files.read('world.json')));
   const restarted=new Clips({data:clips,now:()=>T+360000}),restartedWorld=new World(world);
   assert.deepEqual(restarted.data,before);assert.deepEqual(restartedWorld.data,world);assert.equal(restarted.get(before[0].id).title,title);assert.equal(restarted.get(before[0].id).creator.reason,reason);assert.equal(restartedWorld.data.settings.blockedWords[0],'SYNTHBLOCK');assert.equal(before[0].sessionId,f.studio.sessionId);
   assert.equal(f.calls,1,'save/reload does not request another AI response');
