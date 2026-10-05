@@ -498,6 +498,16 @@ main {
 .preview.has-video video {
   display: block;
 }
+.preview-state {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 6px 10px;
+  max-width: calc(100% - 24px);
+  border-radius: 8px;
+  background: var(--ui-preview-caption-background);
+  font-size: 12px;
+}
 .preview-empty {
   position: absolute;
   inset: 0;

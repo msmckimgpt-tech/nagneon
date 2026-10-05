@@ -56,6 +56,7 @@ import { ConversationMemories } from './ConversationMemories';
 import { SoundPanel } from './SoundPanel';
 import { ObsPanel } from './ObsPanel';
 import { CapturePicker } from './CapturePicker';
+import { ScreenPreview } from './ScreenPreview';
 import { ChatDisplayToggle } from './ChatDisplayToggle';
 import { ReactionDiagnostics } from './ReactionDiagnostics';
 import { ChatBriefing } from './ChatBriefing';
@@ -654,7 +655,7 @@ export function App() {
                         </button>
                       </div>
                       <div className={'preview ' + (media.sharing ? 'has-video' : '')}>
-                        <video ref={media.video} autoPlay muted playsInline />
+                        <ScreenPreview source={media.previewSource} />
                         {!media.sharing && (
                           <div className="preview-empty">
                             <div className="orbit orbit-a" />
@@ -696,7 +697,7 @@ export function App() {
                         )}
                         {media.sharing && (
                           <div className="preview-caption">
-                            <span className="dot green" /> 선택한 화면 미리보기{' '}
+                            <span className="dot green" /> 화면 연결됨{' '}
                             <button onClick={media.stopPicture}>화면 공유 중지</button>
                           </div>
                         )}

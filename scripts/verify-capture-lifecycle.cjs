@@ -12,7 +12,8 @@ app.whenReady().then(async()=>{try{
   const {startServer}=await import(pathToFileURL(resolve('server/index.js')));
   service=await startServer({port:0,dataDir:join(base,'data'),localSpeech:false,provider:{status:()=>({configured:true,model:'capture acceptance'}),react:async args=>{inputs.push({image:!!args.image});return {observation:{game:'Synthetic',scene:'Synthetic canvas',confidence:.9,excitement:0,messages:[]}};}},soundWorker:{prepare:async()=>true,close(){},analyze:async()=>({durationSeconds:4,volumeDb:-25,balance:0,silent:false,classes:[],systemSpeech:'',language:'ko',source:'system-output',caveat:'Synthetic fixture'})}});
   const s=service.studio;s.configure({...s.settings,mode:'live',intervalSeconds:5});
-  win=new BrowserWindow({width:1260,height:900,show:true,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
+  const offscreen=process.argv.includes('--offscreen');
+  win=new BrowserWindow({width:1260,height:900,show:!offscreen,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false,offscreen}});
   win.webContents.on('console-message',e=>{if(e.level==='error')report.errors.push(e.message);});await win.loadURL(service.url);
   const js=code=>win.webContents.executeJavaScript(code,true),pause=ms=>new Promise(r=>setTimeout(r,ms));
   const until=async(fn,timeout=7000)=>{const at=Date.now();while(Date.now()-at<timeout){if(await fn())return;await pause(50);}throw Error('Capture lifecycle condition timed out');};

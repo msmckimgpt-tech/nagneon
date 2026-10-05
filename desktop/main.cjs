@@ -66,6 +66,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     studioSession=createStudioSession(session,service);
     main=new BrowserWindow({...background.windowOptions(),width:1440,height:980,minWidth:420,minHeight:650,title:'Nagneon · 나그네온',icon:join(__dirname,'../dist/nagneon-icon.png'),backgroundColor:'#10151e',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);
     require('./navigation.cjs').attachNavigationHistory(main);
+    require('./preview-visibility.cjs').attachPreviewVisibility({main,ipcMain});
     require('./subscription-voice-guard.cjs').attachSubscriptionVoiceGuard({window:main,voice:service.nativeAudio.subscription});
     const provider=service.studio.provider;
     ipcMain.handle('storage:status',event=>{trusted(event,true);return {profile:app.getPath('userData'),defaultProfile:storageDefaults.defaultProfile,isolated:!!profile};});
