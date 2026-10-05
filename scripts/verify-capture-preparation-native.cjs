@@ -25,7 +25,7 @@ app.whenReady().then(async()=>{try{
  service.studio.configure({...service.studio.settings,mode:componentDelay?'rehearsal':'live',intervalSeconds:5,clipBufferEnabled:!!componentDelay});
  const studioSession=createStudioSession(session,service);
  main=new BrowserWindow({width:1426,height:973,show:false,webPreferences:{session:studioSession,preload:join(sourceRoot,'desktop/preload.cjs'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
- attachCapture({session:studioSession,ipcMain,desktopCapturer,main});ipcMain.handle('account:status',()=>({status:'idle'}));
+ attachCapture({session:studioSession,ipcMain,desktopCapturer,main});require(join(sourceRoot,'desktop/preview-visibility.cjs')).attachPreviewVisibility({main,ipcMain});ipcMain.handle('account:status',()=>({status:'idle'}));
  for(const [name,color] of [['Capture readiness red fixture','#d02030'],['Capture readiness blue fixture','#2050d0']]){
   const fixture=new BrowserWindow({width:500,height:350,show:false,webPreferences:{sandbox:true,backgroundThrottling:false}});fixtures.push(fixture);
   await fixture.loadURL('data:text/html,'+encodeURIComponent(`<title>${name}</title><body style="margin:0;background:${color};color:white;font:28px sans-serif"><p style="padding:30px">Owned capture test</p><script>setInterval(()=>document.querySelector('p').textContent='Owned capture test '+Date.now(),100)</script>`));fixture.showInactive();
