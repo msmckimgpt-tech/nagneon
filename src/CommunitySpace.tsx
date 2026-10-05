@@ -5,19 +5,26 @@ import type { State } from './types';
 import './social-community.css';
 import { SocialDiscussion, type Discussion } from './SocialDiscussion';
 import { CommunitySettings } from './CommunitySettings';
-type Post = Discussion & {
-  id: string;
-  communityId: string;
-  topicId: string;
-  kind: string;
-  title: string;
-  text: string;
-  at: number;
-  author: string;
-  authorIsViewer: boolean;
-  sourceStatus: string;
-  bookmarked: boolean;
-};
+import {
+  CommunityFact,
+  CommunityFactInputStatus,
+  type FactPost,
+  type TrendInputStatus,
+} from './CommunityFact';
+type Post = Discussion &
+  FactPost & {
+    id: string;
+    communityId: string;
+    topicId: string;
+    kind: string;
+    title: string;
+    text: string;
+    at: number;
+    author: string;
+    authorIsViewer: boolean;
+    sourceStatus: string;
+    bookmarked: boolean;
+  };
 type Prefs = {
   enabled: boolean;
   creativeImages: boolean;
@@ -29,6 +36,7 @@ type Prefs = {
   bookmarks: string[];
 };
 type Data = {
+  trendInput?: TrendInputStatus;
   revision: number;
   communities: {
     id: string;
@@ -224,6 +232,7 @@ function OutsideCommunity({
         busy={busy}
         onPatch={patch}
       />
+      <CommunityFactInputStatus input={state.social?.trendInput ?? data.trendInput} />
       {data.quarantined ? (
         <p role="status">기록 복구 확인이 필요해 커뮤니티 열람과 활동을 보류하고 있어요.</p>
       ) : data.blockedReason ? (
@@ -337,6 +346,7 @@ function OutsideCommunity({
               {selected.kind === 'daily' ? '일상' : '방송 이야기'}
             </small>
             <p>{selected.text}</p>
+            <CommunityFact post={selected} />
             {selected.sourceStatus === 'historical' && (
               <p className="muted">당시 남긴 이야기입니다. 현재 방송 근거로는 사용하지 않아요.</p>
             )}
@@ -421,6 +431,7 @@ function OutsideCommunity({
                     {post.kind === 'daily' ? '일상' : '방송 이야기'}
                   </span>
                   <strong>{post.title}</strong>
+                  <CommunityFact post={post} compact />
                   <small>
                     <span className="social-author">
                       {post.author}
