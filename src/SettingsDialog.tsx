@@ -1,19 +1,20 @@
-import {addGenrePresets,genrePresets} from '../shared/genre-presets.js';
-import {DebugPanel} from './DebugPanel';
-import {StorageSettings} from './StorageSettings';
-import {useMemo,useRef,useState,type KeyboardEvent} from 'react';
+import { addGenrePresets, genrePresets } from '../shared/genre-presets.js';
+import { DebugPanel } from './DebugPanel';
+import { StorageSettings } from './StorageSettings';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { usePageNavigation } from './PageNavigation';
 import {Check,Clapperboard,Gamepad2,Plus,Radio,Shield,SlidersHorizontal,Sparkles,X,type LucideIcon} from 'lucide-react';
-import {api} from './api';
-import {AccessibleDialog} from './AccessibleDialog';
-import {ConnectionPanel} from './ConnectionPanel';
-import {CrowdPresets} from './CrowdPresets';
-import type {Game,Settings,State} from './types';
+import { api } from './api';
+import { AccessibleDialog } from './AccessibleDialog';
+import { ConnectionPanel } from './ConnectionPanel';
+import { CrowdPresets } from './CrowdPresets';
+import type { Game, Settings, State } from './types';
 import './settings-dialog.css';
 
 // The tabbed settings editor. It owns a private draft of the settings and only
 // commits it when the user saves; personas are intentionally never edited or
 // sent from here — the server owns the audience roster.
-type TabId='broadcast'|'mood'|'connection'|'manager'|'media'|'games'|'debug';
+type TabId = 'broadcast' | 'mood' | 'connection' | 'manager' | 'media' | 'games' | 'debug';
 
 const TABS:{id:TabId;label:string;Icon:LucideIcon}[]=[
   {id:'broadcast',label:'방송',Icon:Radio},
@@ -27,8 +28,8 @@ const TABS:{id:TabId;label:string;Icon:LucideIcon}[]=[
 
 // Stable element IDs so the tab/panel aria-controls / aria-labelledby wiring
 // never shifts between renders.
-const tabId=(id:TabId)=>`settings-tab-${id}`;
-const panelId=(id:TabId)=>`settings-panel-${id}`;
+const tabId = (id: TabId) => `settings-tab-${id}`;
+const panelId = (id: TabId) => `settings-panel-${id}`;
 
 export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab='broadcast',onDashboard}:{
   state:State;
@@ -38,20 +39,41 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
   onClose:()=>void;
   onSaved:()=>void;
   onGuide:()=>void;
-}){
-  const [draft,setDraft]=useState<Settings>(()=>structuredClone(initial));
-  const [domainText,setDomainText]=useState(()=>initial.cultureDomains?.join('\n')||'');
-  const [active,setActive]=useState<TabId>(initialTab);
-  const [pending,setPending]=useState(false);
-  const [error,setError]=useState('');
-  const [apiKey,setApiKey]=useState('');
+}) {
+  const navigation = usePageNavigation();
+  const cached = navigation?.drafts.get('settings') as
+    { draft: Settings; domainText: string } | undefined;
+  const [draft, setDraft] = useState<Settings>(() => structuredClone(cached?.draft || initial));
+  const [domainText, setDomainText] = useState(
+    () => cached?.domainText ?? initial.cultureDomains?.join('\n') ?? '',
+  );
+  const [localActive, setLocalActive] = useState<TabId>(initialTab);
+  const active = (navigation?.route.settings as TabId) || localActive;
+  const setActive = (id: TabId) =>
+    navigation ? navigation.patch({ settings: id }) : setLocalActive(id);
+  useEffect(() => {
+    navigation?.drafts.set('settings', { draft, domainText });
+  }, [draft, domainText]);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const positions = useRef(
+    (navigation?.drafts.get('settingsScroll') as Map<string, number>) || new Map<string, number>(),
+  );
+  useEffect(() => {
+    navigation?.drafts.set('settingsScroll', positions.current);
+  }, []);
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = positions.current.get(active) || 0;
+  }, [active]);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [apiKey, setApiKey] = useState('');
 
-  const tabRefs=useRef<(HTMLButtonElement|null)[]>([]);
-  const initialFocusRef=useRef<HTMLElement|null>(null);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const initialFocusRef = useRef<HTMLElement | null>(null);
 
   // Settings must not change mid-broadcast, mid-rehearsal, or while the model is
   // mid-response. These guards keep both the save and the API-key action inert.
-  const locked=state.running||state.busy;
+  const locked = state.running || state.busy;
 
   function update<K extends keyof Settings>(field:K,value:Settings[K]){
     setDraft(prev=>({...prev,[field]:value}));
@@ -368,62 +390,94 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
     }
   }
 
-  return <AccessibleDialog
-    className="settings-dialog"
-    labelledBy="settings-dialog-title"
-    describedBy="settings-dialog-desc"
-    initialFocus={initialFocusRef}
-    onClose={onClose}
-  >
-    <header className="modal-title">
-      <div>
-        <h2 id="settings-dialog-title">나의 방송 설정</h2>
-        <p id="settings-dialog-desc">{describe}</p>
-      </div>
-      <button type="button" className="icon" aria-label="방송 설정 창 닫기" onClick={onClose}><X/></button>
-    </header>
-
-    <div role="tablist" aria-label="방송 설정 범주" className="settings-tabs">
-      {TABS.map((t,i)=><button
-        key={t.id}
-        type="button"
-        role="tab"
-        id={tabId(t.id)}
-        aria-selected={active===t.id}
-        aria-controls={panelId(t.id)}
-        tabIndex={active===t.id?0:-1}
-        ref={el=>{tabRefs.current[i]=el;if(t.id===active)initialFocusRef.current=el;}}
-        onClick={()=>setActive(t.id)}
-        onKeyDown={e=>onTabKey(e,i)}
-      >
-        <t.Icon size={14}/> {t.label}
-      </button>)}
-    </div>
-
-    <div className="settings-body">
-      {TABS.map(t=><div
-        key={t.id}
-        role="tabpanel"
-        id={panelId(t.id)}
-        aria-labelledby={tabId(t.id)}
-        className="settings-panel"
-        tabIndex={0}
-        hidden={active!==t.id}
-      >
-        {renderPanel(t.id)}
-      </div>)}
-    </div>
-
-    {error&&<p role="alert" className="settings-error">{error}</p>}
-
-    <footer className="modal-footer">
-      <span>설정과 게임 기억은 이 PC에 저장됩니다.</span>
-      <div className="footer-actions">
-        <button type="button" className="secondary" onClick={onClose}>닫기</button>
-        <button type="button" className="primary" disabled={locked||pending||active==='debug'} onClick={()=>void save()}>
-          <Check size={16}/> {pending?'저장 중…':'설정 저장'}
+  return (
+    <AccessibleDialog
+      historyOwned={!!navigation}
+      className="settings-dialog"
+      labelledBy="settings-dialog-title"
+      describedBy="settings-dialog-desc"
+      initialFocus={initialFocusRef}
+      onClose={onClose}
+    >
+      <header className="modal-title">
+        <div>
+          <h2 id="settings-dialog-title">나의 방송 설정</h2>
+          <p id="settings-dialog-desc">{describe}</p>
+          <p className="settings-route-note">
+            탭 이동과 뒤로·앞으로 중에는 초안을 유지해요. 취소·닫기는 저장하지 않고 초안을 버립니다.
+          </p>
+        </div>
+        <button type="button" className="icon" aria-label="방송 설정 창 닫기" onClick={onClose}>
+          <X />
         </button>
+      </header>
+
+      <div role="tablist" aria-label="방송 설정 범주" className="settings-tabs">
+        {TABS.map((t, i) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={tabId(t.id)}
+            aria-selected={active === t.id}
+            aria-controls={panelId(t.id)}
+            tabIndex={active === t.id ? 0 : -1}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+              if (t.id === active) initialFocusRef.current = el;
+            }}
+            onClick={() => setActive(t.id)}
+            onKeyDown={(e) => onTabKey(e, i)}
+          >
+            <t.Icon size={14} /> {t.label}
+          </button>
+        ))}
       </div>
-    </footer>
-  </AccessibleDialog>;
+
+      <div
+        className="settings-body"
+        ref={bodyRef}
+        onScroll={() => {
+          if (bodyRef.current) positions.current.set(active, bodyRef.current.scrollTop);
+        }}
+      >
+        {TABS.map((t) => (
+          <div
+            key={t.id}
+            role="tabpanel"
+            id={panelId(t.id)}
+            aria-labelledby={tabId(t.id)}
+            className="settings-panel"
+            tabIndex={0}
+            hidden={active !== t.id}
+          >
+            {renderPanel(t.id)}
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <p role="alert" className="settings-error">
+          {error}
+        </p>
+      )}
+
+      <footer className="modal-footer">
+        <span>설정과 게임 기억은 이 PC에 저장됩니다.</span>
+        <div className="footer-actions">
+          <button type="button" className="secondary" onClick={onClose}>
+            취소·닫기
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={locked || pending || active === 'debug'}
+            onClick={() => void save()}
+          >
+            <Check size={16} /> {pending ? '저장 중…' : '설정 저장'}
+          </button>
+        </div>
+      </footer>
+    </AccessibleDialog>
+  );
 }

@@ -2,14 +2,18 @@
 const { app, BrowserWindow, session } = require('electron');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { createStudioSession } = require('../desktop/session.cjs');
 const { attachNavigationHistory } = require('../desktop/navigation.cjs');
+const { createNativeNavigationProbe } = require('./navigation-native-probe.cjs');
+const nativeProbe = createNativeNavigationProbe();
+// Finish asynchronous cleanup and persist assertions before the verifier exits.
+app.on('window-all-closed', () => {});
 fs.mkdirSync(resolve('artifacts'), { recursive: true });
 const out = fs.mkdtempSync(resolve('artifacts/navigation-runtime-'));
 app.setPath('userData', join(out, 'profile'));
+app.commandLine.appendSwitch('backseat-profile', join(out, 'profile'));
 const report = {
   passed: false,
   synthetic: true,
@@ -23,17 +27,7 @@ let service,
   modelCalls = 0;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 async function nativeCommand(win, command) {
-  const handle = win.getNativeWindowHandle();
-  const hwnd =
-    handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());
-  // Post only to the verifier-owned window, never the user's foreground window.
-  const script = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class NavigationProbe { [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }'; if (-not [NavigationProbe]::PostMessage([IntPtr]${hwnd}, 0x0319, [IntPtr]${hwnd}, [IntPtr]${command * 65536})) { exit 1 }`;
-  const sent = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    windowsHide: true,
-    encoding: 'utf8',
-    timeout: 15000,
-  });
-  assert.equal(sent.status, 0, sent.stderr || sent.error?.message);
+  await nativeProbe.post(win, command);
   await pause(150);
 }
 app.whenReady().then(async () => {
@@ -159,12 +153,13 @@ app.whenReady().then(async () => {
     await expectTab('ai');
     assert.equal(overlay.listenerCount('app-command'), 0);
     report.checks.push('overlay native commands leave main tab unchanged');
-    assert.equal(main.webContents.getURL(), originalURL);
-    assert.equal(main.webContents.navigationHistory.length(), 1);
+    assert.equal(new URL(main.webContents.getURL()).origin, new URL(originalURL).origin);
+    assert.equal(new URL(main.webContents.getURL()).hash, '#/ai');
+    assert.ok(main.webContents.navigationHistory.length() > 1);
     assert.equal(modelCalls, 0);
     assert.deepEqual(report.errors, []);
     report.checks.push(
-      'URL and Chromium page history unchanged; zero model calls or renderer errors',
+      'same-document route URLs and history updated; zero model calls or renderer errors',
     );
     fs.writeFileSync(join(out, 'navigation.png'), (await main.webContents.capturePage()).toPNG());
     report.passed = true;
@@ -174,6 +169,7 @@ app.whenReady().then(async () => {
   } finally {
     overlay?.destroy();
     main?.destroy();
+    await nativeProbe.close();
     await service?.close();
     fs.writeFileSync(join(out, 'result.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ out, ...report }));

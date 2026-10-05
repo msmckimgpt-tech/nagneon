@@ -1,14 +1,16 @@
 const { app, BrowserWindow } = require('electron');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
 const { randomUUID } = require('node:crypto');
 const assert = require('node:assert/strict');
 app.disableHardwareAcceleration();
-const root = resolve(__dirname, '..'),
-  out = join(root, 'artifacts', 'community-scroll');
-mkdirSync(out, { recursive: true });
+app.on('window-all-closed', () => {});
+const root = resolve(__dirname, '..');
+mkdirSync(join(root, 'artifacts'), { recursive: true });
+const out = mkdtempSync(join(root, 'artifacts', 'community-scroll-'));
 app.setPath('userData', join(out, 'electron-profile'));
+app.commandLine.appendSwitch('backseat-profile', join(out, 'electron-profile'));
 const report = { synthetic: true, checks: [], screenshots: [] };
 let service, win;
 const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report, null, 2));
@@ -180,7 +182,13 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       { urls: [service.url + '/*'] },
       (details, cb) => cb({ requestHeaders: { ...details.requestHeaders, ...headers } }),
     );
-    const js = (code) => win.webContents.executeJavaScript(code);
+    const js = async (code) => {
+      try {
+        return await win.webContents.executeJavaScript(code);
+      } catch (error) {
+        throw new Error('Renderer check failed: ' + code, { cause: error });
+      }
+    };
     const until = async (code) => {
       const end = Date.now() + 10000;
       while (!(await js(code))) {
@@ -196,15 +204,31 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       until(
         `(()=>{const b=document.querySelector(${JSON.stringify(selector)});if(!b||b.disabled)return false;b.click();return true;})()`,
       );
-    await win.loadURL(service.url);
-    await until("!!document.querySelector('.app-shell')");
     const settle = () => new Promise((r) => setTimeout(r, 180));
     const top = () => js('document.scrollingElement.scrollTop');
     const position = (selector) =>
       js(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top`);
     const near = (a, b, label) => assert.ok(Math.abs(a - b) < 3, `${label}: ${a} != ${b}`);
+    const detailAtStart = async (selector) => {
+      near(await top(), 0, 'new detail opens at the start of the page');
+      assert.equal(
+        await js(`document.activeElement.matches('[data-page-title]')`),
+        true,
+        'new detail focuses the page heading',
+      );
+      assert.equal(
+        await js(
+          `(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return r.top>=0&&r.top<innerHeight;})()`,
+        ),
+        true,
+        'detail is visible below the page heading',
+      );
+    };
     for (const width of [1280, 520]) {
       win.setSize(width, 820);
+      // Each viewport begins a fresh navigation history, with the same synthetic data.
+      await win.loadURL(service.url);
+      await until("!!document.querySelector('.app-shell')");
       await click('방송 밖 이야기');
       await click('바깥 커뮤니티');
       await until("document.querySelectorAll('.social-post').length===30");
@@ -213,17 +237,20 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       );
       await settle();
       const listTop = await top();
-      // A late result in a hidden section must not scroll the visible one.
+      // Hidden sections cannot initiate navigation or move the visible reader.
+      const listRoute = await js('location.hash');
       await js("document.querySelector('.gallery-table td button').click()");
       await settle();
+      assert.equal(await js('location.hash'), listRoute, 'hidden gallery cannot change the route');
+      assert.equal(await js("!!document.querySelector('.gallery-detail')"), false);
       near(await top(), listTop, 'hidden section cannot move visible reading position');
-      await js("document.querySelector('.gallery-detail .text-button').click()");
+      s.publish();
       await settle();
-      near(await top(), listTop, 'hidden return cannot move visible reading position');
+      near(await top(), listTop, 'hidden section refresh cannot move visible reading position');
       await js("document.querySelectorAll('.social-post')[18].click()");
       await until("!!document.querySelector('.social-detail')");
       await settle();
-      near(await position('.social-detail'), 16, 'detail starts in viewport');
+      await detailAtStart('.social-detail');
       await js('window.scrollBy(0,350)');
       await click('← 글 목록');
       await settle();
@@ -234,6 +261,14 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
         ),
         true,
       );
+      // Opening a post again starts at its heading; history Back restores the list.
+      await js("document.querySelectorAll('.social-post')[18].click()");
+      await until("!!document.querySelector('.social-detail')");
+      await settle();
+      await detailAtStart('.social-detail');
+      await click('← 글 목록');
+      await settle();
+      near(await top(), listTop, 'reopened detail return restores list scroll');
       await js(
         "(()=>{const b=document.querySelectorAll('.social-post')[19] ;b.scrollIntoView({block:'center'});b.focus({preventScroll:true});})()",
       );
@@ -242,7 +277,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await js("document.querySelectorAll('.social-post')[19] .click()");
       await until("!!document.querySelector('.social-detail')");
       await settle();
-      near(await position('.social-detail'), 16, 'detail starts in viewport');
+      await detailAtStart('.social-detail');
       await js('window.scrollBy(0,350)');
       await click('← 글 목록');
       await settle();
@@ -287,17 +322,15 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await js("document.querySelector('.social-community-list').scrollIntoView({block:'center'})");
       await settle();
       const tabsTop = await position('.social-community-list');
+      const communityTop = await top();
       await js("document.querySelectorAll('.social-community-list button')[1].click()");
       await until("!!document.querySelector('.social-empty')");
       await settle();
-      near(
-        await position('.social-community-list'),
-        tabsTop,
-        'empty community keeps tabs in place',
-      );
+      near(await top(), 0, 'new empty community opens at page start');
       await click('전체 이야기');
       await until("document.querySelectorAll('.social-post').length===30");
       await settle();
+      near(await top(), communityTop, 'return community restores reading position');
       near(
         await position('.social-community-list'),
         tabsTop,
@@ -313,6 +346,8 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await clickPage('.social-pages button:last-child');
       await until("document.querySelectorAll('.social-post').length===15");
       await settle();
+      near(await top(), 0, 'new list page opens at page start');
+      await js('window.scrollBy(0,120)');
       const pageTop = await top();
       await js(`(()=>{
         const originalFetch=window.fetch;
@@ -348,9 +383,21 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await js("document.querySelector('.community-sections').scrollIntoView({block:'start'})");
       await settle();
       const sectionTop = await position('.community-sections');
+      const sectionRoute = await js('location.hash');
       await click('방송 커뮤니티');
       await settle();
-      near(await position('.community-sections'), sectionTop, 'section switch retains tabs');
+      near(await top(), 0, 'new section opens at page start');
+      // Selecting another section opens a page; history Back restores the reader.
+      await js('history.back()');
+      await until(`location.hash===${JSON.stringify(sectionRoute)}`);
+      await settle();
+      near(
+        await position('.community-sections'),
+        sectionTop,
+        'section return restores reading position',
+      );
+      await click('방송 커뮤니티');
+      await settle();
       await js(
         "(()=>{const b=document.querySelectorAll('.gallery-table td button')[13];b.scrollIntoView({block:'center'});b.focus({preventScroll:true});})()",
       );
@@ -359,12 +406,12 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await js("document.querySelectorAll('.gallery-table td button')[13].click()");
       await until("!!document.querySelector('.gallery-detail')");
       await settle();
-      near(await position('.gallery-detail'), 16, 'gallery detail starts in viewport');
+      await detailAtStart('.gallery-detail');
       await click('← 목록으로');
       await settle();
       near(await top(), galleryTop, 'gallery back restores list');
       report.checks.push(
-        `${width}px: long and short posts, detail entry, return position/focus, empty community tabs, delayed pagination refresh, section switch and gallery return`,
+        `${width}px: hidden section navigation guard, long and short post detail entry, list return position/focus, empty community return, delayed pagination refresh, section return and gallery return`,
       );
       report.screenshots.push(`scroll-${width}.png`);
       writeFileSync(

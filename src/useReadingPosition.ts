@@ -1,7 +1,9 @@
 import { useLayoutEffect, useReducer, useRef } from 'react';
+import { usePageNavigation } from './PageNavigation';
 
 // Navigation owns the scroll adjustment; ordinary data refreshes do not.
 export function useReadingPosition(key: string, ready = true, active = true) {
+  const navigation = usePageNavigation();
   const ref = useRef<HTMLDivElement>(null);
   const positions = useRef(new Map<string, { top: number; focus?: string }>());
   const pending = useRef<{ top: number; preserve: boolean; start: boolean } | null>(null);
@@ -15,6 +17,11 @@ export function useReadingPosition(key: string, ready = true, active = true) {
     return document.scrollingElement as HTMLElement;
   }
   function move(change: () => void, preserve = false, start = false) {
+    if (navigation) {
+      if (!active || (ref.current && !ref.current.getClientRects().length)) return;
+      navigation.batch(change, start);
+      return;
+    }
     if (!ref.current?.getClientRects().length) {
       change();
       return;
