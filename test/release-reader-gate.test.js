@@ -98,7 +98,8 @@ finally { if ($script:fixturePointerLock) { $script:fixturePointerLock.Dispose()
     ['asar-tamper', /hash mismatch/], ['exe-tamper', /hash mismatch/], ['asar-offset', /capability bounds/],
     ['asar-unpacked', /packed/], ['source-tamper', /changed/], ['destination-tamper', /changed/], ['destination-extra', /changed/],
     ['late-package-change', /changed/], ['late-profile-change', /changed/], ['entrypoint-write-failure', /entrypoint write failure/],
-    ['pointer-write-failure', /used by another process|being used|cannot access/i],
+    // The same sharing violation is localized by Windows; rejection and rollback remain required.
+    ['pointer-write-failure', /used by another process|being used|cannot access|파일이 다른 프로세스에서 사용되고 있으므로 프로세스에서 파일에 액세스할 수 없습니다/i],
     ['restore-target-locked', /Synthetic rollback failure.*Unrestored entrypoints/],
   ];
   for (const [scenario, error] of scenarios) await t.test(scenario, async () => {
