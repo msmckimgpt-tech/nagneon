@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { normalizeLore, relevantLore, LEGACY_NO_EXPIRY } from './community-lore.js';
 import profiles from '../shared/discovery.json' with { type: 'json' };
 import { createViewerAddressResolver } from './viewer-addressing.js';
+import { galleryPost } from './community.js';
 import {
   resetPresenceRuntime,
   tickAutonomousPresence,
@@ -292,7 +293,7 @@ export class Audience {
           };
         }),
       lore: relevantLore(this.data.lore, speech),
-      offStreamPosts: this.data.posts.slice(-8),
+      offStreamPosts: this.data.posts.slice(-8).map(galleryPost),
       rhythm: excitement > 0.75 ? '짧은 공동 반응 뒤 안정' : '평소 대화. 침묵과 관망도 자연스럽다',
     };
   }
