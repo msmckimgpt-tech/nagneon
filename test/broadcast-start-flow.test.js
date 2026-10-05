@@ -48,6 +48,9 @@ const effect = (marker) =>
   ).arguments[0];
 const captureReady = effect('!broadcastAfterCapture.current');
 const subscriptionReady = effect('void media.startMic()');
+const setSettingsTab = find(
+  (node) => ts.isVariableDeclaration(node) && node.name.getText(file) === 'setSettingsTab',
+).initializer;
 const compiled = ts.transpileModule(
   `
 globalThis.action=${action.getText(file)};
@@ -56,6 +59,7 @@ globalThis.startClick=${start.getText(file)};
 globalThis.startDisabled=()=>(${disabled.getText(file)});
 globalThis.captureReady=${captureReady.getText(file)};
 globalThis.subscriptionReady=${subscriptionReady.getText(file)};
+globalThis.setSettingsTab=${setSettingsTab.getText(file)};
 `,
   {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
@@ -100,7 +104,13 @@ function harness({
     subscriptionStartPending: { current: false },
     broadcastAfterCapture: { current: false },
     setCaptureSound: (value) => events.push(['capture-dialog', value]),
-    setSettingsTab: (value) => events.push(['settings-tab', value]),
+    navigation: {
+      route: { tab: 'studio' },
+      patch(value) {
+        Object.assign(this.route, value);
+        events.push(['settings-tab', value.settings]);
+      },
+    },
     setDraft: (value) => {
       drafts.push(value);
       events.push(['draft']);
@@ -206,7 +216,8 @@ for (const category of ['gaming', 'just-chatting'])
       async () => {
         const h = harness({ category, audio });
         await h.click();
-        assert.deepEqual(operations(h), ['settings-tab', 'draft', 'modal']);
+        assert.deepEqual(operations(h), ['settings-tab', 'draft']);
+        assert.deepEqual(h.context.navigation.route, { tab: 'studio', settings: 'connection' });
         assert.deepEqual(h.events[0], ['settings-tab', 'connection']);
         assert.deepEqual(h.events.at(-1), [
           'error',

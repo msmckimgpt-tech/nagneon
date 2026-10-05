@@ -1,5 +1,5 @@
-import {useEffect,useRef,type ReactNode,type KeyboardEvent} from 'react';
-import {createPortal} from 'react-dom';
+import { useEffect, useRef, type ReactNode, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 // Tabbable elements inside the dialog. Disabled controls and explicit tabindex=-1
 // (including the dialog container itself) are excluded so they never trap focus.
@@ -7,7 +7,7 @@ const FOCUSABLE='a[href],area[href],button:not([disabled]),input:not([disabled])
 
 // Shared across every open dialog so a nested/second dialog closing does not
 // prematurely re-enable the background while another dialog is still open.
-let openDialogs=0;
+let openDialogs = 0;
 function setBackgroundInert(on:boolean){
   const root=document.getElementById('root');
   if(!root)return;
@@ -26,17 +26,27 @@ function tabbable(dialog:HTMLElement){
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(el=>el.offsetParent!==null);
 }
 
-export function AccessibleDialog({onClose,className='',labelledBy,describedBy,initialFocus,children}:{
-  onClose:()=>void;
-  className?:string;
-  labelledBy:string;
-  describedBy?:string;
-  initialFocus?:{current:HTMLElement|null};
-  children:ReactNode;
-}){
-  const dialogRef=useRef<HTMLDivElement|null>(null);
-  const restoreRef=useRef<HTMLElement|null>(null);
-  const onCloseRef=useRef(onClose);onCloseRef.current=onClose;
+export function AccessibleDialog({
+  onClose,
+  className = '',
+  labelledBy,
+  describedBy,
+  initialFocus,
+  children,
+  historyOwned = false,
+}: {
+  onClose: () => void;
+  historyOwned?: boolean;
+  className?: string;
+  labelledBy: string;
+  describedBy?: string;
+  initialFocus?: { current: HTMLElement | null };
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(()=>{
     // Remember the trigger so focus can return to it when the dialog closes.
@@ -61,6 +71,19 @@ export function AccessibleDialog({onClose,className='',labelledBy,describedBy,in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  useEffect(() => {
+    if (historyOwned) return;
+    const back = (e: Event) => {
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] === dialogRef.current) {
+        e.preventDefault();
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener('nagneon:navigation-back', back);
+    return () => window.removeEventListener('nagneon:navigation-back', back);
+  }, [historyOwned]);
+
   function onKeyDown(e:KeyboardEvent<HTMLElement>){
     if(e.key==='Escape'){e.stopPropagation();onCloseRef.current();return;}
     if(e.key!=='Tab')return;
@@ -78,11 +101,20 @@ export function AccessibleDialog({onClose,className='',labelledBy,describedBy,in
 
   return createPortal(
     <div className="modal-backdrop">
-      <section ref={dialogRef} className={('modal '+className).trim()} role="dialog" aria-modal="true"
-        aria-labelledby={labelledBy} aria-describedby={describedBy} tabIndex={-1} onKeyDown={onKeyDown}>
+      <section
+        ref={dialogRef}
+        className={('modal ' + className).trim()}
+        role="dialog"
+        aria-modal="true"
+        data-history-owned={historyOwned ? 'true' : undefined}
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+      >
         {children}
       </section>
     </div>,
-    document.body
+    document.body,
   );
 }
