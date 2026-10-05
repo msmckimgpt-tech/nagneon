@@ -2,6 +2,7 @@ const {app,BrowserWindow,desktopCapturer,session,ipcMain,globalShortcut,screen,d
 const {join}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {createStudioSession}=require('./session.cjs');
+const {startStableStudio}=require('./studio-port.cjs');
 const {packagedRuntime,profileDirectory}=require('./runtime.cjs');
 const {AccountLogin}=require('./account-login.cjs');
 const {createOverlayInput}=require('./overlay-input.cjs');
@@ -9,6 +10,7 @@ const {applyOverlayPrivacy}=require('./overlay-privacy.cjs');
 const storage=require('./storage.cjs');
 const recovery=require('./profile-recovery.cjs');
 const profile=profileDirectory(process.argv);
+const background=require('./background-observation.cjs').createBackgroundObservation(process.argv);
 const storageDefaults=storage.storagePaths(app.getPath('appData'));
 try{app.setPath('userData',recovery.requestProfile(app.getPath('appData'),profile).profile);}
 catch{app.setPath('userData',storageDefaults.defaultProfile);}
@@ -37,6 +39,7 @@ async function openOverlay(){
 }
 if(!app.requestSingleInstanceLock())app.quit();else{
   const shutdown=require('./graceful-quit.cjs').installGracefulQuit(app,async()=>{
+    background.dispose();
     globalShortcut.unregisterAll();account?.dispose();
     const active=service||await startingService?.catch(()=>undefined);
     await active?.close();
@@ -46,8 +49,8 @@ if(!app.requestSingleInstanceLock())app.quit();else{
         app.relaunch();
       }catch(error){dialog.showErrorBox('저장 위치 변경 실패',error.message+'\n기존 기록은 원래 위치에 보존되어 있습니다. 앱을 다시 실행해주세요.');}
     }
-  });
-  app.on('second-instance',()=>{if(!shutdown.quitting&&main&&!main.isDestroyed()){main.show();main.focus();}});
+  },{onStage:phase=>service?.studio.trace.lifecycle('electron',phase)});
+  app.on('second-instance',(_event,argv)=>{if(!shutdown.quitting&&background.open(argv||[])&&main&&!main.isDestroyed()){main.show();main.focus();}});
   app.whenReady().then(async()=>{
     const prepared=await recovery.prepareProfile({appData:app.getPath('appData'),explicitProfile:profile,dialog});
     if(!prepared||shutdown.quitting){app.quit();return;}
@@ -55,13 +58,15 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     if(!app.isPackaged){try{process.loadEnvFile(join(__dirname,'../.env'));}catch{}}
     const {startServer}=await import(pathToFileURL(join(__dirname,'../server/index.js')).href);
     if(shutdown.quitting)return;
-    startingService=startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port:0,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}});
+    startingService=startStableStudio({profile:app.getPath('userData'),start:port=>startServer({providerSwitchAllowed:()=>!account?.active,openExternalAuth:url=>shell.openExternal(url),port,dataDir:join(app.getPath('userData'),'data'),runtime:app.isPackaged?packagedRuntime(process.resourcesPath,{cache:profile?join(profile,'runtime'):join(app.getPath('appData'),'..','Local','Nagneon','runtime')}):{}})});
     service=await startingService;
+    background.attach(service.studio);
     service.studio.on('state',syncOverlayPrivacy);
     if(shutdown.quitting)return;
     studioSession=createStudioSession(session,service);
-    main=new BrowserWindow({width:1440,height:980,minWidth:420,minHeight:650,title:'Nagneon · 나그네온',icon:join(__dirname,'../dist/nagneon-icon.png'),backgroundColor:'#10151e',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);
+    main=new BrowserWindow({...background.windowOptions(),width:1440,height:980,minWidth:420,minHeight:650,title:'Nagneon · 나그네온',icon:join(__dirname,'../dist/nagneon-icon.png'),backgroundColor:'#10151e',autoHideMenuBar:true,webPreferences:{session:studioSession,preload,contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});secure(main);
     require('./navigation.cjs').attachNavigationHistory(main);
+    require('./subscription-voice-guard.cjs').attachSubscriptionVoiceGuard({window:main,voice:service.nativeAudio.subscription});
     const provider=service.studio.provider;
     ipcMain.handle('storage:status',event=>{trusted(event,true);return {profile:app.getPath('userData'),defaultProfile:storageDefaults.defaultProfile,isolated:!!profile};});
     ipcMain.handle('speech:raw',async(event,entry)=>{
@@ -94,6 +99,9 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     ipcMain.on('overlay:interactive',(event,value)=>{if(overlay&&!overlay.isDestroyed()&&event.sender===overlay.webContents&&event.senderFrame===overlay.webContents.mainFrame)overlayInput.interactive(value);});
     globalShortcut.register('CommandOrControl+Shift+F10',through);
     main.on('closed',()=>{closeOverlay();app.quit();});
-    if(await networkRecovery.load(main,service.url+'/')&&!shutdown.quitting&&!main.isDestroyed())main.show();
-  }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});
+    if(await networkRecovery.load(main,service.url+'/')&&!shutdown.quitting&&!main.isDestroyed()){
+      const observed=await background.ready({app,window:main,profile:app.getPath('userData')});
+      if(!observed&&!shutdown.quitting&&!main.isDestroyed())main.show();
+    }
+  }).catch(error=>{console.error(error.message);if(shutdown.quitting)return;if(background.startupFailure({app,profile:app.getPath('userData')}))return;dialog.showErrorBox('Nagneon 시작 오류',error.message+'\n\n저장 기록을 임의로 초기화하지 않았습니다. data 폴더의 원본과 백업을 보존한 상태로 오류 내용을 확인해주세요.');app.quit();});
 }

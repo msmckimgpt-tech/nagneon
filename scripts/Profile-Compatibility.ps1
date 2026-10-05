@@ -1,3 +1,4 @@
+. (Join-Path $PSScriptRoot 'Package-Capabilities.ps1')
 function Assert-NagneonResolvedStoragePath {
     param([string]$Requested, [string]$Resolved)
     if ($Resolved.StartsWith('\\?\UNC\')) { $Resolved = '\\' + $Resolved.Substring(8) }
@@ -42,14 +43,25 @@ namespace Nagneon {
 }
 
 function Assert-NagneonProfileCompatibility {
-    param([Parameter(Mandatory=$true)][string]$Profile, [Parameter(Mandatory=$true)][string]$AppVersion)
+    param([Parameter(Mandatory=$true)][string]$Profile, [Parameter(Mandatory=$true)][string]$AppVersion, [string]$PackageFolder, [string]$ExpectedReceiptSha256)
     Assert-NagneonNativeStorageView -Profile $Profile
-    if ($AppVersion -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw 'Cannot identify the application version. Reapply a verified package.' }
-    $targetVersion = [version]($Matches[1] + '.' + $Matches[2] + '.' + $Matches[3])
+    Assert-NagneonVersionString $AppVersion
+    $targetVersion = [version]$AppVersion
+    $capability = if ($PackageFolder) { Get-NagneonPackageCapabilities $PackageFolder $AppVersion $ExpectedReceiptSha256 } else { $null }
     $formatFile = Join-Path $Profile 'data/profile-format.json'
-    if (Test-Path -LiteralPath $formatFile -PathType Leaf) {
-        $format = Get-Content -LiteralPath $formatFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (Test-Path -LiteralPath $formatFile) {
+        if (-not (Test-Path -LiteralPath $formatFile -PathType Leaf) -or ((Get-Item -LiteralPath $formatFile -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -or (Get-Item -LiteralPath $formatFile).Length -gt 65536) { throw 'Invalid profile format marker. Preserve the profile and backups.' }
+        $formatJson = Get-Content -LiteralPath $formatFile -Raw -Encoding UTF8
+        if (-not $formatJson.TrimStart().StartsWith('{')) { throw 'Profile format marker must be a JSON object.' }
+        $format = $formatJson | ConvertFrom-Json
+        foreach ($field in @('minReader','minAppVersion')) {
+            if (-not @($format.PSObject.Properties | Where-Object { $_.Name -ceq $field }).Count) { throw 'Invalid profile format marker. Preserve the profile and backups.' }
+        }
+        Assert-NagneonSafeInteger $format.minReader 2
+        Assert-NagneonVersionString $format.minAppVersion
         if ($targetVersion -lt [version]$format.minAppVersion) { throw "This profile requires Nagneon $($format.minAppVersion) or later. Preserve it and use a separate pre-update backup for rollback." }
+        if (-not $capability) { throw 'Cannot verify the packaged profile reader. Rebuild a verified package; existing records were not changed.' }
+        if ($format.minReader -gt $capability.profileReader) { throw "This profile requires reader $($format.minReader); the package supports reader $($capability.profileReader). Preserve it and use a compatible package or a separate pre-update backup." }
     }
     if ($targetVersion -ge [version]'0.1.4') { return }
     $worldFile = Join-Path $Profile 'data/world.json'

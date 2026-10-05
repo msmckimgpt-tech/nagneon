@@ -3,29 +3,30 @@
 const LIMIT=120;
 const count=n=>Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
 const elapsed=(a,b)=>Math.max(0,b-a);
-const reasons=new Set(['expired','absent','disabled','blocked','duplicate','spoiler','advice','pace','cleared','delivery-error']);
+const reasons=new Set(['expired','absent','disabled','blocked','duplicate','spoiler','advice','pace','cleared','delivery-error','manager-role']);
 const outcomes=new Set(['accepted','stale-screen','stopped','superseded','episode-ended','transcription-review','error']);
 const skips=new Set(['busy','audience-arrival','interval','backoff','older-window','unchanged-input','ended-screen','stale-screen','stopped','superseded','episode-ended']);
 export class ReactionDiagnostics {
-  constructor(now=Date.now){this.now=now;this.serial=0;this.reset();}
+  constructor(now=Date.now,onChange=()=>{}){this.now=now;this.onChange=onChange;this.serial=0;this.reset();}
+  changed(row){try{this.onChange(row);}catch{/* Diagnostics must not change reaction admission. */}}
   reset(){this.since=this.now();this.rows=[];this.skips={};this.total=0;}
   begin({hasSpeech=false,frameCount=0,present=0,eligible=0,eligibleViewers=0,lurkingEligible=0,company=null,latestFrameAt}={}){
     const row={id:++this.serial,startedAt:this.now(),hasSpeech:!!hasSpeech,frameCount:count(frameCount),present:count(present),eligible:count(eligible),eligibleViewers:count(eligibleViewers),lurkingEligible:count(lurkingEligible),company:['idle','watching'].includes(company)?company:null,latestFrameAgeMs:Number.isFinite(latestFrameAt)?elapsed(latestFrameAt,this.now()):null,modelMs:null,generated:null,admitted:0,delivered:0,pending:0,rejected:{},state:'generating',firstDeliveryMs:null};
     this.rows.push(row);this.rows=this.rows.slice(-LIMIT);this.total++;return row.id;
   }
   row(id){return this.rows.find(row=>row.id===id);}
-  generated(id,n){const row=this.row(id);if(!row)return;row.generated=count(n);row.modelMs=elapsed(row.startedAt,this.now());}
-  reject(id,reason,n=1){const row=this.row(id);if(!row||!reasons.has(reason))return;row.rejected[reason]=(row.rejected[reason]||0)+count(n);}
-  admit(id){const row=this.row(id);if(row){row.admitted++;row.pending++;}}
+  generated(id,n){const row=this.row(id);if(!row)return;row.generated=count(n);row.modelMs=elapsed(row.startedAt,this.now());this.changed(row);}
+  reject(id,reason,n=1){const row=this.row(id);if(!row||!reasons.has(reason))return;row.rejected[reason]=(row.rejected[reason]||0)+count(n);if(count(n))this.changed(row);}
+  admit(id){const row=this.row(id);if(row){row.admitted++;row.pending++;this.changed(row);}}
   drop(id,reason){const row=this.row(id);if(!row||row.pending<=0)return;row.pending--;this.reject(id,reason);}
-  delivered(id){const row=this.row(id);if(!row||row.pending<=0)return;row.pending--;row.delivered++;row.firstDeliveryMs??=elapsed(row.startedAt,this.now());}
-  finish(id,outcome){const row=this.row(id);if(!row)return;row.modelMs??=elapsed(row.startedAt,this.now());row.state=outcomes.has(outcome)?outcome:'error';row.finishedAt=this.now();}
+  delivered(id){const row=this.row(id);if(!row||row.pending<=0)return;row.pending--;row.delivered++;row.firstDeliveryMs??=elapsed(row.startedAt,this.now());this.changed(row);}
+  finish(id,outcome){const row=this.row(id);if(!row)return;row.modelMs??=elapsed(row.startedAt,this.now());row.state=outcomes.has(outcome)?outcome:'error';row.finishedAt=this.now();this.changed(row);}
   skip(reason){if(skips.has(reason))this.skips[reason]=(this.skips[reason]||0)+1;}
   snapshot(queue=[]){
     // Legacy moderation and special-mode transitions can clear the shared queue.
     // Account for removal without retaining a copy of a private chat payload.
     const pending=new Map();for(const m of queue)if(m.diagnosticId)pending.set(m.diagnosticId,(pending.get(m.diagnosticId)||0)+1);
-    for(const row of this.rows){const left=pending.get(row.id)||0;if(row.pending>left){this.reject(row.id,'cleared',row.pending-left);row.pending=left;}}
+    for(const row of this.rows){const left=pending.get(row.id)||0;if(row.pending>left){const removed=row.pending-left;row.pending=left;this.reject(row.id,'cleared',removed);}}
     const rows=structuredClone(this.rows),latencies=rows.filter(r=>r.generated!==null).map(r=>r.modelMs).filter(Number.isFinite).sort((a,b)=>a-b);
     const firstChatWaits=rows.filter(r=>r.delivered>0&&Number.isFinite(r.firstDeliveryMs)&&Number.isFinite(r.modelMs)).map(r=>Math.max(0,r.firstDeliveryMs-r.modelMs)).sort((a,b)=>a-b);
     const summary={attempts:this.total,retained:rows.length,modelSilent:rows.filter(r=>r.generated===0&&r.state==='accepted').length,generated:0,delivered:0,pending:0,rejected:{},outcomes:{},modelP50Ms:latencies.length?latencies[Math.floor((latencies.length-1)*.5)]:null,modelP95Ms:latencies.length?latencies[Math.ceil(latencies.length*.95)-1]:null};

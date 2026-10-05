@@ -2,7 +2,7 @@
 
 ## 현재 배포와 빌드
 
-현재 공개 버전은 [0.1.8](RELEASE-0.1.8.md)입니다. 기본 앱과 선택형 런타임의 크기·빌드 방법은 [배포 용량](DISTRIBUTION-SIZE.md)을 따릅니다. `npm run package:windows`는 경량 앱을 기본으로 만들며 로컬 음성 모델 준비가 필요 없습니다. 전체 동봉이 필요할 때만 `-- --bundled --speech=<검증된 런타임 폴더>`를 지정합니다.
+현재 공개 버전과 다운로드는 [최신 릴리즈](https://github.com/msmckimgpt-tech/nagneon/releases/latest)에서 확인합니다. 앱 하단 버전은 설치한 패키지 버전과 일치해야 합니다. [구독 음성 후속 작업](SUBSCRIPTION-AUDIO-FOLLOWUPS.md)에 실제 사용 결과와 남은 제한을 기록합니다. 기본 앱과 선택형 런타임의 크기·빌드 방법은 [배포 용량](DISTRIBUTION-SIZE.md)을 따릅니다. `npm run package:windows`는 경량 앱을 기본으로 만들며 로컬 음성 모델 준비가 필요 없습니다. 전체 동봉이 필요할 때만 `-- --bundled --speech=<검증된 런타임 폴더>`를 지정합니다.
 
 아래 날짜별 기록과 예전 명령은 과거 배포의 검증 이력입니다.
 

@@ -56,7 +56,10 @@ export class CultureLearning {
     this.interrupt();
     this.change(d => { d.sources = origins.map(origin => d.sources.find(s => s.origin === origin) || source.parse({ origin, nextAt: this.s.now() + 60000 })); });
   }
-  snapshot() { return { active: this.active?.origin || null, error: this.storageError, sources: this.data.sources.map(({ origin, nextAt, checkedAt, analyzedAt, error }) => ({ origin, nextAt, checkedAt, analyzedAt, error })) }; }
+  snapshot() { return { active: this.active?.origin || null, error: this.storageError, sources: this.data.sources.map(({ origin, nextAt, checkedAt, analyzedAt, error, analysis }) => ({ origin, nextAt, checkedAt, analyzedAt, error,
+    patternCount: analysis?.patterns.length || 0,
+    status: error ? 'unavailable' : !analysis ? 'uncollected' : !analysis.patterns.length ? 'no-patterns' : this.s.now() - analyzedAt >= 7 * 24 * HOUR || analyzedAt > this.s.now() ? 'stale' : 'ready',
+  })) }; }
   interrupt() { this.lastInput = this.s.now(); this.active?.controller.abort(); }
   close() { this.closed = true; this.interrupt(); return this.active?.promise; }
   canUse(id) {
@@ -120,7 +123,7 @@ export class CultureLearning {
   context(personas, surface = 'live') {
     const s = this.s;
     if (!s.settings.memesEnabled) return { enabled: false };
-    const rows = this.data.sources.filter(r => s.settings.cultureDomains.includes(r.origin) && r.analysis && s.now() >= r.analyzedAt && s.now() - r.analyzedAt < 7 * 24 * HOUR);
+    const rows = this.data.sources.filter(r => s.settings.cultureDomains.includes(r.origin) && r.analysis?.patterns.length && !r.error && s.now() >= r.analyzedAt && s.now() - r.analyzedAt < 7 * 24 * HOUR);
     const slot = Math.floor(s.now() / 120000);
     const eligible = personas.filter(p => !p.system && p.id !== s.settings.managerId && this.canUse(p.id) && hash(`${p.id}:${slot}:${surface}`) % 5 === 0);
     const chosen = eligible[hash(`${slot}:${surface}`) % Math.max(1, eligible.length)];

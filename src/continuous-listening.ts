@@ -1,3 +1,4 @@
+import { SubscriptionVoiceStream } from './subscription-voice.ts';
 import { createCaptureContinuity } from '../shared/speech-listening.js';
 import { SpeechListeningController } from '../server/speech-listening-controller.js';
 import {
@@ -23,7 +24,12 @@ export class ContinuousListening {
   readonly controller: SpeechListeningController;
   rawParts: Int16Array[] = [];
   rawStart = 0;
-  rawQueue: { sequence: number; startFrame: number; samples: Int16Array }[] = [];
+  rawQueue: {
+    sequence: number;
+    startFrame: number;
+    samples: Int16Array;
+    capture?: SpeechCapture;
+  }[] = [];
   segments: Pending[] = [];
   captures = new Map<number, SpeechCapture>();
   rawSequence = 0;
@@ -33,33 +39,43 @@ export class ContinuousListening {
   uploading = false;
   captureStopped = false;
   stoppingCapture = false;
+  captureFailure: Error | null = null;
   closed = false;
   backlogExceeded = false;
   storageError = false;
+  storageFull = false;
   disposeCapture: (() => void) | null = null;
+  subscription: SubscriptionVoiceStream | null = null;
   retryTimer: ReturnType<typeof setInterval> | null = null;
   finishTimer: ReturnType<typeof setInterval> | null = null;
   lastErrorAt = 0;
   stoppedAt = 0;
+  startController = new AbortController();
   readonly drained: Promise<void>;
   resolveDrain: (() => void) | null = null;
   readonly options: {
+    inputSource?: 'microphone' | 'system-output';
+    remote?: boolean;
+    signal?: AbortSignal;
     sessionId: string;
     track: MediaStreamTrack;
     onLevel: (value: number) => void;
     onTranscript: (text: string, capture: SpeechCapture, cues?: { delivery?: string }) => void;
     onError: (message: string) => void;
-    onCaptureFailure?: () => void;
+    onCaptureFailure?: (error?: Error) => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
   };
   constructor(options: {
+    inputSource?: 'microphone' | 'system-output';
+    remote?: boolean;
+    signal?: AbortSignal;
     sessionId: string;
     track: MediaStreamTrack;
     onLevel: (value: number) => void;
     onTranscript: (text: string, capture: SpeechCapture, cues?: { delivery?: string }) => void;
     onError: (message: string) => void;
-    onCaptureFailure?: () => void;
+    onCaptureFailure?: (error?: Error) => void;
     onStorageFailure?: () => void;
     attachScreen?: (capture: SpeechCapture) => void;
   }) {
@@ -140,30 +156,107 @@ export class ContinuousListening {
       },
     });
   }
+  get endpoint(): 'native-audio' | 'subscription-sound' {
+    return this.options.inputSource === 'system-output' ? 'subscription-sound' : 'native-audio';
+  }
   async start() {
+    const signal = AbortSignal.any([
+      this.startController.signal,
+      ...(this.options.signal ? [this.options.signal] : []),
+    ]);
+    signal.throwIfAborted();
+    if (this.options.remote) {
+      const response = await fetch(`/api/${this.endpoint}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+        body: JSON.stringify({
+          sessionId: this.options.sessionId,
+          inputEpoch: this.inputEpoch,
+          startedAt: this.segmenter.wallStartedAt,
+        }),
+        signal,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '원격 원음 연결을 시작하지 못했습니다.');
+      this.segmenter.wallStartedAt = result.startedAt;
+      if (result.transport === 'subscription') {
+        this.subscription = new SubscriptionVoiceStream({
+          endpoint: this.endpoint,
+          inputEpoch: this.inputEpoch,
+          signal,
+          onRecoveryError: (message) => this.report(message),
+          onError: (message) => {
+            this.captureFailure = new Error(message);
+            this.report(message);
+            this.stopCapture();
+            this.options.onCaptureFailure?.(this.captureFailure);
+          },
+        });
+        try {
+          await this.subscription.connect();
+        } catch (error) {
+          this.subscription.close('transport-failed');
+          throw error;
+        }
+      }
+    }
+    signal.throwIfAborted();
+    let captureReady = !this.subscription;
+    const startingFrames: AudioFrames[] = [];
+    if (this.subscription) this.segmenter.wallStartedAt = Date.now();
     this.disposeCapture = await startContinuousMicrophone({
       track: this.options.track,
       onFrames: (frames) => {
         try {
-          this.acceptFrames(frames);
+          if (!captureReady) {
+            startingFrames.push(frames);
+            if (startingFrames.reduce((n, part) => n + part.samples.length, 0) > 32000)
+              throw new Error('마이크 시작 시각 등록이 지연되어 중지했습니다.');
+          } else this.acceptFrames(frames);
         } catch (error) {
+          this.captureFailure =
+            error instanceof Error ? error : new Error('연속 입력을 시작하지 못했습니다.');
           this.report(error instanceof Error ? error.message : '마이크 연속 캡처 오류');
           this.stopCapture();
-          this.options.onCaptureFailure?.();
+          this.options.onCaptureFailure?.(this.captureFailure);
         }
       },
       onFailure: (error) => {
+        this.captureFailure = error;
         this.report(error.message);
         this.stopCapture();
-        this.options.onCaptureFailure?.();
+        this.options.onCaptureFailure?.(error);
       },
     });
+    // A reader can fail before its asynchronously returned disposer is assigned.
+    // Release it here as well and preserve that cause instead of a later RTP error.
+    if (this.captureStopped || this.closed || signal.aborted) {
+      this.disposeCapture?.();
+      this.disposeCapture = null;
+      throw this.captureFailure || new Error('음성 입력 시작을 취소했습니다.');
+    }
+    if (this.subscription) {
+      try {
+        await this.subscription.attach(this.options.track);
+        await this.subscription.registerClock(this.segmenter.wallStartedAt);
+        captureReady = true;
+        for (const frames of startingFrames) this.acceptFrames(frames);
+        startingFrames.length = 0;
+        void this.subscription.recover();
+      } catch (error) {
+        this.captureFailure =
+          error instanceof Error ? error : new Error('구독 음성 입력을 연결하지 못했습니다.');
+        this.stopCapture();
+        throw error;
+      }
+    }
     if (this.closed) {
       this.disposeCapture();
       this.disposeCapture = null;
       return this;
     }
-    this.retryTimer = setInterval(() => this.controller.retryFailed(), 5000);
+    if (!this.options.remote)
+      this.retryTimer = setInterval(() => this.controller.retryFailed(), 5000);
     return this;
   }
   report(message: string) {
@@ -173,7 +266,12 @@ export class ContinuousListening {
   }
   acceptFrames(frames: AudioFrames) {
     if (this.captureStopped) return;
-    const rms = this.segmenter.add(frames);
+    let rms: number | undefined;
+    if (this.options.remote) {
+      let power = 0;
+      for (const sample of frames.samples) power += (sample / 32768) ** 2;
+      rms = frames.samples.length ? Math.sqrt(power / frames.samples.length) : 0;
+    } else rms = this.segmenter.add(frames);
     this.options.onLevel(Math.min(1, (rms || 0) * 8));
     this.rawParts.push(frames.samples.slice());
     const count = this.rawParts.reduce((n, part) => n + part.length, 0);
@@ -189,7 +287,17 @@ export class ContinuousListening {
       offset += part.length;
     }
     this.rawParts = [];
-    const entry = { sequence: ++this.rawSequence, startFrame: this.rawStart, samples };
+    const capture = {
+      startedAt: this.segmenter.wallStartedAt + (this.rawStart / RATE) * 1000,
+      endedAt: this.segmenter.wallStartedAt + ((this.rawStart + count) / RATE) * 1000,
+    };
+    if (this.options.remote) this.options.attachScreen?.(capture);
+    const entry = {
+      sequence: ++this.rawSequence,
+      startFrame: this.rawStart,
+      samples,
+      ...(this.options.remote ? { capture } : {}),
+    };
     this.rawStart += count;
     this.continuity.append({
       sequence: entry.sequence,
@@ -210,7 +318,7 @@ export class ContinuousListening {
     }
   }
   async uploadRaw() {
-    if (this.uploading || this.closed) return;
+    if (this.uploading || this.closed || this.storageFull) return;
     this.uploading = true;
     let delay = 1000;
     try {
@@ -219,7 +327,7 @@ export class ContinuousListening {
         try {
           const append =
             typeof window === 'undefined' ? undefined : window.backseat?.appendSpeechRaw;
-          let result: { durableThrough: number };
+          let result: { durableThrough: number; storageNearlyFull?: boolean };
           if (append) {
             const bytes = new Uint8Array(
               entry.samples.buffer,
@@ -233,8 +341,23 @@ export class ContinuousListening {
               startFrame: entry.startFrame,
               frameCount: entry.samples.length,
               data: bytes,
+              ...(entry.capture ? { capture: entry.capture } : {}),
             });
           } else {
+            if (entry.capture) {
+              const contextResponse = await fetch(`/api/${this.endpoint}/context`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+                body: JSON.stringify({
+                  sessionId: this.options.sessionId,
+                  inputEpoch: this.inputEpoch,
+                  startFrame: entry.startFrame,
+                  capture: entry.capture,
+                }),
+              });
+              if (!contextResponse.ok)
+                this.report('발언 당시 화면 근거를 전달하지 못했습니다. 원음 저장은 계속합니다.');
+            }
             const response = await fetch('/api/audio/raw', {
               method: 'POST',
               headers: {
@@ -259,8 +382,24 @@ export class ContinuousListening {
           this.storageError = false;
           this.releaseSegments();
           delay = 1000;
+          if (result.storageNearlyFull && !this.captureStopped) {
+            this.options.onError(
+              '원음 보관 용량이 거의 가득 차서 음성 입력을 중지했습니다. 마지막 원음을 보존하고 있습니다. 지난 원음을 정리하거나 보관 용량을 늘려주세요.',
+            );
+            this.stopCapture();
+            this.options.onStorageFailure?.();
+          }
         } catch (error) {
           this.storageError = true;
+          if (error instanceof Error && /원음 보관 용량이 가득/.test(error.message)) {
+            this.storageFull = true;
+            this.stopCapture();
+            this.options.onStorageFailure?.();
+            this.options.onError(
+              error.message + ' 아직 저장하지 못한 마지막 원음이 메모리에 남아 있습니다.',
+            );
+            return;
+          }
           this.report(
             (error instanceof Error ? error.message : '마이크 원음 저장 실패') +
               ' 원음을 메모리에 유지하며 다시 시도합니다.',
@@ -300,10 +439,22 @@ export class ContinuousListening {
   stopCapture() {
     if (this.captureStopped || this.stoppingCapture) return;
     this.stoppingCapture = true;
+    const reason =
+      this.subscription?.stopReason || (this.captureFailure ? 'capture-failed' : 'capture-stopped');
+    this.subscription?.close(reason);
+    this.startController.abort();
     const dispose = this.disposeCapture;
     this.disposeCapture = null;
     dispose?.();
     this.captureStopped = true;
+    if (this.options.remote)
+      void fetch(`/api/${this.endpoint}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Backseat-Client': 'studio' },
+        body: JSON.stringify({ inputEpoch: this.inputEpoch, reason }),
+      }).catch(() =>
+        this.report('원격 청취 중단을 확인하지 못했습니다. 방송 종료로 연결을 중단해주세요.'),
+      );
     this.segmenter.finish();
     this.flushRaw();
     this.stoppedAt = Date.now();

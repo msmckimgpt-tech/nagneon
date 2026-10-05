@@ -1,75 +1,238 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {readFileSync} from 'node:fs';
+import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as speechFlow from '../src/speech-flow.ts';
+import * as microphoneDevice from '../src/microphone-device.ts';
 
-const compiled=ts.transpileModule(readFileSync(new URL('../src/useMedia.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-const turn=()=>new Promise(resolve=>setImmediate(resolve));
+const compiled = ts.transpileModule(
+  readFileSync(new URL('../src/useMedia.ts', import.meta.url), 'utf8'),
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+).outputText;
+const turn = () => new Promise((resolve) => setImmediate(resolve));
 
-function harness({fetch,reactApi}){
-  const effects=[],errors=[];
-  const react={
-    useRef:value=>({current:value}),
-    useState:value=>[value,()=>{}],
-    useEffect:effect=>{effects.push(effect);}
+function harness({ fetch, reactApi, clock, source = compiled }) {
+  const effects = [],
+    errors = [];
+  const react = {
+    useRef: (value) => ({ current: value }),
+    useState: (value) => [value, () => {}],
+    useEffect: (effect) => {
+      effects.push(effect);
+    },
   };
-  class TemporalFrames{
-    constructor(){this.sessionId=null;this.sourceId=null;}
-    reset(sessionId=null,sourceId=null){this.sessionId=sessionId;this.sourceId=sourceId;}
-    window(){return undefined;}speechWindow(){return undefined;}acknowledge(){}
+  class TemporalFrames {
+    constructor() {
+      this.sessionId = null;
+      this.sourceId = null;
+    }
+    reset(sessionId = null, sourceId = null) {
+      this.sessionId = sessionId;
+      this.sourceId = sourceId;
+    }
+    window() {
+      return undefined;
+    }
+    speechWindow() {
+      return undefined;
+    }
+    acknowledge() {}
   }
-  class ClipUploads{dispose(){}add(){}}
-  const imports={
+  class ClipUploads {
+    dispose() {}
+    add() {}
+  }
+  const imports = {
     react,
-    './useSystemSound':{useSystemSound:()=>({status:'idle',level:0})},
-    './useSoundAnalysisSource':{useSoundAnalysisSource:source=>{assert.equal(source,null);return null;}},
-    './useClipBuffer':{useClipBuffer:()=>({buffering:false,takeAt:async()=>null})},
-    './clip-uploads':{ClipUploads},
-    './api':{api:reactApi},
-    './speech-flow':speechFlow,
-    './continuous-listening.ts':{ContinuousListening:class{}},
-    './temporal-frames':{TemporalFrames},
-    './temporal-capture':{startTemporalCapture:()=>()=>{}},
-    './capture-preparation':{prepareCapture:async()=>{throw new Error('not used');},releaseCapture:()=>{}}
+    './useSystemSound': { useSystemSound: () => ({ status: 'idle', level: 0 }) },
+    './useSoundAnalysisSource': {
+      useSoundAnalysisSource: (source) => {
+        assert.equal(source, null);
+        return null;
+      },
+    },
+    './useClipBuffer': { useClipBuffer: () => ({ buffering: false, takeAt: async () => null }) },
+    './clip-uploads': { ClipUploads },
+    './api': { api: reactApi },
+    './speech-flow': speechFlow,
+    './microphone-device': microphoneDevice,
+    './continuous-listening.ts': { ContinuousListening: class {} },
+    './temporal-frames': { TemporalFrames },
+    './temporal-capture': { startTemporalCapture: () => () => {} },
+    './capture-preparation': {
+      prepareCapture: async () => {
+        throw new Error('not used');
+      },
+      releaseCapture: () => {},
+    },
   };
-  const module={exports:{}};
-  const mediaDevices={addEventListener(){},removeEventListener(){},getUserMedia:async()=>{throw new Error('not used');},getDisplayMedia:async()=>{throw new Error('not used');}};
-  vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{assert.ok(id in imports,`unexpected import ${id}`);return imports[id];},fetch,navigator:{mediaDevices},window:{},MediaRecorder:{isTypeSupported:()=>true},AudioContext:class{},AbortController,DOMException,Error,Blob,Float32Array,Date,crypto,structuredClone,setInterval,clearInterval,setTimeout,clearTimeout});
-  const state={running:true,sessionId:'live-session',settings:{mode:'live',intervalSeconds:5,autoHighlights:false,clipBufferEnabled:false,speechDevice:'cpu'},busy:false,clips:[]};
-  const media=module.exports.useMedia(state,message=>errors.push(message));
-  const deliveryEffect=effects.find(effect=>String(effect).includes('nextAttemptAt')&&String(effect).includes('pendingSpeech'));
-  assert.ok(deliveryEffect,'delivery effect not found');
-  return {media,deliveryEffect,errors};
+  const module = { exports: {} };
+  const mediaDevices = {
+    addEventListener() {},
+    removeEventListener() {},
+    getUserMedia: async () => {
+      throw new Error('not used');
+    },
+    getDisplayMedia: async () => {
+      throw new Error('not used');
+    },
+  };
+  vm.runInNewContext(source, {
+    module,
+    exports: module.exports,
+    require: (id) => {
+      assert.ok(id in imports, `unexpected import ${id}`);
+      return imports[id];
+    },
+    fetch,
+    navigator: { mediaDevices },
+    window: {},
+    MediaRecorder: { isTypeSupported: () => true },
+    AudioContext: class {},
+    AbortController,
+    DOMException,
+    Error,
+    Blob,
+    Float32Array,
+    Date: clock
+      ? class extends Date {
+          static now() {
+            return clock.now;
+          }
+        }
+      : Date,
+    crypto,
+    structuredClone,
+    setInterval: clock ? (fn) => ((clock.poll = fn), 1) : setInterval,
+    clearInterval: clock
+      ? () => {
+          clock.poll = null;
+        }
+      : clearInterval,
+    setTimeout,
+    clearTimeout,
+  });
+  const state = {
+    running: true,
+    sessionId: 'live-session',
+    settings: {
+      mode: 'live',
+      intervalSeconds: 5,
+      autoHighlights: false,
+      clipBufferEnabled: false,
+      speechDevice: 'cpu',
+    },
+    busy: false,
+    clips: [],
+    nativeAudio: { applied: 0 },
+    subscriptionSound: { applied: 0 },
+  };
+  const media = module.exports.useMedia(state, (message) => errors.push(message));
+  const deliveryEffect = effects.find(
+    (effect) =>
+      String(effect).includes('nextAttemptAt') && String(effect).includes('pendingSpeech'),
+  );
+  assert.ok(deliveryEffect, 'delivery effect not found');
+  const wakeEffect = effects.find(
+    (effect) => String(effect).includes('!state.busy') && String(effect).includes('wake.current()'),
+  );
+  return { media, deliveryEffect, errors, state, wakeEffect };
 }
 
-test('failed speech delivery still lets the audience consume already accepted pending speech',async()=>{
-  let speechAttempts=0,reactCalls=0;
-  const h=harness({
-    fetch:async url=>{assert.equal(url,'/api/speech');speechAttempts++;return {ok:false,json:async()=>({error:'speech inbox full'})};},
-    reactApi:async path=>{assert.equal(path,'react');reactCalls++;return {ok:true};}
+test('failed speech delivery still lets the audience consume already accepted pending speech', async () => {
+  let speechAttempts = 0,
+    reactCalls = 0;
+  const h = harness({
+    fetch: async (url) => {
+      assert.equal(url, '/api/speech');
+      speechAttempts++;
+      return { ok: false, json: async () => ({ error: 'speech inbox full' }) };
+    },
+    reactApi: async (path) => {
+      assert.equal(path, 'react');
+      reactCalls++;
+      return { ok: true };
+    },
   });
   h.media.say('밀린 발언');
-  const cleanup=h.deliveryEffect();
-  for(let i=0;i<6&&reactCalls===0;i++)await turn();
+  const cleanup = h.deliveryEffect();
+  for (let i = 0; i < 6 && reactCalls === 0; i++) await turn();
   cleanup?.();
-  assert.equal(speechAttempts,1);
-  assert.equal(reactCalls,1);
-  assert.ok(h.errors.some(message=>/speech inbox full/.test(message)));
+  assert.equal(speechAttempts, 1);
+  assert.equal(reactCalls, 1);
+  assert.ok(h.errors.some((message) => /speech inbox full/.test(message)));
 });
 
-test('a successful delivery and reaction still use the normal single-cycle path',async()=>{
-  let speechAttempts=0,reactCalls=0;
-  const h=harness({
-    fetch:async url=>{assert.equal(url,'/api/speech');speechAttempts++;return {ok:true,json:async()=>({ok:true})};},
-    reactApi:async path=>{assert.equal(path,'react');reactCalls++;return {ok:true};}
+test('subscription microphone and system receipts wake reaction without duplicate in-flight requests or post-stop work', async () => {
+  const clock = { now: 0, poll: null },
+    calls = [];
+  let finish;
+  const h = harness({
+    clock,
+    fetch: async () => {
+      throw Error('subscription receipt must bypass local outbox');
+    },
+    reactApi: async () => {
+      calls.push(clock.now);
+      if (calls.length === 2)
+        await new Promise((resolve) => {
+          finish = resolve;
+        });
+      return { ok: true };
+    },
+  });
+  const cleanup = h.deliveryEffect();
+  await turn();
+  assert.deepEqual(calls, [0]);
+  clock.now = 100;
+  h.state.nativeAudio.applied++;
+  h.wakeEffect();
+  await turn();
+  assert.deepEqual(calls, [0, 100]);
+  clock.now = 200;
+  h.state.subscriptionSound.applied++;
+  h.wakeEffect();
+  clock.poll();
+  await turn();
+  assert.equal(calls.length, 2, 'only one request may run');
+  finish();
+  await turn();
+  h.wakeEffect();
+  await turn();
+  assert.deepEqual(
+    calls,
+    [0, 100, 200],
+    'system dialogue must wake after the busy request finishes',
+  );
+  cleanup();
+  clock.now = 300;
+  h.state.nativeAudio.applied++;
+  h.wakeEffect();
+  await turn();
+  assert.equal(calls.length, 3);
+});
+
+test('a successful delivery and reaction still use the normal single-cycle path', async () => {
+  let speechAttempts = 0,
+    reactCalls = 0;
+  const h = harness({
+    fetch: async (url) => {
+      assert.equal(url, '/api/speech');
+      speechAttempts++;
+      return { ok: true, json: async () => ({ ok: true }) };
+    },
+    reactApi: async (path) => {
+      assert.equal(path, 'react');
+      reactCalls++;
+      return { ok: true };
+    },
   });
   h.media.say('정상 발언');
-  const cleanup=h.deliveryEffect();
-  for(let i=0;i<6&&reactCalls===0;i++)await turn();
+  const cleanup = h.deliveryEffect();
+  for (let i = 0; i < 6 && reactCalls === 0; i++) await turn();
   cleanup?.();
-  assert.equal(speechAttempts,1);
-  assert.equal(reactCalls,1);
-  assert.deepEqual(h.errors,[]);
+  assert.equal(speechAttempts, 1);
+  assert.equal(reactCalls, 1);
+  assert.deepEqual(h.errors, []);
 });

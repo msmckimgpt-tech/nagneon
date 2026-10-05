@@ -6,7 +6,16 @@ const repair=text=>/(?:취소|정정|바꿀|철회|잘못\s*(?:말|들)|헷갈|�
 const words=entry=>!entry.donation&&entry.personaId!=='anonymous'&&(!entry.kind||['streamer','chat'].includes(entry.kind));
 const near=(a,b,window)=>a.sessionId===b.sessionId&&a.fictional===b.fictional&&b.at>=a.at&&b.at-a.at<=window;
 
-export function recallContinuations(selected,entries,candidates,limit=8){
+export function recallContinuations(selected,entries,candidates,limit=8,{legacyAudienceIds=[]}={}){
+ // Older records have no kind. Current known viewers can only help retain
+ // adjacent witnessed words, never reconstruct a historical role or answer fact.
+ const audience=new Set(Array.isArray(legacyAudienceIds)?legacyAudienceIds:[]);
+ const kind=entry=>{
+  if(entry.kind!==undefined)return entry.kind;
+  if(entry.donation||entry.personaId==='anonymous')return undefined;
+  if(entry.personaId==='streamer')return 'streamer';
+  return audience.has(entry.personaId)?'chat':undefined;
+ };
  const visible=new Set(candidates.map(e=>e.id)),nextBySpeaker=new Map(),following=new Map(),indices=new Map();
  // Use the full retained order. An unheard/recent/different-session utterance
  // must remain a boundary; filtering first could jump over it to another turn.
@@ -27,12 +36,12 @@ export function recallContinuations(selected,entries,candidates,limit=8){
  const chosen=new Map();
  for(const entry of selected){
   const group=new Map(corrections(entry).map(e=>[e.id,e]));
-  if(entry.kind==='streamer'&&isChatQuestion(entry.text)){
+  if(kind(entry)==='streamer'&&isChatQuestion(entry.text)){
    let answers=0;
    for(let i=indices.get(entry.id)+1;i<entries.length;i++){
     const next=entries[i];
     if(!near(entry,next,90000)||next.personaId==='streamer')break;
-    if(next.kind!=='chat'||!visible.has(next.id))continue;
+    if(kind(next)!=='chat'||!visible.has(next.id))continue;
     const quotes=corrections(next).filter(e=>!group.has(e.id));
     if(group.size+quotes.length<=limit)for(const quote of quotes)group.set(quote.id,quote);
     if(++answers===3)break;

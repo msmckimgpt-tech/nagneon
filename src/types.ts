@@ -72,6 +72,7 @@ export type Settings = {
   games: Game[];
 };
 export type Message = {
+  historySequence?: number;
   donation?: { amount: number; anonymous: boolean };
   transcription?: {
     source: 'microphone';
@@ -101,6 +102,35 @@ export type SoundState = {
 export type BroadcastSessionState =
   { running: true; sessionId: string } | { running: false; sessionId: string | null };
 export type State = BroadcastSessionState & {
+  microphone?: { deviceId: string; label: string };
+  nativeAudio?: {
+    inputEpoch?: string;
+    startedAt?: number;
+    mode: 'local' | 'remote';
+    transport?: 'subscription' | 'api';
+    stage?: 'preparing' | 'connected' | 'listening' | 'received' | 'stopped';
+    consent: boolean;
+    consentVersion?: 2;
+    configured: boolean;
+    model: string;
+    active: boolean;
+    error: string;
+    captured?: number;
+    durable?: number;
+    pending?: number;
+    applied?: number;
+    uncertain?: number;
+    expired?: number;
+  };
+  subscriptionSound?: {
+    active: boolean;
+    stage?: string;
+    error: string;
+    captured: number;
+    durable: number;
+    applied: number;
+    pending: number;
+  };
   social?: {
     revision: number;
     enabled: boolean;
@@ -181,6 +211,8 @@ export type State = BroadcastSessionState & {
       checkedAt: number;
       analyzedAt: number;
       error: string;
+      patternCount: number;
+      status: 'unavailable' | 'uncollected' | 'no-patterns' | 'stale' | 'ready';
     }[];
   };
   audience: {
@@ -203,6 +235,7 @@ export type State = BroadcastSessionState & {
   };
   startedAt: number | null;
   messages: Message[];
+  chatHistory?: { revision: number; hasMore: boolean };
   events: { id: string; time: number; text: string }[];
   observation: {
     game: string;
@@ -280,7 +313,8 @@ declare global {
         startFrame: number;
         frameCount: number;
         data: Uint8Array;
-      }) => Promise<{ duplicate: boolean; durableThrough: number }>;
+        capture?: import('./speech-flow').SpeechCapture;
+      }) => Promise<{ duplicate: boolean; durableThrough: number; storageNearlyFull?: boolean }>;
       sources: () => Promise<Source[]>;
       sourcePreviews?: (type: 'screen' | 'window') => Promise<Source[]>;
       selectSource: (id: string, systemAudio?: boolean) => Promise<void>;

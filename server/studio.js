@@ -12,10 +12,13 @@ import { SpecialFeatures } from './special-features.js';
 import { Clips, ClipFeatures } from './clips.js';
 import { SoundScene } from './sound-scene.js';
 import { ConversationJournal } from './conversation-journal.js';
+import { ChatHistory } from './chat-history.js';
 import { AudienceAutonomy } from './audience-autonomy.js';
 import { Ambient } from './ambient.js';
 import { requestsAdvice, adviceIntent, liveAdvicePolicy } from './advice-intent.js';
 import { SpeechInbox } from './speech-inbox.js';
+import { InputLatency } from './input-latency.js';
+import { BroadcastTrace } from './broadcast-trace.js';
 import { repeatedChat } from './chat-quality.js';
 import { admitTranscriptCorrection, transcriptAnomaly } from './transcript-correction.js';
 import { revisesLiveSituation } from './streamer-expression.js';
@@ -26,6 +29,8 @@ import { CultureLearning } from './culture/learning.js';
 import { ClipPerception } from './clip-perception.js';
 import { ViewingContinuity, SCREEN_REACTION_TTL_MS } from './viewing-continuity.js';
 import { donationMessage } from './chat-attention.js';
+import { managerMaySpeak, replySource, repeatsDonation } from './live-response-policy.js';
+import { projectSpeech } from '../shared/speech-content.js';
 import { temporalVideo } from './temporal-video.js';
 import { VIDEO_REACTION_TTL_MS } from '../shared/temporal-policy.js';
 import { sameViewingVisit, retainPresentReactions } from './live-presence.js';
@@ -48,6 +53,7 @@ export class Studio extends EventEmitter {
     clipPerception,
     cultureLearning,
     aiControl,
+    trace,
     storageStatus = () => ({ warnings: [], recovered: [] }),
   } = {}) {
     super();
@@ -57,6 +63,7 @@ export class Studio extends EventEmitter {
     this.settings = Settings.parse(settings);
     this.persist = persist;
     this.now = now;
+    this.trace = trace || new BroadcastTrace({ now });
     this.random = random;
     this.storageStatus = storageStatus;
     this.audience = audience;
@@ -64,6 +71,7 @@ export class Studio extends EventEmitter {
     this.knowledge = knowledge;
     this.running = false;
     this.messages = [];
+    this.chatHistory = new ChatHistory(this);
     this.events = [];
     this.queue = [];
     this.controller = new AbortController();
@@ -75,7 +83,8 @@ export class Studio extends EventEmitter {
     this.clipFeatures = new ClipFeatures(this, this.clips);
     this.sound = new SoundScene(this);
     this.viewing = new ViewingContinuity();
-    this.reactions = new ReactionDiagnostics(now);
+    this.reactions = new ReactionDiagnostics(now, (row) => this.trace.reaction(row));
+    this.inputLatency = new InputLatency(now);
     this.resetCounters();
     this.timer = setInterval(() => this.pump(), 250);
     this.timer.unref();
@@ -102,6 +111,7 @@ export class Studio extends EventEmitter {
       }),
       onChange: () => this.publish(),
       onPolicy: (affected, before) => {
+        this.runtime?.onAiPolicy?.(affected);
         const after = this.ai.data.policy;
         if (
           affected.includes('community') ||
@@ -131,6 +141,7 @@ export class Studio extends EventEmitter {
   }
   resetCounters() {
     this.reactions.reset();
+    this.inputLatency.reset();
     this.speechInbox = new SpeechInbox();
     this.liveReaction = null;
     this.endedVideoSources = new Map();
@@ -186,7 +197,9 @@ export class Studio extends EventEmitter {
       settings: this.world?.publicSettings() || this.settings,
       autonomy: this.autonomy?.snapshot(),
       clips: this.clips.list(),
-      economy: this.economy.snapshot(this.settings.personas),
+      economy: this.economy.snapshot(this.settings.personas, {
+        sessionId: this.running ? this.sessionId : null,
+      }),
       audience: this.world?.publicAudience() || {
         ...this.audience.data,
         communityActivity: undefined,
@@ -197,7 +210,8 @@ export class Studio extends EventEmitter {
       running: this.running,
       sessionId: this.sessionId,
       startedAt: this.startedAt,
-      messages: this.messages,
+      messages: this.messages.map((message) => this.chatHistory.message(message)),
+      chatHistory: this.chatHistory.snapshot(),
       events: this.events,
       observation: this.observation,
       ai: this.ai.snapshot(),
@@ -214,9 +228,18 @@ export class Studio extends EventEmitter {
     };
   }
   publish() {
+    this.trace.observePresence(this.sessionId, this.settings, this.audience);
     this.emit('state', this.state());
   }
-  receiveSpeech({ id, sessionId, text, source = 'keyboard', capture }) {
+  receiveSpeech({
+    id,
+    sessionId,
+    text,
+    source = 'keyboard',
+    capture,
+    interpretation = false,
+    capturedHearers,
+  }) {
     this.communityActivity.interrupt();
     if (!this.running || sessionId !== this.sessionId)
       throw new Error('이미 끝난 방송의 발언은 전달할 수 없습니다.');
@@ -239,7 +262,9 @@ export class Studio extends EventEmitter {
     if (this.settings.mode === 'live' && !this.ai.allowed('reaction'))
       throw new Error(this.ai.reason('reaction'));
     const hearers = this.presentWitnesses().filter(
-      (id) => !capture || this.audience.data.members[id]?.joinedAt <= capture.startedAt,
+      (id) =>
+        (!capture || this.audience.data.members[id]?.joinedAt <= capture.startedAt) &&
+        (!capturedHearers || capturedHearers.includes(id)),
     );
     const result = this.speechInbox.receive(
       id,
@@ -248,7 +273,9 @@ export class Studio extends EventEmitter {
         this.publishMessage(
           {
             ...this.prepareMessage('streamer', text, 'streamer'),
-            ...(source === 'microphone' ? { transcription: { source: 'microphone' } } : {}),
+            ...(source === 'microphone' && !interpretation
+              ? { transcription: { source: 'microphone' } }
+              : {}),
           },
           { witnesses: hearers, publishState: false },
         ),
@@ -256,11 +283,16 @@ export class Studio extends EventEmitter {
       capture,
       hearers,
     );
+    const projection = projectSpeech({ text, source, capture });
+    const annotationOnly = !!projection.nonverbal?.length && !projection.text.trim();
     if (!result.duplicate) {
-      this.queue = this.queue.filter((m) => m.origin !== 'live');
+      this.inputLatency.receive(id, capture);
+      this.trace.inputReceived(this.sessionId, id, capture, source, result.messageId);
+      if (!annotationOnly) this.clearMomentQueue(text);
       // A screen-only analysis should yield to the person speaking. The live
       // session signal and paid interactions are deliberately left intact.
       if (
+        !annotationOnly &&
         this.liveReaction &&
         (!this.liveReaction.hasSpeech || revisesLiveSituation(text) || adviceIntent(text).refused)
       ) {
@@ -274,6 +306,26 @@ export class Studio extends EventEmitter {
   log(text) {
     this.events.push({ id: randomUUID(), time: this.now(), text });
     this.events = this.events.slice(-60);
+  }
+  clearMomentQueue(speech) {
+    const cancelled = revisesLiveSituation(speech) || adviceIntent(speech).refused;
+    this.queue = this.queue.filter(
+      (m) =>
+        m.origin !== 'live' ||
+        (!cancelled &&
+          m.replySourceId &&
+          this.messages.some((source) => source.id === m.replySourceId)),
+    );
+  }
+  invalidateRemovedMessages(ids, clear = false) {
+    const operation = this.liveReaction;
+    if (!operation || (!clear && !ids.some((id) => operation.conversationSourceIds?.has(id))))
+      return;
+    // Removal has already persisted. Ignore even providers that finish after
+    // abort, and keep surviving speech pending for a fresh request.
+    operation.removedSource = true;
+    operation.superseded = true;
+    operation.controller.abort();
   }
   setChatDisplay(showStreamerMessages) {
     if (typeof showStreamerMessages !== 'boolean')
@@ -346,6 +398,7 @@ export class Studio extends EventEmitter {
     this.messages = [];
     this.events = [];
     this.resetCounters();
+    this.chatHistory.reset();
     try {
       if (this.settings.mode === 'live') this.social.startLive();
       this.running = true;
@@ -365,10 +418,12 @@ export class Studio extends EventEmitter {
       this.publish();
       throw error;
     }
+    this.trace.session(this.sessionId, true);
     this.log(this.settings.mode === 'live' ? 'AI 방송 시작' : '리허설 시작');
     this.publish();
   }
   stop() {
+    const wasRunning = this.running;
     this.culture.interrupt();
     this.communityActivity?.interrupt();
     this.sound.stop();
@@ -401,6 +456,7 @@ export class Studio extends EventEmitter {
         this.log(this.lastError);
       }
     }
+    if (wasRunning) this.trace.session(this.sessionId, false);
     this.log('방송 종료 · 대기 반응 취소');
     this.publish();
   }
@@ -425,6 +481,7 @@ export class Studio extends EventEmitter {
     };
   }
   publishMessage(msg, { witnesses = this.presentWitnesses(), publishState = true } = {}) {
+    this.chatHistory.record(msg);
     this.messages.push(msg);
     if (this.running && this.settings.mode === 'live')
       try {
@@ -433,6 +490,7 @@ export class Studio extends EventEmitter {
           witnesses,
           title: this.settings.title,
         });
+        this.trace.savedMessage(this.sessionId, msg, witnesses);
       } catch (error) {
         this.log(`대화 기억 보관 실패: ${error.message}`);
         this.lastError = '대화는 표시됐지만 기억에 보관하지 못했습니다. ' + error.message;
@@ -457,8 +515,15 @@ export class Studio extends EventEmitter {
   moderate(action, id) {
     if (action === 'delete') {
       this.journal.forget([id]);
+      this.invalidateRemovedMessages([id]);
       this.speechInbox.forget(id);
       this.messages = this.messages.filter((m) => m.id !== id);
+      this.chatHistory.invalidate();
+      this.queue = this.queue.filter((m) => {
+        if (m.replySourceId !== id && !m.conversationSourceIds?.includes(id)) return true;
+        this.reactions.drop(m.diagnosticId, 'cleared');
+        return false;
+      });
       this.log('메시지 삭제');
     }
     if (action === 'ban' || action === 'unban') {
@@ -487,6 +552,8 @@ export class Studio extends EventEmitter {
     }
     if (action === 'clear') {
       this.journal.forget(this.messages.map((m) => m.id));
+      this.invalidateRemovedMessages([], true);
+      this.chatHistory.invalidate({ clear: true });
       this.speechInbox.clear();
       this.messages = [];
       this.queue = [];
@@ -525,6 +592,9 @@ export class Studio extends EventEmitter {
       diagnosticId,
       responseStartedAt,
       externalIds,
+      conversationSourceIds,
+      viewerContext,
+      speech = '',
     } = {},
   ) {
     const obs = Observation.parse(observation);
@@ -550,17 +620,38 @@ export class Studio extends EventEmitter {
     let delay = 0,
       first = true,
       admittedHints = this.admittedAdvice(adviceRequestId);
+    const duplicateContext =
+      origin === 'live'
+        ? { addressViewers: this.audience.addressing(this.settings, this.now()) }
+        : undefined;
     this.reactions.reject(
       diagnosticId,
       'pace',
       Math.max(0, obs.messages.length - this.settings.chatPace),
     );
     for (const m of obs.messages.slice(0, this.settings.chatPace)) {
-      if (origin === 'live' && Number.isFinite(expiresAt) && this.now() >= expiresAt) {
+      const context = viewerContext?.[m.personaId];
+      const durableReply = origin === 'live' && replySource(m, context, speech);
+      const messageExpiresAt = durableReply ? undefined : expiresAt;
+      if (
+        origin === 'live' &&
+        Number.isFinite(messageExpiresAt) &&
+        this.now() >= messageExpiresAt
+      ) {
         this.reactions.reject(diagnosticId, 'expired');
         continue;
       }
       const p = this.settings.personas.find((p) => p.id === m.personaId && p.enabled);
+      if (
+        origin === 'live' &&
+        this.settings.mode === 'live' &&
+        viewerContext &&
+        p?.id === this.settings.managerId &&
+        !managerMaySpeak(m, context)
+      ) {
+        this.reactions.reject(diagnosticId, 'manager-role');
+        continue;
+      }
       const blocked =
         this.autonomy?.violatesStyleBoundary?.(m.personaId, m.text) ||
         (origin === 'live' && isPlayfulPushbackText(m.text) && !banterAllowed?.[m.personaId]) ||
@@ -573,7 +664,7 @@ export class Studio extends EventEmitter {
       const recent = [...this.messages.slice(-60), ...this.queue];
       const duplicate =
         origin === 'live'
-          ? repeatedChat(m, recent, this.now())
+          ? repeatedChat(m, recent, this.now(), duplicateContext)
           : recent.some((x) => x.text === m.text);
       if (!p || blocked || duplicate || (m.spoiler && this.settings.spoilerGuard)) {
         this.reactions.reject(
@@ -601,13 +692,15 @@ export class Studio extends EventEmitter {
         first = false;
       }
       this.reactions.admit(diagnosticId);
-      this.queue.push({
+      const queued = {
         ...m,
         origin,
         chatDriven,
         ...(loreIds?.length ? { loreIds } : {}),
         ...(externalIds?.length ? { externalIds } : {}),
+        ...(conversationSourceIds?.length ? { conversationSourceIds } : {}),
         ...(diagnosticId ? { diagnosticId } : {}),
+        ...(durableReply ? { replySourceId: durableReply.id } : {}),
         ...(m.advice && adviceRequestId ? { adviceRequestId } : {}),
         ...(origin === 'live' && this.settings.mode === 'live'
           ? {
@@ -616,11 +709,13 @@ export class Studio extends EventEmitter {
             }
           : {}),
         ...(screenSourceId ? { screenSourceId } : {}),
-        ...(Number.isFinite(expiresAt) ? { expiresAt } : {}),
+        ...(Number.isFinite(messageExpiresAt) ? { expiresAt: messageExpiresAt } : {}),
         createdAt: this.now(),
         kind: m.kind === 'notice' && p.id === this.settings.managerId ? 'notice' : 'chat',
         due: this.now() + delay,
-      });
+      };
+      this.queue.push(queued);
+      this.trace.queued(queued);
     }
     this.publish();
   }
@@ -652,8 +747,10 @@ export class Studio extends EventEmitter {
         absent =
           this.settings.mode === 'live' &&
           !sameViewingVisit(this.audience, m.personaId, m.viewingVisit);
-      if (expired || absent) {
-        this.reactions.drop(m.diagnosticId, expired ? 'expired' : 'absent');
+      const removedSource =
+        m.replySourceId && !this.messages.some((source) => source.id === m.replySourceId);
+      if (expired || absent || removedSource) {
+        this.reactions.drop(m.diagnosticId, expired ? 'expired' : absent ? 'absent' : 'cleared');
         return false;
       }
       return true;
@@ -677,9 +774,18 @@ export class Studio extends EventEmitter {
       this.reactions.drop(m.diagnosticId, 'expired');
       return;
     }
+    if (
+      m.origin === 'live' &&
+      repeatedChat(m, this.messages.slice(-60), now, {
+        addressViewers: this.audience.addressing(this.settings, now),
+      })
+    ) {
+      this.reactions.drop(m.diagnosticId, 'duplicate');
+      return;
+    }
     this.lastSpeaker.set(m.personaId, now);
     try {
-      this.publishMessage({
+      const delivered = this.publishMessage({
         ...this.prepareMessage(m.personaId, m.text, m.kind),
         ...(m.meme ? { meme: true } : {}),
         ...(m.advice
@@ -688,6 +794,8 @@ export class Studio extends EventEmitter {
         ...(m.chatDriven ? { chatDriven: true } : {}),
       });
       this.reactions.delivered(m.diagnosticId);
+      this.inputLatency.publish(m.diagnosticId, delivered.id);
+      this.trace.publishedMessage(m, delivered);
     } catch (error) {
       this.reactions.drop(m.diagnosticId, 'delivery-error');
       this.lastError = error.message;
@@ -748,11 +856,23 @@ export class Studio extends EventEmitter {
     }
     if (this.busy) return { skipped: 'busy' };
     if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
-    const speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
+    let speechBatch = speech ? { text: speech, ids: [] } : this.speechInbox.batch();
     speech = speechBatch.text;
+    const annotationOnly =
+      !speech.trim() && speechBatch.ids.length && speechBatch.nonverbal?.length;
+    if (annotationOnly) {
+      this.speechInbox.acknowledge(speechBatch.ids);
+      speech = '';
+      // These receipts contain no words. Their hearer boundary must not trim
+      // independent current screen/sound/chat input to the earlier listeners.
+      speechBatch = { text: '', ids: [] };
+      if (this.settings.mode !== 'live') return { ok: true, nonSpeech: true };
+    }
     const uncertain = this.speechInbox
       .sources(speechBatch.ids)
-      .filter((e) => e.source === 'microphone' && transcriptAnomaly(e.text));
+      .filter(
+        (e) => e.source === 'microphone' && !e.capture?.listening && transcriptAnomaly(e.text),
+      );
     if (uncertain.length) {
       const ids = new Set(uncertain.map((e) => e.messageId));
       this.speechInbox.acknowledge(
@@ -772,7 +892,8 @@ export class Studio extends EventEmitter {
       return { skipped: 'interval' };
     if (speech && this.now() - this.lastRequest < 2000) return { skipped: 'interval' };
     const epoch = this.epoch;
-    const prepared = this.prepareReactionViewing({ image, video, speech });
+    const prepared = this.prepareReactionViewing({ image, video, speech, annotationOnly });
+    if (prepared.annotationOnly) return { ok: true, nonSpeech: true };
     if (prepared.skipped) return prepared;
     const { viewing, frames, screenTimeline, idleConversation, watchingCompany } = prepared;
     image = prepared.image;
@@ -802,7 +923,7 @@ export class Studio extends EventEmitter {
         !speechBatch.ids.length &&
         !(this.messages.at(-1)?.kind === 'streamer' && this.messages.at(-1)?.text === speech)
       ) {
-        this.queue = this.queue.filter((m) => m.origin !== 'live');
+        this.clearMomentQueue(speech);
         this.addMessage('streamer', speech, 'streamer');
       }
       if (this.settings.mode === 'rehearsal') {
@@ -846,6 +967,11 @@ export class Studio extends EventEmitter {
           company: idleConversation ? 'idle' : watchingCompany ? 'watching' : null,
           latestFrameAt: idleConversation ? undefined : screenTimeline?.through,
         });
+        this.inputLatency.request(diagnosticId, speechBatch.ids, {
+          screenThrough: screenTimeline?.through,
+        });
+        this.trace.requested(this, diagnosticId, context, speechBatch.ids, screenTimeline?.through);
+        this.trace.reaction(this.reactions.row(diagnosticId));
         const responseStartedAt = this.now();
         const result = await this.provider.react(
           {
@@ -871,6 +997,7 @@ export class Studio extends EventEmitter {
           },
           signal,
         );
+        this.trace.modelResult(diagnosticId, result);
         this.ai.assertCurrent(result);
         const previousQueue = new Set(this.queue);
         const accepted = this.acceptLiveReaction({
@@ -900,16 +1027,19 @@ export class Studio extends EventEmitter {
       this.reactionRecovered();
       return { ok: true };
     } catch (error) {
-      if (Number.isFinite(error.aiGenerated))
+      if (Number.isFinite(error.aiGenerated)) {
         this.reactions.generated(diagnosticId, error.aiGenerated);
-      if (['ai_blocked', 'ai_cancelled'].includes(error.code)) {
-        diagnosticOutcome = 'stopped';
-        this.speechInbox.acknowledge(speechBatch.ids);
-        return { skipped: 'ai-blocked' };
+        if (operation.removedSource)
+          this.reactions.reject(diagnosticId, 'cleared', error.aiGenerated);
       }
       if (epoch !== this.epoch) {
         diagnosticOutcome = 'stopped';
         return { skipped: 'stopped' };
+      }
+      if (['ai_blocked', 'ai_cancelled'].includes(error.code)) {
+        diagnosticOutcome = 'stopped';
+        this.speechInbox.acknowledge(speechBatch.ids);
+        return { skipped: 'ai-blocked' };
       }
       diagnosticOutcome = operation.superseded
         ? 'superseded'
@@ -925,6 +1055,7 @@ export class Studio extends EventEmitter {
       throw error;
     } finally {
       this.reactions.finish(diagnosticId, diagnosticOutcome);
+      this.trace.finishRequest(diagnosticId, diagnosticOutcome);
       if (this.liveReaction === operation) this.liveReaction = null;
       if (epoch === this.epoch) {
         this.busy = false;
@@ -932,7 +1063,7 @@ export class Studio extends EventEmitter {
       }
     }
   }
-  prepareReactionViewing({ image, video, speech }) {
+  prepareReactionViewing({ image, video, speech, annotationOnly }) {
     let viewing,
       frames = [],
       screenTimeline,
@@ -941,6 +1072,7 @@ export class Studio extends EventEmitter {
     if (this.settings.mode === 'live') {
       this.tickAudience();
       if (this.autonomy?.waiting) return { skipped: 'audience-arrival' };
+      const addressViewers = this.audience.addressing(this.settings, this.now());
       const witnesses = this.presentWitnesses();
       const temporal = temporalVideo(video, {
         now: this.now(),
@@ -976,12 +1108,11 @@ export class Studio extends EventEmitter {
               ? witnesses.some((id) => m.time >= this.audience.data.members[id].joinedAt)
               : m.kind === 'chat' &&
                 witnesses.includes(m.personaId) &&
-                this.settings.personas.some(
-                  (p) =>
-                    p.id !== m.personaId &&
-                    witnesses.includes(p.id) &&
-                    m.time >= this.audience.data.members[p.id].joinedAt &&
-                    m.text.includes(p.name),
+                [...addressViewers(m.text)].some(
+                  (id) =>
+                    id !== m.personaId &&
+                    witnesses.includes(id) &&
+                    m.time >= this.audience.data.members[id].joinedAt,
                 )),
         )
         .slice(-40)
@@ -994,6 +1125,9 @@ export class Studio extends EventEmitter {
         ),
       ))
         peerIds.push(id);
+      const ambient = this.autonomy ? this.ambient.snapshot() : null;
+      if (annotationOnly && !image && !soundIds.length && !peerIds.length && !ambient?.active)
+        return { annotationOnly: true };
       viewing = this.viewing.observe({
         image,
         frames,
@@ -1005,7 +1139,6 @@ export class Studio extends EventEmitter {
         at: this.now(),
       });
       if (!image) this.knowledge.lastSeen = null;
-      const ambient = this.autonomy ? this.ambient.snapshot() : null;
       if (!speech.trim() && !ambient?.active) {
         // Animated menus and repeated music change samples without necessarily
         // changing the conversation. Offer company without dropping fresh input.
@@ -1034,6 +1167,7 @@ export class Studio extends EventEmitter {
               viewing.at,
               game.popularity,
               witnesses,
+              new Map(witnesses.map((id) => [id, this.audience.data.members[id]?.joinedAt])),
             );
             this.publish();
           }
@@ -1139,6 +1273,9 @@ export class Studio extends EventEmitter {
         (id) => !speechHearers || speechHearers.includes(id),
       ),
       capturedAt = this.lastRequest;
+    const witnessVisits = new Map(
+      witnesses.map((id) => [id, this.audience.data.members[id]?.joinedAt]),
+    );
     const visits = new Map(
       eligiblePersonas.map((p) => [p.id, this.audience.data.members[p.id]?.joinedAt]),
     );
@@ -1176,14 +1313,31 @@ export class Studio extends EventEmitter {
         : viewerKnowledgeByPersona(this.knowledge.get(name, game.popularity), eligiblePersonas, {
             popularity: game.popularity,
           });
-    const liveSpeech = witnessedSpeech(this.speechInbox.sources(speechBatch.ids), {
-      sessionId: this.sessionId,
-      now: this.now(),
-      joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
-      endedSources: this.endedVideoSources,
-    });
+    const liveSpeech = witnessedSpeech(
+      this.speechInbox.sources(speechBatch.ids).map(projectSpeech),
+      {
+        sessionId: this.sessionId,
+        now: this.now(),
+        joinedAt: eligiblePersonas.map((p) => this.audience.data.members[p.id]?.joinedAt),
+        endedSources: this.endedVideoSources,
+      },
+    );
     operation.speechSourceIds = new Set(
       liveSpeech.map((s) => s.capture?.screen?.sourceId).filter(Boolean),
+    );
+    // These exact sources have left the current chat/journal as a snapshot.
+    // Deleting one must invalidate derived reactions, not just labelled replies.
+    operation.conversationSourceIds = new Set(
+      [
+        ...liveSpeech.map((s) => s.messageId),
+        ...Object.values(personalContext.viewerContext).flatMap((p) => [
+          ...p.chatHistory.map((m) => m.id),
+          ...(p.recollections || []).map((m) => m.sourceId),
+        ]),
+        ...(!speechBatch.ids.length && speech
+          ? [this.messages.findLast((m) => m.kind === 'streamer' && m.text === speech)?.id]
+          : []),
+      ].filter(Boolean),
     );
     const adviceRequestId =
       speechBatch.ids.at(-1) ||
@@ -1200,6 +1354,7 @@ export class Studio extends EventEmitter {
       eligibleSettings,
       witnesses,
       capturedAt,
+      witnessVisits,
       visits,
       personalContext,
       transcriptCandidates,
@@ -1234,15 +1389,19 @@ export class Studio extends EventEmitter {
       transcriptCandidates,
       adviceRequestId,
       witnesses,
+      witnessVisits,
       personalContext,
       game,
     } = context;
     this.reactions.generated(diagnosticId, result.observation.messages.length);
+    this.inputLatency.response(diagnosticId);
     if (epoch !== this.epoch || !this.running) {
       return { outcome: 'stopped', result: { skipped: 'stopped' } };
     }
     this.tokens += Number(result.usage?.total_tokens) || 0;
     if (operation.superseded) {
+      if (operation.removedSource)
+        this.reactions.reject(diagnosticId, 'cleared', result.observation.messages.length);
       return { outcome: 'superseded', result: { skipped: 'superseded' } };
     }
     const visualExpiresAt = screenTimeline
@@ -1283,6 +1442,7 @@ export class Studio extends EventEmitter {
           responseStartedAt,
           externalIds: operation.externalIds,
           loreIds: [...operation.loreIds],
+          conversationSourceIds: [...operation.conversationSourceIds],
           chatDriven: true,
           visits,
           banterAllowed: Object.fromEntries(
@@ -1293,6 +1453,8 @@ export class Studio extends EventEmitter {
           ),
           advicePolicy,
           expiresAt: capturedAt + SCREEN_REACTION_TTL_MS,
+          viewerContext: personalContext.viewerContext,
+          speech,
         },
       );
       this.viewing.acknowledge(viewing);
@@ -1317,6 +1479,7 @@ export class Studio extends EventEmitter {
       responseStartedAt,
       externalIds: operation.externalIds,
       loreIds: [...operation.loreIds],
+      conversationSourceIds: [...operation.conversationSourceIds],
       chatDriven,
       visits,
       banterAllowed: Object.fromEntries(
@@ -1328,7 +1491,9 @@ export class Studio extends EventEmitter {
       advicePolicy,
       adviceRequestId,
       screenSourceId: screenTimeline?.sourceId,
-      ...(operation.hasSpeech ? {} : { expiresAt: visualExpiresAt }),
+      expiresAt: visualExpiresAt,
+      viewerContext: personalContext.viewerContext,
+      speech,
     });
     this.recordReactionExperience({
       observation,
@@ -1339,8 +1504,11 @@ export class Studio extends EventEmitter {
       image,
       witnesses,
       capturedAt,
+      witnessVisits,
       personalContext,
       game,
+      diagnosticId,
+      stale: this.now() >= visualExpiresAt,
     });
   }
   recordReactionExperience({
@@ -1352,20 +1520,39 @@ export class Studio extends EventEmitter {
     image,
     witnesses,
     capturedAt,
+    witnessVisits,
     personalContext,
     game,
+    diagnosticId,
+    stale = false,
   }) {
     this.audience.observePresence(observation, witnesses, capturedAt, this.now(), {
       visual: !!image,
+      chatActivity: this.messages.slice(-60),
     });
     const donations = this.economy.reward({
       observation,
       settings: this.settings,
       audience: this.audience,
-      hasInput: !chatDriven && (!!image || !!speech),
+      hasInput: !stale && !chatDriven && (!!image || !!speech),
       paid: false,
     });
     for (const d of donations) this.publishMessage(donationMessage(d));
+    // The public projection deliberately hides anonymous donors. Resolve the
+    // matching receipt only here, never in a provider packet or public message.
+    const donated = donations.map((d) => this.economy.data.ledger.find((e) => e.id === d.id));
+    if (donated.length)
+      this.queue = this.queue.filter((m) => {
+        if (
+          m.diagnosticId !== diagnosticId ||
+          !donated.some((d) =>
+            repeatsDonation(m, d, this.now(), personalContext.viewerContext[m.personaId]),
+          )
+        )
+          return true;
+        this.reactions.drop(m.diagnosticId, 'duplicate');
+        return false;
+      });
     if (this.autonomy) {
       const clipSpeech = this.speechInbox.sources(speechBatch.ids);
       const styleSourceId = speechBatch.ids.length
@@ -1434,6 +1621,7 @@ export class Studio extends EventEmitter {
         capturedAt,
         game.popularity,
         witnesses,
+        witnessVisits,
       );
       this.publish();
     }

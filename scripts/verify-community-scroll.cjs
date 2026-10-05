@@ -192,6 +192,10 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       js(
         `(()=>{const b=[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(label)}||b.getAttribute('aria-label')===${JSON.stringify(label)}));if(!b)throw Error('button missing');b.click();})()`,
       );
+    const clickPage = (selector) =>
+      until(
+        `(()=>{const b=document.querySelector(${JSON.stringify(selector)});if(!b||b.disabled)return false;b.click();return true;})()`,
+      );
     await win.loadURL(service.url);
     await until("!!document.querySelector('.app-shell')");
     const settle = () => new Promise((r) => setTimeout(r, 180));
@@ -306,23 +310,41 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       s.publish();
       await settle();
       near(await top(), afterNoop, 'same tab does not schedule a later jump');
-      await js("document.querySelector('.social-pages button:last-child').click()");
+      await clickPage('.social-pages button:last-child');
       await until("document.querySelectorAll('.social-post').length===15");
       await settle();
       const pageTop = await top();
+      await js(`(()=>{
+        const originalFetch=window.fetch;
+        const gate=window.__communityRefreshTest={requests:0,release:null,restore:()=>{window.fetch=originalFetch;}};
+        window.fetch=async(...args)=>{
+          const url=new URL(typeof args[0]==='string'?args[0]:args[0].url,location.href);
+          if(url.pathname==='/api/social/search'&&url.searchParams.get('offset')==='30'&&gate.requests===0){
+            gate.requests++;
+            await new Promise(resolve=>{gate.release=resolve;});
+          }
+          return originalFetch(...args);
+        };
+      })()`);
       s.world.change((w) => {
         w.socialWorld.revision++;
       });
       s.publish();
       await settle();
+      await until(
+        "window.__communityRefreshTest.requests===1&&document.querySelector('.social-pages button').disabled",
+      );
       assert.equal(
         await js("document.querySelectorAll('.social-post').length"),
         15,
         'refresh retains current page',
       );
       near(await top(), pageTop, 'refresh retains scroll');
-      await js("document.querySelector('.social-pages button').click()");
+      await js('setTimeout(()=>window.__communityRefreshTest.release(),650)');
+      await clickPage('.social-pages button');
       await until("document.querySelectorAll('.social-post').length===30");
+      assert.equal(await js('window.__communityRefreshTest.requests'), 1);
+      await js('window.__communityRefreshTest.restore();delete window.__communityRefreshTest');
       await js("document.querySelector('.community-sections').scrollIntoView({block:'start'})");
       await settle();
       const sectionTop = await position('.community-sections');
@@ -342,7 +364,7 @@ const save = () => writeFileSync(join(out, 'result.json'), JSON.stringify(report
       await settle();
       near(await top(), galleryTop, 'gallery back restores list');
       report.checks.push(
-        `${width}px: long and short posts, detail entry, return position/focus, empty community tabs, pagination refresh, section switch and gallery return`,
+        `${width}px: long and short posts, detail entry, return position/focus, empty community tabs, delayed pagination refresh, section switch and gallery return`,
       );
       report.screenshots.push(`scroll-${width}.png`);
       writeFileSync(

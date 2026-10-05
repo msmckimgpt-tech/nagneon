@@ -198,7 +198,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
           <p className="field-note">공개 문서를 사이트당 12시간 이상 간격으로 최대 3개 읽습니다. 방송이 쉬는 동안 바뀐 자료만 연결된 AI에 전달하므로 해당 연결의 사용량이 발생합니다. 로그인·수집 제한이 있는 사이트는 건너뜁니다. 저장된 요약은 모델 재학습이 아니며 최신 유행을 보장하지 않습니다. 도메인을 지우면 해당 참고자료를 사용하지 않습니다.</p>
           {state.culture?.active&&<p role="status">문화 자료 확인 중: {state.culture.active}</p>}
           {state.culture?.error&&<p role="alert">{state.culture.error}</p>}
-          {state.culture?.sources.map(source=><p key={source.origin}>{source.origin} · {source.error||(source.analyzedAt?`분석: ${new Date(source.analyzedAt).toLocaleString('ko-KR')}`:'분석 대기')} · 다음 확인: {new Date(source.nextAt).toLocaleString('ko-KR')}</p>)}
+          {state.culture?.sources.map(source=><p key={source.origin}>{source.origin} · {source.error||(source.status==='ready'?`참고 패턴 ${source.patternCount}개`:source.status==='no-patterns'?'활용할 패턴 없음':source.status==='stale'?'다시 확인이 필요한 참고자료':source.status==='unavailable'?'자료 수집·분석 미완료':'분석 대기')}{source.analyzedAt>0&&` · 마지막 분석: ${new Date(source.analyzedAt).toLocaleString('ko-KR')}`} · 다음 확인: {new Date(source.nextAt).toLocaleString('ko-KR')}</p>)}
 
           <label className="set-field">스트리머 성향
             <textarea value={draft.streamerStyle} maxLength={2000}

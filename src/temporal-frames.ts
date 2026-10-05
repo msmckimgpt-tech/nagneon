@@ -32,7 +32,9 @@ export class TemporalFrames {
     // Reserve two transition pairs, then fill the largest time gaps. Endpoints
     // alone miss a short jump/failure that returns to the original pose.
     const changes=frames.map((f,i)=>({i,change:f.change})).filter(f=>f.i>0&&f.change>.002).sort((a,b)=>b.change-a.change||a.i-b.i);
-    for(const {i} of changes){if(selected.size>=4)break;selected.add(i-1);selected.add(i);}
+    // Count transition pairs independently of the two reserved endpoints.
+    // Two pairs plus endpoints use at most six distinct slots in the budget.
+    for(const {i} of changes.slice(0,2)){selected.add(i-1);selected.add(i);}
     while(selected.size<Math.min(VIDEO_MAX_FRAMES,frames.length)){
       let best=-1,distance=-1;
       for(let i=0;i<frames.length;i++){if(selected.has(i))continue;const gap=Math.min(...[...selected].map(j=>Math.abs(frames[j].at-frames[i].at)));if(gap>distance){distance=gap;best=i;}}

@@ -41,14 +41,14 @@ export function presenceDisposition(persona, member = {}) {
 
 // Competing causes: liking the room never cancels outside obligations.
 // Existing peer weights are mentions/co-addresses, NOT proof of close friendship.
-export function departureRates(traits, { seconds = 0, affinity = 0, peers = 0, stimulation = 0, switchInterest = 0, satisfied = false } = {}) {
+export function departureRates(traits, { seconds = 0, affinity = 0, peers = 0, stimulation = 0, engagement = 0, switchInterest = 0, satisfied = false } = {}) {
   if (seconds <= PRESENCE_GRACE_SECONDS) return {};
   const anchor = 1 + .75 * clamp(affinity) + .25 * clamp(peers);
   const fatigue = Math.max(0, seconds / traits.typicalSeconds - .6);
   const purpose = ['curiosity', 'information'].includes(traits.motive) ? 1 : .35;
   return {
     'personal-schedule': .00012 + .00018 * (1 - traits.availability),
-    rest: Math.min(.008, fatigue * fatigue * .0012) / anchor,
+    rest: Math.min(.008, fatigue * fatigue * .0012) / (anchor * (1 + .5 * clamp(engagement))),
     satisfied: (Math.min(2, seconds / traits.typicalSeconds) * .0002 + (satisfied ? .0008 : 0)) * purpose / anchor,
     exploring: (.00012 + clamp(switchInterest) * .0007) * purpose / anchor,
     overstimulated: Math.max(0, stimulation - traits.stimulationTolerance) * .001 / anchor,
@@ -65,7 +65,7 @@ function newVisit(id, joinedAt, memory, traits) {
     joinedAt, seconds: 0, phaseSeconds: 0, attentionIndex: 0,
     hazard: 0, target: threshold(id, `${salt}:leave`),
     attentionHazard: 0, attentionTarget: threshold(id, `${salt}:attention:0`),
-    salt, traits, lastSignalAt: -1, stimulation: 0, signalStimulation: 0,
+    salt, traits, lastSignalAt: -1, stimulation: 0, signalStimulation: 0, engagement: 0,
     satisfiedUntil: 0, switchInterest: 0, lastGame: '', closed: false,
   };
 }
@@ -87,14 +87,20 @@ function selectReason(id, state, rates) {
 
 // Only accepted, recent, actually witnessed input can affect this visit.
 // No sentiment extraction from streamer commands, feedback, silence or raw words.
-export function observePresence(audience, observation, witnesses, capturedAt, now, { visual = false } = {}) {
+export function observePresence(audience, observation, witnesses, capturedAt, now, { visual = false, chatActivity = [] } = {}) {
   if (!audience.autonomous || !Number.isFinite(capturedAt) || !Number.isFinite(now) || now < capturedAt || now - capturedAt > 45000) return;
   for (const id of new Set(witnesses || [])) {
     const member = audience.data.members[id], state = audience.presenceRuntime?.members[id];
     if (!state || state.closed || !present(audience.presence[id]) || state.joinedAt !== member?.joinedAt || capturedAt < member.joinedAt || capturedAt <= state.lastSignalAt) continue;
     state.lastSignalAt = capturedAt;
-    state.signalStimulation = clamp(observation.excitement);
-    if (observation.positiveMoment?.positive && observation.positiveMoment.supporters?.includes(id)) state.satisfiedUntil = state.seconds + 120;
+    // Excitement describes the scene, not discomfort. Only actually delivered
+    // chat pressure contributes to overload; these are simulation thresholds.
+    const volume = chatActivity.filter(m => m.kind === 'chat' && !m.fictional &&
+      m.time >= member.joinedAt && m.time <= now && now - m.time <= 30000).length;
+    state.signalStimulation = clamp((volume - 6) / 12);
+    state.engagement = observation.positiveMoment?.positive && observation.positiveMoment.supporters?.includes(id)
+      ? clamp(observation.excitement) : 0;
+    if (state.engagement) state.satisfiedUntil = state.seconds + 120;
     // A different game offers exploration, not evidence that this person dislikes it.
     if (visual && observation.confidence >= .7 && typeof observation.game === 'string' && observation.game.trim()) {
       if (state.lastGame && state.lastGame !== observation.game) state.switchInterest = 1;
@@ -150,6 +156,7 @@ export function tickAutonomousPresence(audience, settings, now) {
       const rates = departureRates(traits, {
         seconds: state.seconds, affinity: member.affinity,
         peers: peerSupport(member, visible), stimulation: state.stimulation,
+        engagement: recent ? state.engagement : 0,
         switchInterest: state.switchInterest, satisfied: state.satisfiedUntil > state.seconds,
       });
       // Integrate one exponential clock instead of a new lottery every UI tick.
@@ -157,7 +164,9 @@ export function tickAutonomousPresence(audience, settings, now) {
       state.hazard += Object.values(rates).reduce((a, b) => a + b, 0) * eligibleSeconds;
       if (state.hazard >= state.target && eligibleSeconds > 0) {
         const reason = selectReason(p.id, state, rates);
-        const mayReturn = reason === 'rest' || reason === 'exploring' || reason === 'overstimulated';
+        // Finishing a particular goal is not proof of an all-day obligation.
+        // A satisfied visitor may browse again; genuine schedule exits stay done.
+        const mayReturn = reason !== 'personal-schedule';
         const minutes = reason === 'rest' ? 4 : reason === 'overstimulated' ? 6 : reason === 'exploring' ? 2 : 10;
         member.presenceMemory.departures++;
         member.presenceMemory.cooldownSeconds = (minutes + 6 * unit(p.id, `${state.salt}:cooldown`)) * 60;

@@ -13,7 +13,7 @@ async function unusedRestrictedPort(){
     try{
       await new Promise((resolve,reject)=>{s.once('error',reject);s.listen(port,'127.0.0.1',resolve);});
       return port;
-    }catch(error){if(error.code!=='EADDRINUSE')throw error;}
+    }catch(error){if(!['EADDRINUSE','EACCES'].includes(error.code))throw error;}
     finally{if(s.listening)await new Promise(resolve=>s.close(resolve));}
   }
   throw Error('No restricted fixture port available');

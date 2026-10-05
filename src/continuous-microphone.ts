@@ -42,7 +42,7 @@ export class ContinuousSpeechSegmenter {
   windowStart = 0;
   parts: Int16Array[] = [];
   boundary = new VoiceBoundary(0);
-  readonly wallStartedAt: number;
+  wallStartedAt: number;
   readonly onSegment: (segment: SpeechSegment) => void;
   constructor(wallStartedAt: number, onSegment: (segment: SpeechSegment) => void) {
     this.wallStartedAt = wallStartedAt;
@@ -64,7 +64,9 @@ export class ContinuousSpeechSegmenter {
     return rms;
   }
   finish() {
-    const capture = this.boundary.capture(this.wallStartedAt);
+    const capture = this.boundary.capture(
+      this.wallStartedAt + (this.windowStart / CONTINUOUS_SPEECH_RATE) * 1000,
+    );
     if (this.boundary.hasSpeech && capture && this.parts.length)
       this.onSegment({
         startFrame: this.windowStart,
@@ -147,12 +149,19 @@ export async function startContinuousMicrophone(options: {
 }) {
   const Constructor = (
     globalThis as typeof globalThis & {
-      MediaStreamTrackProcessor?: new (options: { track: MediaStreamTrack }) => TrackProcessor;
+      MediaStreamTrackProcessor?: new (options: {
+        track: MediaStreamTrack;
+        maxBufferSize?: number;
+      }) => TrackProcessor;
     }
   ).MediaStreamTrackProcessor;
   if (!Constructor) throw new Error('연속 마이크 입력을 지원하지 않는 실행 환경입니다.');
   const clone = options.track.clone(),
-    processor = new Constructor({ track: clone }),
+    // Retain up to five seconds of 10 ms blocks during a renderer stall. The
+    // reader still consumes immediately, so this adds capacity, not latency.
+    // Two 48 kHz stereo inputs need at most about 3.7 MiB for these native
+    // queues. Longer stalls still fail the unchanged source-clock check.
+    processor = new Constructor({ track: clone, maxBufferSize: 500 }),
     reader = processor.readable.getReader();
   const encoder = new ContinuousPcmEncoder();
   let stopped = false,
