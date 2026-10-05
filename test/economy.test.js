@@ -38,7 +38,7 @@ test('quiet meaningful exchange can reward without inflating excitement',()=>{
 test('quiet exchange retains evidence, paid-action and viewer eligibility guards',()=>{
   for(const change of [
     args=>{args.hasInput=false;},args=>{args.paid=true;},
-    args=>{args.observation.confidence=.74;},args=>{args.observation.positiveMoment.signature='';},
+    args=>{args.observation.positiveMoment.impact=.49;},args=>{args.observation.confidence=.74;},args=>{args.observation.positiveMoment.signature='';},
     args=>{args.observation.positiveMoment.positive=false;},args=>{args.observation.positiveMoment.reason='';},
     args=>{args.observation.positiveMoment.donations=[];},
     args=>{args.audience.presence.momo='away';},args=>{args.audience.data.members.momo.seconds=59;}
