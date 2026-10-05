@@ -6,9 +6,11 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 import {request as httpRequest} from 'node:http';
+import {createServer} from 'node:http';
 import express from 'express';
 import {Clips} from '../server/clips.js';
 import {clipRecordingRoutes} from '../server/clip-recording-routes.js';
+import {listenBrowserLoopback} from '../server/browser-loopback.js';
 
 const bytes=Buffer.concat([Buffer.from('1a45dfa3','hex'),Buffer.alloc(120)]);
 async function harness({uploadTimeoutMs}={}){
@@ -22,7 +24,7 @@ async function harness({uploadTimeoutMs}={}){
   const inspector={inspect:(_bytes,_metadata,signal)=>{calls++;return new Promise((resolve,reject)=>{pending={resolve,reject,signal};});}};
   const app=express();clipRecordingRoutes(app,{studio,clips,inspector,uploadTimeoutMs});
   app.use((err,_req,res,_next)=>{if(!res.headersSent)res.status(409).json({error:err.message});});
-  const server=await new Promise(r=>{const s=app.listen(0,'127.0.0.1',()=>r(s));});
+  const server=await listenBrowserLoopback(createServer(app));
   const url=`http://127.0.0.1:${server.address().port}`;
   return {clips,studio,clip,create,dir,url,now,get pending(){return pending;},get calls(){return calls;},failSave(){failSave=true;},
     send:(id=clip.id,signal)=>fetch(`${url}/api/clips/${id}/audio?startedAt=${now-15000}&endedAt=${now}&hasAudio=true`,{method:'POST',headers:{'Content-Type':'audio/webm'},body:bytes,signal}),

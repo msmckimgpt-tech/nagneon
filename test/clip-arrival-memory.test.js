@@ -31,7 +31,11 @@ test('arrival persists a versioned private encounter, not an event embedded in t
   assert.equal(calls[0].special.clip.interest,'일상 대화와 취향 교류');assert.ok(!JSON.stringify(calls[0]).includes('구름찻집'));assert.ok(!JSON.stringify(calls[0]).includes('FORGED'));
   await s.react({speech:'구름구경님, 어떤 이야기 보고 오셨어요?'});const packet=calls[1].viewerContext[receipt.personaId];
   assert.equal(packet.arrivalClipMemory.title,c.title);assert.equal(packet.arrivalClipMemory.experience,'read-discovery-summary');assert.deepEqual(packet.clipMemories,[]);assert.ok(!JSON.stringify(calls[1]).includes('7359'));assert.ok(!JSON.stringify(calls[1]).includes('receiptId'));
-  assert.deepEqual(s.knowledge.entries,{});assert.equal(s.audience.data.members[receipt.personaId].seconds,0);
+  assert.deepEqual(s.knowledge.entries,{});
+  // Reacting can advance the live presence clock. Reading the clip must not
+  // grant viewing time from before this viewer's actual admission.
+  const elapsedSinceAdmission=Math.max(0,(s.now()-member.joinedAt)/1000);
+  assert.ok(member.seconds>=0&&member.seconds<=elapsedSinceAdmission+0.1);
   const disk=JSON.parse(await readFile(join(app.dataDir,'world.json'),'utf8'));assert.equal(disk.audience.members[receipt.personaId].arrivalClip.hash,member.arrivalClip.hash);
 });
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { OpenAIProvider, format } from './provider.js';
+import { OpenAIProvider } from './provider.js';
 import { Observation } from './schema.js';
 
 export function codexFailure(text=''){
@@ -57,8 +57,8 @@ export class CodexProvider extends OpenAIProvider {
     if(!this.available)throw new Error(this.authMessage);
     const dir=await mkdtemp(join(tmpdir(),'backseat-'));const schema=join(dir,'response.json');const output=join(dir,'result.json');
     try{
-      await writeFile(schema,JSON.stringify(format.schema));
       const payload=this.payload(args);
+      await writeFile(schema,JSON.stringify(payload.text.format.schema));
       const command=['exec','--ignore-user-config','--ephemeral','--skip-git-repo-check','--sandbox','read-only','-C',dir,'--model',this.model,'-c',`model_reasoning_effort="${this.effort}"`,'-c','approval_policy="never"','-c',`web_search="${args.settings.webSearch&&args.adviceRequested?'live':'disabled'}"`,'-c','project_doc_max_bytes=0','--output-schema',schema,'--output-last-message',output,'--json'];
       if(this.minimalSkillContext)command.push('-c','skills.max_context_tokens=1');
       // Official per-invocation base-instruction override avoids a coding assistant

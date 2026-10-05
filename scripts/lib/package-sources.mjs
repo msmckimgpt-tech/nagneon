@@ -5,6 +5,7 @@ import {extractFile,listPackage} from '@electron/asar';
 import {defaultSanitizePackageJson} from '@electron/packager';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const packageSourceRoots={desktop:/\.cjs$/,server:/\.(js|proto)$|^server\/legacy-season-versions\.json$/,shared:/\.(js|json)$/,dist:/\.(html|js|css|svg|png|woff2?)$/};
+export const packageBuildInput=name=>/^(server|shared)\/.+\.d\.ts$/.test(name);
 const workers={'scripts/clip_perception.py':'speech/clip_perception.py','scripts/speech_worker.py':'speech/speech_worker.py','scripts/sound_worker.py':'sound/sound_worker.py','scripts/clip_inspector.py':'speech/clip_inspector.py'};
 
 export async function packageSources(root){
@@ -17,7 +18,7 @@ export async function packageSources(root){
       if(entry.isDirectory())await visit(path,name,extension);
       else{
         if(!entry.isFile())throw Error('Unexpected package source: '+name);
-        if(name.startsWith('shared/')&&name.endsWith('.d.ts')){buildInputs.push({source:name,sha256:digest(await readFile(path))});continue;}
+        if(packageBuildInput(name)){buildInputs.push({source:name,sha256:digest(await readFile(path))});continue;}
         if(!extension.test(name))throw Error('Unexpected package source: '+name);
         files.push({source:name,kind:'archive',target:name,sha256:digest(await readFile(path))});
       }

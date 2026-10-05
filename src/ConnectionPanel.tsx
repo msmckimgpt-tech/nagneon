@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {Check,ExternalLink,LoaderCircle,RefreshCw,Radio} from 'lucide-react';
 import {api} from './api';
 import {ProviderPicker} from './ProviderPicker';
+import {NativeAudioSettings} from './NativeAudioSettings';
 import type {AccountState,State} from './types';
 
 export function ConnectionPanel({state}:{state:State}){
@@ -24,6 +25,7 @@ export function ConnectionPanel({state}:{state:State}){
     <div className="account-summary"><span className={'connection-orb '+(state.provider.configured?'ready':'')}><Radio size={20}/></span><div><b>{state.provider.authMessage||(state.provider.configured?'AI 연결 준비됨':'AI 연결이 필요합니다.')}</b><p>{state.provider.model} · 추론 {state.provider.effort}</p></div>{state.provider.configured&&<Check size={20}/>}</div>
     <p className="account-note">{state.providerChoice?.routing?'역할별로 지정한 연결을 같은 대화와 기록에 사용합니다. 각 연결의 구독·API 사용량이 적용됩니다.':state.provider.kind==='ollama'?'이 PC의 Ollama 모델을 사용합니다. 한국어 품질과 속도는 모델과 PC 성능에 따라 달라요. 로컬 모드에서는 웹 검색을 지원하지 않아요.':state.provider.kind==='openai'?'OpenAI API 사용량으로 별도 청구됩니다.':'ChatGPT 구독의 Codex 사용량을 이용합니다. 계정 연결만으로 이 모델의 접근 권한이나 남은 사용량이 보장되지는 않습니다.'}</p>
     <ProviderPicker state={state} disabled={disabled}/>
+    <NativeAudioSettings state={state} disabled={disabled}/>
     <p className="muted">연결 시험도 AI 호출과 사용량에 포함됩니다. 전체 실행 기록·사용량·호출 차단은 AI 대시보드에서 확인하세요. 토큰 수는 요금이나 남은 구독량을 뜻하지 않습니다.</p>
     <div className="connection-actions">
       {(!state.provider.configured||state.providerChoice?.routing)&&canLogin&&<button className="primary" disabled={disabled} onClick={()=>void login('browser')}><ExternalLink size={15}/> ChatGPT 계정 연결</button>}
@@ -44,8 +46,8 @@ export function ConnectionPanel({state}:{state:State}){
     {probe?.status==='failed'&&<p className="connection-problem" role="alert">{probe.message}</p>}
     {probe?.status==='cancelled'&&<p role="status">응답 확인을 취소했습니다. 이미 전송된 요청은 사용량에 반영될 수 있습니다.</p>}
     <RuntimeDownloads state={state}/>
-    <div className="speech-ready"><span className={'dot '+(state.provider.localAudio?'green':'')}/><b>한국어 로컬 음성 인식</b><span>{state.provider.localAudio?'준비됨':state.provider.audioError?'다시 준비 필요':state.provider.audioPreparing?'준비 중':'대기 중'}</span></div>
-    {state.provider.audioError&&<><p className="field-note">{state.provider.audioError} 방송과 키보드 대화는 계속할 수 있어요.</p><button className="secondary" disabled={pending||state.provider.audioPreparing} onClick={()=>void perform(()=>api('audio/prepare'))}><RefreshCw size={14}/> 음성 인식 다시 준비</button></>}
+    {state.nativeAudio?.mode!=='remote'&&<div className="speech-ready"><span className={'dot '+(state.provider.localAudio?'green':'')}/><b>한국어 로컬 음성 인식</b><span>{state.provider.localAudio?'준비됨':state.provider.audioError?'다시 준비 필요':state.provider.audioPreparing?'준비 중':'대기 중'}</span></div>}
+    {state.nativeAudio?.mode!=='remote'&&state.provider.audioError&&<><p className="field-note">{state.provider.audioError} 방송과 키보드 대화는 계속할 수 있어요.</p><button className="secondary" disabled={pending||state.provider.audioPreparing} onClick={()=>void perform(()=>api('audio/prepare'))}><RefreshCw size={14}/> 음성 인식 다시 준비</button></>}
     {error&&<p role="alert" className="connection-problem">{error}</p>}
   </section>;
 }

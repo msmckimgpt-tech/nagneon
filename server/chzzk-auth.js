@@ -1,5 +1,6 @@
 import {createServer} from 'node:http';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
+import {listenBrowserLoopback} from './browser-loopback.js';
 
 export const CHZZK_CALLBACK='http://127.0.0.1:4319/chzzk/callback';
 const validSecret=value=>typeof value==='string'&&/^[\x21-\x7e]{8,2048}$/.test(value);
@@ -17,7 +18,7 @@ export class ChzzkAuth {
     this.cancel();const c={state:randomBytes(32).toString('hex'),controller:new AbortController(),used:false,server:null,timer:null};
     c.server=createServer({maxHeaderSize:4096,headersTimeout:5000,requestTimeout:15000},(req,res)=>{void this.callback(c,req,res,{clientId,clientSecret}).catch(()=>{if(!res.headersSent)res.writeHead(400);res.end();});});
     this.active=c;
-    try{await new Promise((resolve,reject)=>{c.server.once('error',reject);c.server.listen(this.port,'127.0.0.1',resolve);});}
+    try{await listenBrowserLoopback(c.server,{port:this.port,signal:c.controller.signal});}
     catch{if(this.active===c){this.cancel();this.onState({phase:'failed',error:'치지직 인증용 포트를 열지 못했습니다. 다른 연결을 종료한 뒤 다시 시도해주세요.'});}throw Error('치지직 인증 창을 준비하지 못했습니다.');}
     if(this.active!==c){c.server.close();throw Error('치지직 인증이 취소되었습니다.');}
     c.redirectUri=`http://127.0.0.1:${c.server.address().port}/chzzk/callback`;

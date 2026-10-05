@@ -1,5 +1,6 @@
 param([string]$InstallRoot, [switch]$Inspect)
 $ErrorActionPreference = 'Stop'
+if ($Inspect) { [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false) }
 try {
     . (Join-Path $PSScriptRoot 'Profile-Compatibility.ps1')
     if (-not $InstallRoot) {
@@ -14,7 +15,16 @@ try {
     if (-not $config.executable -or $config.exeSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'The installed release configuration is incomplete. Reapply a verified release.' }
     $exe = Join-Path $InstallRoot $config.executable
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installed executable is missing. Reapply the release.' }
+    $packageFolder = Split-Path $exe
+    $capability = $null
+    if ($config.packageCapabilitySha256 -or (Test-Path -LiteralPath (Join-Path $packageFolder 'nagneon-package.json'))) {
+        if ($config.packageCapabilitySha256 -cnotmatch '^[a-f0-9]{64}$' -or $config.asarSha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'The installed package capability identity is incomplete. Reapply a verified release.' }
+        $capability = Get-NagneonPackageCapabilities $packageFolder $config.version $config.packageCapabilitySha256
+        if ($capability.asarSha256 -cne $config.asarSha256 -or $capability.exeSha256 -ine $config.exeSha256) { throw 'Installed package identity mismatch.' }
+    }
     $productVersion = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+    if ($capability) { $productVersion = $capability.appVersion }
+    elseif ($productVersion -match '^(\d+\.\d+\.\d+)(?:\.0)?$') { $productVersion = $Matches[1] }
     $inAppRecovery = $productVersion -match '^(\d+)\.(\d+)\.(\d+)' -and [version]($Matches[1]+'.'+$Matches[2]+'.'+$Matches[3]) -ge [version]'0.1.6'
     $savedProfile = $config.profile
     # New app versions own profile discovery, recovery and storage UI, including
@@ -28,8 +38,17 @@ try {
         if ($Inspect) { throw "Saved profile data is missing at: $savedProfile\data. Open the launcher normally to recover the existing records." }
         throw 'Install Nagneon 0.1.6 or later to recover this profile inside the app.'
     }
-    Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+    Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion $productVersion -PackageFolder $(if ($capability) { $packageFolder }) -ExpectedReceiptSha256 $config.packageCapabilitySha256
     }
+    if ($inAppRecovery) {
+        $savedProfile = Join-Path $env:APPDATA 'backseat-studio'
+        $currentStorageFile = Join-Path $env:APPDATA 'Nagneon/storage.json'
+        if (Test-Path -LiteralPath $currentStorageFile -PathType Leaf) {
+            $savedProfile = (Get-Content -LiteralPath $currentStorageFile -Raw -Encoding UTF8 | ConvertFrom-Json).profile
+            if (-not $savedProfile -or -not [IO.Path]::IsPathRooted($savedProfile)) { throw 'The selected storage profile is invalid. Preserve storage.json and recover the profile before launch.' }
+        }
+    }
+    if ($inAppRecovery -and $savedProfile -and (Test-Path -LiteralPath (Join-Path $savedProfile 'data/profile-format.json'))) { Assert-NagneonProfileCompatibility -Profile $savedProfile -AppVersion $productVersion -PackageFolder $(if ($capability) { $packageFolder }) -ExpectedReceiptSha256 $config.packageCapabilitySha256 }
     # CMD can inherit a PowerShell 7 PSModulePath that hides the Windows
     # PowerShell Get-FileHash module. Use the runtime directly at this boundary.
     $stream = [IO.File]::OpenRead($exe)

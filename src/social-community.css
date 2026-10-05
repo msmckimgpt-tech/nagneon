@@ -1,0 +1,319 @@
+.community-sections {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.community-sections button {
+  padding: 10px 20px;
+  border: 1px solid var(--border, #303443);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+}
+.community-sections button[aria-pressed='true'] {
+  background: #7565d7;
+  color: #fff;
+  border-color: #9285ea;
+}
+.outside-community h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.outside-community .panel-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+.social-settings {
+  padding: 14px 0;
+  border-block: 1px solid #ffffff18;
+  margin-bottom: 20px;
+}
+.social-settings summary {
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.social-settings label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 9px 0;
+}
+.social-topic-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-left: 24px;
+  font-size: 13px;
+}
+.social-community-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.social-community-list button {
+  padding: 14px;
+  text-align: left;
+  background: #ffffff05;
+  color: inherit;
+  border: 1px solid #ffffff20;
+  border-radius: 12px;
+}
+.social-community-list .selected {
+  border-color: #b2a7f7;
+  background: #9285ea22;
+}
+.social-community-list strong,
+.social-community-list span {
+  display: block;
+}
+.social-community-list span {
+  font-size: 12px;
+  opacity: 0.65;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.social-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 18px 0;
+}
+.social-search input[type='text'],
+.social-search input:not([type]) {
+  flex: 1;
+  min-width: 150px;
+}
+.social-search label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.social-post {
+  display: block;
+  width: 100%;
+  padding: 18px 8px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #ffffff14;
+}
+.social-post span,
+.social-post strong,
+.social-post small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.social-post span {
+  color: #b4a9f6;
+  font-size: 12px;
+}
+.social-post strong {
+  margin: 9px 0;
+  font-size: 15px;
+}
+.social-post small,
+.social-detail small {
+  opacity: 0.6;
+}
+.social-post:hover {
+  background: #ffffff06;
+}
+.social-detail {
+  padding: 20px 4px;
+}
+.social-detail p {
+  white-space: pre-wrap;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+  margin: 24px 0;
+}
+.social-actions,
+.social-pages {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.social-pages {
+  justify-content: space-between;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.social-empty {
+  text-align: center;
+  padding: 50px 12px;
+  opacity: 0.65;
+  line-height: 1.7;
+}
+@media (max-width: 600px) {
+  .social-search button {
+    flex: 1;
+  }
+  .social-community-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.community-sections {
+  flex-direction: row;
+  display: flex;
+}
+.community-sections button {
+  width: auto;
+  flex: 0 1 auto;
+}
+.outside-community {
+  padding: 20px;
+}
+.outside-community input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.social-search label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 80px;
+}
+.social-search > input {
+  flex: 1 1 260px;
+}
+
+.community-sections button {
+  font-size: 13px;
+  min-height: 40px;
+}
+.outside-community .panel-heading {
+  height: auto;
+  min-height: 65px;
+  padding: 0 0 16px;
+}
+.outside-community .panel-heading > div {
+  display: block;
+  flex: 1;
+}
+.outside-community .panel-heading h2 {
+  white-space: nowrap;
+}
+.outside-community .panel-heading p {
+  margin: 6px 0 0;
+}
+.outside-community .panel-heading > button {
+  flex-shrink: 0;
+}
+
+.social-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #ffffff1a;
+}
+
+.social-post.social-viewer-post,
+.social-detail.social-viewer-post {
+  border-left: 3px solid #64d8c7;
+  background: #64d8c70c;
+}
+.social-detail.social-viewer-post {
+  padding: 16px;
+  border-radius: 10px;
+}
+.social-author,
+.social-post .social-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.social-viewer-badge,
+.social-post .social-viewer-badge {
+  color: #a5f3e5;
+  background: #267f723d;
+  border: 1px solid #64d8c766;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.community-reading-space,
+.community-reading-content {
+  overflow-anchor: none;
+}
+.community-reading-space {
+  min-height: 100dvh;
+}
+.community-reading-content {
+  min-height: calc(100dvh - 32px);
+  outline: none;
+}
+.social-discussion {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.social-comment {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.social-comment p {
+  white-space: pre-wrap;
+}
+.social-replies {
+  margin-left: 24px;
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+}
+.social-discussion textarea {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  margin: 8px 0;
+  resize: vertical;
+}
+.social-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+.social-attachments figure {
+  margin: 12px 0;
+  min-width: 0;
+}
+.social-attachments img,
+.social-attachments video {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #101820;
+  border-radius: 8px;
+}
+.social-attachments figcaption {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+}
+.social-upload {
+  display: block;
+  margin-top: 12px;
+}
+.social-upload input {
+  display: block;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.social-attachments video {
+  width: 100%;
+  min-height: 160px;
+}

@@ -158,9 +158,7 @@ Useful parameters (all optional, safe defaults):
 
 - **Refuses to write outside** the repo `artifacts` directory, and rejects any
   `-OutputName` not matching `^speech-runtime-[A-Za-z0-9._-]+$`.
-- **Refuses to overwrite / never recursively deletes** an existing output path — pick a
-  new name instead. The only cleanup it performs is removing its own throwaway download
-  staging dir under `%TEMP%`.
+- **Refuses to overwrite / never recursively deletes** an existing output path. 새로 만든 runtime에는 `.nagneon-storage.json` 소유권 표식을 남기고 완료 후보는 2개까지만 허용한다. 세 번째 후보가 필요하면 `node scripts/storage-maintenance.mjs --reserve-speech-slot --plan=artifacts/storage-cleanup-plan.json`으로 먼저 미리보기하고 정확한 plan SHA를 지정한 `--apply`에서만 오래된 소유 runtime을 정리한다. 기존 무표식 runtime은 자동 삭제하지 않는다. 빌더 자체가 수행하는 cleanup은 `%TEMP%`의 자기 download staging뿐이다.
 - Uses the dev venv **read-only**; performs no user/global pip installs and never touches
   `.env`, `.venv` contents, tokens, or global config.
 - Strips the pip-generated `bin\` console-script launchers from site-packages, because

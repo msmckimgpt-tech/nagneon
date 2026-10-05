@@ -25,7 +25,7 @@ function fixture(t,react=async()=>output(),stored={}){
 }
 test('automatic silent clip reading and recommendation persist without manufacturing a comment or exposing the reader',async t=>{
  const f=fixture(t,async()=>output([],[{personaId:'momo',recommended:true}])),c=f.clip();
- await f.visit();assert.equal(f.calls,1);assert.equal(f.clips.get(c.id).comments.length,0);assert.deepEqual(f.clips.get(c.id).votes,['momo']);
+ await f.visit();assert.equal(f.calls,1);assert.equal(f.s.ai.snapshot().recent[0].activityKind,'clip-comment');assert.equal(f.s.ai.snapshot().recent[0].activityResult,'read-only');assert.equal(f.clips.get(c.id).comments.length,0);assert.deepEqual(f.clips.get(c.id).votes,['momo']);
  assert.equal(f.clips.data[0].readings[0].viewerId,'momo');assert.equal(f.clips.data[0].activityReads[0].viewerId,'momo');ClipsData.parse(f.clips.data);AudienceData.parse(f.s.audience.data);
  assert.ok(f.clips.recall('momo','드디어').flatMap(c=>c.items).some(m=>m.text==='드디어 맞췄다'));
  for(const publicValue of [f.clips.get(c.id),f.clips.list(),f.s.state()])assert.ok(!JSON.stringify(publicValue).includes('activityReads'));

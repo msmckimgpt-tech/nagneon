@@ -2,6 +2,8 @@
 // permission to give one; model instructions still interpret the full speech.
 export function adviceIntent(speech=''){
   const text=String(speech).normalize('NFKC').toLowerCase()
+    // Repair only word-internal apostrophes; actual quoted requests stay quoted.
+    .replace(/(?<=[a-z])[‘’ʼ](?=[a-z])/gu,"'")
     .replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/gu,'');
   let requested=false,refused=false,single=false;
   for(const clause of text.split(/(?<=[.!?。！？\n])|(?<=말고)\s+|\s*(?:그런데|하지만|근데|대신)\s*/u)){
@@ -11,6 +13,7 @@ export function adviceIntent(speech=''){
       ||(choice&&/(?:주지\s*(?:마|말)|하지\s*(?:마|말)|해\s*주지\s*(?:마|말)|주지는?\s*말|주지\s*않|필요\s*없|금지|그만|말고|말아|말자)/u.test(clause))
       ||/(?:훈수|힌트|공략|정답|도움|스포일러)(?:는|은|도)?\s*없이/u.test(clause)
       ||/(?:알려\s*주지|도와\s*주지|말하지)\s*(?:마|말)|(?:no|without|stop|don't|do not)\b.{0,30}\b(?:hints?|advice|help|backseating)\b/u.test(clause)
+      ||/\b(?:shouldn't|should\s+not|mustn't|must\s+not|(?:can|could|would|will)\s+you\s+not)\s+(?:(?:give|tell|show|offer|provide)\b.{0,30}\b(?:hints?|advice|help|answers?)\b|(?:help|backseat|spoil)\b)/u.test(clause)
       ||(requested&&/(?:이제|지금은).{0,10}(?:필요\s*없|그만|괜찮)/u.test(clause));
     if(declined){requested=false;refused=true;single=false;continue;}
     // Recounting an earlier request does not renew it.

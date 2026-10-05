@@ -1,11 +1,24 @@
 import {createHash} from 'node:crypto';
+import {assembleSpeech} from '../shared/speech-content.js';
+
+function consecutiveSubscriptionSpeech(previous, next) {
+  const before=previous?.capture?.voice,after=next.capture?.voice;
+  return before?.provider==='chatgpt-subscription'&&after?.provider==='chatgpt-subscription'
+    &&before.kind==='transcript'&&after.kind==='transcript'
+    &&before.sourceInputEpoch===after.sourceInputEpoch&&before.recovered===after.recovered
+    &&previous.capture.screen?.sourceId===next.capture.screen?.sourceId
+    &&Number.isFinite(before.sourceFrameEnd)&&Number.isFinite(after.sourceFrameStart)
+    &&after.sourceFrameStart>=before.sourceFrameEnd
+    &&after.sourceFrameStart-before.sourceFrameEnd<=8*16000;
+}
 
 // Per-broadcast transport receipts. A retry has the same identity even after
 // its text has left the pending model batch; it must not repeat in chat.
 export class SpeechInbox {
   constructor(){this.pending=[];this.receipts=new Map();}
   receive(id,text,publish,source='keyboard',capture,hearers=[]){
-    const fingerprint=createHash('sha256').update(source+'\0'+text+(capture?'\0'+JSON.stringify([capture.startedAt,capture.endedAt,capture.screen?.sessionId,capture.screen?.sourceId,capture.screen?.frames.map(f=>[f.at,f.image])]):'')).digest('hex'),prior=this.receipts.get(id);
+    if(text.length>4000)throw new Error('한 발언은 4,000자까지 전달할 수 있습니다.');
+    const fingerprint=createHash('sha256').update(source+'\0'+text+(capture?'\0'+JSON.stringify([capture.startedAt,capture.endedAt,capture.screen?.sessionId,capture.screen?.sourceId,capture.screen?.frames.map(f=>[f.at,f.image]),capture.listening]):'')).digest('hex'),prior=this.receipts.get(id);
     if(prior){if(prior.fingerprint!==fingerprint)throw new Error('같은 발언 ID의 내용이 달라졌습니다.');return {messageId:prior.messageId,duplicate:true};}
     if(this.pending.length>=40)throw new Error('아직 답하지 못한 말이 많이 밀렸어요. 잠시 후 다시 전달해주세요.');
     if(this.receipts.size>=20000)throw new Error('이번 방송의 발언 보관 한도에 도달했습니다. 방송을 마친 뒤 새로 시작해주세요.');
@@ -19,15 +32,21 @@ export class SpeechInbox {
       const key=JSON.stringify([...item.hearers].sort()),next=item.text.length+(items.length?1:0);
       // Keep arrival boundaries between utterances. A later question for a
       // returnee must not be lost merely because an older question is pending.
-      if(size+next>3000||(items.length&&(key!==audience||item.capture||items[0].capture)))break;
+      const nativeBatch=item.capture?.listening&&items[0]?.capture?.listening;
+      // Preserve each fragment's frozen screen and source clock while allowing
+      // the slower audience model to consume a bounded continuous utterance.
+      const subscriptionBatch=consecutiveSubscriptionSpeech(items.at(-1),item);
+      // A valid provider fragment may contain 4000 characters. Consume a long
+      // head alone, preserving its final words and allowing later inputs through.
+      if((items.length&&size+next>3000)||items.length>=4||(items.length&&(key!==audience||((item.capture||items[0].capture)&&!nativeBatch&&!subscriptionBatch))))break;
       audience=key;size+=next;items.push(item);
     }
-    return {text:items.map(e=>e.text).join('\n'),ids:items.map(e=>e.id)};
+    return {...assembleSpeech(items),ids:items.map(e=>e.id)};
   }
   acknowledge(ids){const done=new Set(ids);this.pending=this.pending.filter(e=>!done.has(e.id));}
   sources(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)).map(({messageId,text,source,capture,hearers})=>({messageId,text,source,hearers:[...hearers],...(capture?{capture:structuredClone(capture)}:{})}));}
   hearers(ids){const requested=new Set(ids),items=this.pending.filter(e=>requested.has(e.id));return items.length?items[0].hearers.filter(id=>items.every(e=>e.hearers.includes(id))):[];}
-  candidates(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)&&e.source==='microphone'&&!e.corrected).slice(0,4).map(e=>({messageId:e.messageId,text:e.text}));}
+  candidates(ids){const requested=new Set(ids);return this.pending.filter(e=>requested.has(e.id)&&e.source==='microphone'&&!e.capture?.listening&&!e.corrected).slice(0,4).map(e=>({messageId:e.messageId,text:e.text}));}
   annotate(messageId,text){const entry=this.pending.find(e=>e.messageId===messageId);if(entry){entry.text=text;entry.corrected=true;}}
   forget(messageId){this.pending=this.pending.filter(e=>e.messageId!==messageId);}
   clear(){this.pending=[];}

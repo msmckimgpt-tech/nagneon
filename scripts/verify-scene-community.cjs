@@ -1,0 +1,50 @@
+const {app,BrowserWindow,session}=require('electron');
+const {createStudioSession}=require('../desktop/session.cjs');
+const {resolve,join}=require('node:path');
+const {pathToFileURL}=require('node:url');
+const {mkdirSync,writeFileSync}=require('node:fs');
+const assert=require('node:assert/strict');
+const folder=resolve('artifacts/scene-community-'+Date.now());mkdirSync(folder,{recursive:true});
+app.setPath('userData',join(folder,'profile'));
+let service,win;const result={passed:false,synthetic:true,checks:[]};
+setTimeout(()=>app.exit(2),60000).unref();
+app.whenReady().then(async()=>{
+  try{
+    const {startServer}=await import(pathToFileURL(resolve('server/index.js')));
+    service=await startServer({port:0,dataDir:join(folder,'data'),localSpeech:false,provider:{status:()=>({configured:false}),react:async()=>{throw Error('No model call');}}});
+    const s=service.studio;clearInterval(s.timer);
+    await fetch(service.url+'/api/onboarding',{method:'POST',headers:{Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'},body:JSON.stringify({skip:true})});
+    const record=s.clips.create({title:'합성 장면 게시글',scene:'이 사진과 대화가 첨부된 기록',participants:[],messages:[],sessionId:'synthetic',source:'spectator',creator:{id:'fixture',name:'시험 관객',reason:'기록 보존 시험'},image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jK1sAAAAASUVORK5CYII='});
+    const first=s.clips.comment(record.id,{text:'보존할 기존 댓글',name:'관객',personaId:'fixture',kind:'ai'});
+    s.clips.comment(record.id,{text:'보존할 기존 답글',name:'스트리머',parentId:first.id});
+    win=new BrowserWindow({show:false,width:1300,height:900,webPreferences:{session:createStudioSession(session,service),sandbox:true,contextIsolation:true,backgroundThrottling:false,offscreen:true}});
+    await win.loadURL(service.url);const js=code=>win.webContents.executeJavaScript(code,true);
+    const until=async code=>{const at=Date.now();while(Date.now()-at<10000){if(await js(code))return;await new Promise(r=>setTimeout(r,70));}throw Error('UI timeout: '+code);};
+    const button=async text=>{await until(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()===${JSON.stringify(text)})`);await js(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}).click()`);};
+    await button('핫클립');await until(`document.querySelector('main').textContent.includes('첫 핫클립을 기다려요')`);
+    assert.equal(await js("document.querySelectorAll('.clip-card').length"),0);
+    result.checks.push('photo record is absent from hot clips');
+    await button('방송 밖 이야기');await button('장면 기록');
+    await until("document.querySelector('.gallery-table').textContent.includes('합성 장면 게시글')");
+    await js("document.querySelector('.gallery-table tbody button').click()");
+    await until("!!document.querySelector('[aria-label=\"게시글 첨부파일\"] img')");
+    assert.ok(await js("document.querySelector('.clip-detail').textContent.includes('보존할 기존 답글')"));
+    assert.equal(await js("document.querySelectorAll('.clip-detail video,.clip-detail audio').length"),0);
+    const selector='[aria-label="장면 기록 댓글"]';
+    await js(`{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'새 댓글도 같은 기록에 저장');e.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    await button('댓글 남기기');await until("document.querySelector('.clip-comments').textContent.includes('새 댓글도 같은 기록에 저장')");
+    assert.equal(s.clips.get(record.id).comments.length,3);assert.equal(s.clips.get(record.id).comments[0].id,first.id);
+    assert.equal(s.audience.data.posts.length,0);
+    result.checks.push('photo attachment, original comment/reply and new comment share the original record without copied posts');
+    win.webContents.invalidate();await new Promise(r=>setTimeout(r,250));
+    writeFileSync(join(folder,'community.png'),(await win.webContents.capturePage()).toPNG());
+    await win.reload();await button('방송 밖 이야기');await button('장면 기록');await js("document.querySelector('.gallery-table tbody button').click()");
+    await until("document.querySelector('.clip-comments')?.textContent.includes('새 댓글도 같은 기록에 저장')");
+    result.checks.push('renderer reload preserves attachment and thread');
+    await js("document.querySelector('[aria-label=\"이 장면 기록 삭제\"]').click()");
+    await until("!document.querySelector('.gallery-table tbody tr')");assert.equal(s.clips.data.length,0);
+    result.checks.push('community deletion removes original record through existing deletion API');
+    result.passed=true;
+  }catch(e){result.error=e.stack;}
+  finally{if(win&&!win.isDestroyed())win.destroy();await service?.close();writeFileSync(join(folder,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({folder,...result}));app.exit(result.passed?0:1);}
+});

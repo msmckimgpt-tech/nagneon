@@ -6,7 +6,7 @@ export const JOURNAL_LIMIT=4000, PIN_LIMIT=100;
 const actor=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
 const Transcription=z.object({source:z.literal('microphone'),correction:z.object({text:z.string().min(1).max(3000),confidence:z.number().min(.9).max(1),reason:z.string().max(240),at:z.number().finite().nonnegative()}).optional()});
 const Donation=z.object({amount:z.number().int().min(1).max(200),anonymous:z.boolean()});
-const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(3000),witnesses:z.array(actor),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean(),transcription:Transcription.optional(),kind:z.enum(['chat','streamer','notice','donation']).optional(),donation:Donation.optional()}).superRefine((e,ctx)=>{
+const Entry=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),at:z.number().finite().nonnegative(),personaId:actor,name:z.string().max(100),text:z.string().min(1).max(4000),witnesses:z.array(actor),fictional:z.boolean(),title:z.string().max(200),pinned:z.boolean(),transcription:Transcription.optional(),kind:z.enum(['chat','streamer','notice','donation']).optional(),donation:Donation.optional()}).superRefine((e,ctx)=>{
   if((e.kind==='donation')!==!!e.donation)ctx.addIssue({code:'custom',message:'후원 기억의 종류와 포인트 기록이 맞지 않습니다.'});
   if(e.donation?.anonymous&&(e.personaId!=='anonymous'||e.name!=='익명의 관객'))ctx.addIssue({code:'custom',message:'익명 후원 기억에 후원자를 기록할 수 없습니다.'});
 });
@@ -27,7 +27,7 @@ function terms(text){const set=new Set();for(let word of normalize(text).split(/
 // Exact public quotes and the identities present when they were published.
 // No inferred emotional state, secret interview, or invented recollection enters here.
 export class ConversationJournal {
-  constructor(data=emptyJournal(),save=()=>{}){this.data=JournalData.parse(data);this.save=save;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(memoryText(e))]));}
+  constructor(data=emptyJournal(),save=()=>{},{legacyAudienceIds=()=>[]}={}){this.data=JournalData.parse(data);this.save=save;this.legacyAudienceIds=legacyAudienceIds;this.normalized=new Map(this.data.entries.map(e=>[e.id,normalize(memoryText(e))]));}
   change(edit){const next=copyJournal(this.data);const changed=edit(next);if(changed===false)return;next.revision++;const checked=JournalData.parse(next);this.save(copyJournal(checked));this.data=checked;const active=new Set(checked.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
   record(message,{sessionId,witnesses,title=''}){
     const existing=this.data.entries.find(e=>e.id===message.id);
@@ -37,7 +37,7 @@ export class ConversationJournal {
   }
   pin(id,pinned){this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry)throw new Error('대화 기억을 찾을 수 없습니다.');if(entry.pinned===pinned)return false;if(pinned&&next.entries.filter(e=>e.pinned).length>=PIN_LIMIT)throw new Error(`대화는 ${PIN_LIMIT}개까지 고정할 수 있습니다.`);entry.pinned=pinned;});}
   annotateTranscription(id,correction){let changed=false;this.change(next=>{const entry=next.entries.find(e=>e.id===id);if(!entry||entry.personaId!=='streamer'||entry.transcription?.source!=='microphone'||entry.transcription.correction)return false;entry.transcription=Transcription.parse({source:'microphone',correction});changed=true;});if(changed)this.normalized.delete(id);return changed;}
-  forget(ids){const set=new Set(ids);this.change(next=>{const kept=next.entries.filter(e=>!set.has(e.id));if(kept.length===next.entries.length)return false;next.entries=kept;});}
+  forget(ids){this.beforeForget?.(ids);const set=new Set(ids);this.change(next=>{const kept=next.entries.filter(e=>!set.has(e.id));if(kept.length===next.entries.length)return false;next.entries=kept;});}
   summary(){return {revision:this.data.revision,count:this.data.entries.length,pinned:this.data.entries.filter(e=>e.pinned).length,limit:JOURNAL_LIMIT,pinLimit:PIN_LIMIT};}
   list({viewerId='',query='',pinned=false,offset=0,limit=30}={}){
     const needle=normalize(query).trim();const matches=this.data.entries.filter(e=>(!viewerId||e.witnesses.includes(viewerId))&&(!pinned||e.pinned)&&(!needle||normalize(memoryText(e)+' '+e.name+' '+e.title).includes(needle))).slice().reverse();
@@ -65,8 +65,9 @@ export class ConversationJournal {
       take(scored.filter(r=>!r.entry.fictional&&r.entry.personaId!=='streamer'&&/추천|한\s*표|저라면/.test(r.entry.text)&&r.hits.some(h=>!/(?:추천|누구|누가|주신|있었|골라|고르)/.test(h.word))).sort((a,b)=>b.relevance-a.relevance||a.index-b.index),2);
     }
     take(scored.filter(r=>r.relevance>0&&r.entry.personaId===viewerId).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),2);
-    // An old pinned promise must not outlive an explicit later cancellation.
-    take(scored.filter(r=>r.entry.personaId==='streamer'&&/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(r.entry.text)).reverse(),2);
+    // Related corrections must survive newer cancellations of other topics.
+    // Keep recency within each group and the same two-quote selection budget.
+    take(scored.filter(r=>r.entry.personaId==='streamer'&&/취소|정정|바꿀|그만|철회|하지 말|하지마/.test(r.entry.text)).sort((a,b)=>Number(b.relevance>0)-Number(a.relevance>0)||b.index-a.index),2);
     take(scored.filter(r=>r.relevance>0).sort((a,b)=>b.relevance-a.relevance||b.index-a.index),3);
     take(scored.filter(r=>r.entry.pinned).reverse(),1);
     take(scored.filter(r=>r.anchor).reverse(),1);
@@ -78,7 +79,7 @@ export class ConversationJournal {
       // and do not add this fallback to frame-only requests with no speech.
       if(query.trim())take(scored.slice(-3).reverse(),3);
     }
-    const continued=recallContinuations([...selected.values()],this.data.entries,candidates);
+    const continued=recallContinuations([...selected.values()],this.data.entries,candidates,8,{legacyAudienceIds:this.legacyAudienceIds()});
     if(this.normalized.size>JOURNAL_LIMIT){const active=new Set(this.data.entries.map(e=>e.id));for(const id of this.normalized.keys())if(!active.has(id))this.normalized.delete(id);}
     let remaining=1800;const chosen=continued.sort((a,b)=>a.at-b.at);
     return chosen.map((e,index)=>{let text=e.text.slice(0,Math.min(600,Math.floor(remaining/(chosen.length-index))));if(/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);remaining-=text.length;return {sourceId:e.id,sessionId:e.sessionId,at:e.at,speakerId:e.personaId,speaker:e.name,text,excerpt:text.length<e.text.length,fictional:e.fictional,title:e.title,...(e.kind?{kind:e.kind}:{}),...(e.donation?{donation:{...e.donation}}:{}),...(e.transcription?.correction?{transcriptionCorrection:{text:e.transcription.correction.text.slice(0,600),confidence:e.transcription.correction.confidence,source:"contextual-stt"}}:{})};});

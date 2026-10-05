@@ -1,6 +1,7 @@
 import {OpenAIProvider} from './provider.js';
 import {z} from 'zod';
 import {Observation} from './schema.js';
+import {broadcastChatSchema} from './broadcast-chat.js';
 
 // Local constrained decoding needs the same lengths, ranges and UUIDs that
 // acceptance validates. The hosted-provider schema omits some of these bounds.
@@ -46,7 +47,7 @@ export class OllamaProvider extends OpenAIProvider {
     const text=content.filter(p=>p.type==='input_text').map(p=>p.text).join('\n');
     // Conservative text allowance; image tokenization remains model-specific.
     if(Buffer.byteLength(payload.instructions+text,'utf8')+images.length*4096+2300>this.contextSize)throw Error('로컬 모델의 문맥 예산을 넘었습니다. 문맥 크기를 늘리거나 참여 관객·화면 입력을 줄여주세요.');
-    const result=await this.localRequest('chat',{model:this.model,stream:false,...this.think===undefined?{}:{think:this.think},format:localFormat,options:{num_predict:2200,num_ctx:this.contextSize},messages:[{role:'system',content:payload.instructions+'\n웹 검색 기능은 제공되지 않는다. 검색을 했다고 주장하지 않는다.'},{role:'user',content:text,...(images.length?{images:images.map(image=>image.slice(image.indexOf(',')+1))}:{})}]},signal);
+    const result=await this.localRequest('chat',{model:this.model,stream:false,...this.think===undefined?{}:{think:this.think},format:broadcastChatSchema(localFormat,args),options:{num_predict:2200,num_ctx:this.contextSize},messages:[{role:'system',content:payload.instructions+'\n웹 검색 기능은 제공되지 않는다. 검색을 했다고 주장하지 않는다.'},{role:'user',content:text,...(images.length?{images:images.map(image=>image.slice(image.indexOf(',')+1))}:{})}]},signal);
     args.onAiUsage?.({input_tokens:result.prompt_eval_count,output_tokens:result.eval_count});
     if(result.done!==true||result.done_reason==='length'||result.message?.tool_calls?.length)throw Error('로컬 모델 응답이 완료되지 않았습니다. 모델과 출력 길이를 확인해주세요.');
     try{const observation=Observation.parse(JSON.parse(result.message.content));const count=n=>Number.isSafeInteger(n)&&n>=0?n:undefined;return {observation,usage:{input_tokens:count(result.prompt_eval_count),output_tokens:count(result.eval_count),total_tokens:Number.isFinite(result.prompt_eval_count)&&Number.isFinite(result.eval_count)?result.prompt_eval_count+result.eval_count:undefined}};}

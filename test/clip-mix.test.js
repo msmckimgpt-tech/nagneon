@@ -25,8 +25,22 @@ test('microphone and system audio mix once without a playback-speaker connection
   result.close();result.close();assert.equal(a.copy.stops,1);assert.equal(b.copy.stops,1);assert.equal(h.output.stops,1);assert.equal(ctx.closed,1);
 });
 test('partial mixer construction failure releases clones, output and context',t=>{
-  const h=setup(t,{failGain:true}),a=h.source();assert.throws(()=>mixClipAudio([new h.Stream([a])]),/gain failed/);assert.equal(a.copy.stops,1);assert.equal(h.output.stops,1);assert.equal(h.contexts[0].closed,1);
+  const h=setup(t,{failGain:true}),a=h.source(),b=h.source();assert.throws(()=>mixClipAudio([new h.Stream([a,b])]),/gain failed/);assert.equal(a.copy.stops,1);assert.equal(b.cloneCalls,0);assert.equal(h.output.stops,1);assert.equal(h.contexts[0].closed,1);
 });
 test('empty audio source does not open an AudioContext',t=>{
   const h=setup(t);const result=mixClipAudio([]);result.close();assert.equal(result.tracks.length,0);assert.equal(h.contexts.length,0);
+});
+test('a single input is cloned without an audio graph and leaves the original live',t=>{
+  const h=setup(t),a=h.source();let originalStops=0;a.stop=()=>originalStops++;
+  const result=mixClipAudio([new h.Stream([a]),new h.Stream([a])]);
+  assert.deepEqual(result.tracks,[a.copy]);assert.equal(a.cloneCalls,1);assert.equal(h.contexts.length,0);
+  result.close();result.close();assert.equal(a.copy.stops,1);assert.equal(originalStops,0);assert.equal(a.readyState,'live');
+});
+test('ended inputs do not require a mixer beside a single live input',t=>{
+  const h=setup(t),a=h.source(),ended=h.source();ended.readyState='ended';
+  const result=mixClipAudio([new h.Stream([ended,a])]);assert.deepEqual(result.tracks,[a.copy]);assert.equal(ended.cloneCalls,0);assert.equal(h.contexts.length,0);result.close();
+});
+test('single input clone failure neither opens a mixer nor stops the original',t=>{
+  const h=setup(t),a=h.source();a.clone=()=>{throw Error('clone failed');};
+  assert.throws(()=>mixClipAudio([new h.Stream([a])]),/clone failed/);assert.equal(h.contexts.length,0);assert.equal(a.readyState,'live');
 });

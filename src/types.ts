@@ -72,6 +72,7 @@ export type Settings = {
   games: Game[];
 };
 export type Message = {
+  historySequence?: number;
   donation?: { amount: number; anonymous: boolean };
   transcription?: {
     source: 'microphone';
@@ -101,8 +102,48 @@ export type SoundState = {
 export type BroadcastSessionState =
   { running: true; sessionId: string } | { running: false; sessionId: string | null };
 export type State = BroadcastSessionState & {
+  microphone?: { deviceId: string; label: string };
+  nativeAudio?: {
+    inputEpoch?: string;
+    startedAt?: number;
+    mode: 'local' | 'remote';
+    transport?: 'subscription' | 'api';
+    stage?: 'preparing' | 'connected' | 'listening' | 'received' | 'stopped';
+    consent: boolean;
+    consentVersion?: 2;
+    configured: boolean;
+    model: string;
+    active: boolean;
+    error: string;
+    captured?: number;
+    durable?: number;
+    pending?: number;
+    applied?: number;
+    uncertain?: number;
+    expired?: number;
+  };
+  subscriptionSound?: {
+    active: boolean;
+    stage?: string;
+    error: string;
+    captured: number;
+    durable: number;
+    applied: number;
+    pending: number;
+  };
+  social?: {
+    revision: number;
+    enabled: boolean;
+    arrivalsEnabled: boolean;
+    quarantined: boolean;
+    status: string;
+    blockedReason: string;
+    residents: number;
+    threads: number;
+  } | null;
   ai?: import('./ai-types').AiState;
   runtimeComponents?: {
+    preparing?: boolean;
     components: Array<{
       id: string;
       label: string;
@@ -170,6 +211,8 @@ export type State = BroadcastSessionState & {
       checkedAt: number;
       analyzedAt: number;
       error: string;
+      patternCount: number;
+      status: 'unavailable' | 'uncollected' | 'no-patterns' | 'stale' | 'ready';
     }[];
   };
   audience: {
@@ -192,6 +235,7 @@ export type State = BroadcastSessionState & {
   };
   startedAt: number | null;
   messages: Message[];
+  chatHistory?: { revision: number; hasMore: boolean };
   events: { id: string; time: number; text: string }[];
   observation: {
     game: string;
@@ -262,6 +306,15 @@ declare global {
     backseat?: {
       storageStatus: () => Promise<{ profile: string; defaultProfile: string; isolated: boolean }>;
       changeStorage: (useDefault: boolean) => Promise<boolean>;
+      appendSpeechRaw: (entry: {
+        sessionId: string;
+        inputEpoch: string;
+        sequence: number;
+        startFrame: number;
+        frameCount: number;
+        data: Uint8Array;
+        capture?: import('./speech-flow').SpeechCapture;
+      }) => Promise<{ duplicate: boolean; durableThrough: number; storageNearlyFull?: boolean }>;
       sources: () => Promise<Source[]>;
       sourcePreviews?: (type: 'screen' | 'window') => Promise<Source[]>;
       selectSource: (id: string, systemAudio?: boolean) => Promise<void>;
@@ -269,6 +322,7 @@ declare global {
       toggleClickThrough: () => Promise<boolean>;
       closeOverlay: () => Promise<void>;
       onOverlayState: (fn: (value: boolean) => void) => () => void;
+      onNavigationHistory?: (fn: (direction: 'back' | 'forward') => void) => () => void;
       accountStatus: () => Promise<AccountState>;
       startAccountLogin: (method: 'browser' | 'device') => Promise<AccountState>;
       cancelAccountLogin: () => Promise<AccountState>;

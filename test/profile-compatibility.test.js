@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+const engine = process.env.NAGNEON_TEST_POWERSHELL || (existsSync(join(process.env.ProgramFiles || '', 'PowerShell/7/pwsh.exe')) ? join(process.env.ProgramFiles, 'PowerShell/7/pwsh.exe') : 'powershell.exe');
 
 test('launcher reports recoverable startup failures without a PowerShell stack or creating records', {skip:process.platform!=='win32'}, async()=>{
   await mkdir('artifacts',{recursive:true});
   const folder=await mkdtemp(resolve('artifacts/launcher-errors-'));
   const appData=join(folder,'roaming'),local=join(folder,'local'),profile=join(folder,'profile');
   await mkdir(appData);await mkdir(local);await mkdir(profile);
-  const invoke=(registered=false)=>spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/Start-InstalledNagneon.ps1'),'-Inspect',...(registered?[]:['-InstallRoot',folder])],{encoding:'utf8',windowsHide:true,env:{...process.env,APPDATA:appData,LOCALAPPDATA:local}});
+  const invoke=(registered=false)=>spawnSync(engine,['-NoProfile','-NonInteractive','-File',resolve('scripts/Start-InstalledNagneon.ps1'),'-Inspect',...(registered?[]:['-InstallRoot',folder])],{encoding:'utf8',windowsHide:true,env:{...process.env,APPDATA:appData,LOCALAPPDATA:local}});
   const rejected=(result,pattern)=>{assert.equal(result.status,1);assert.match(result.stderr,pattern);assert.doesNotMatch(result.stderr,/CategoryInfo|FullyQualifiedErrorId|WriteErrorException/);};
   rejected(invoke(true),/registration is missing/);
   await writeFile(join(folder,'current.json'),'broken');
@@ -41,7 +43,7 @@ try { Assert-NagneonResolvedStoragePath -Requested 'C:\\Users\\fixture\\AppData\
 if (-not $rejected) { throw 'Redirected storage was accepted' }
 if (Get-ChildItem -LiteralPath $Folder -Filter '.nagneon-storage-probe-*') { throw 'Probe leaked' }
 `);
-  const result=spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',runner,'-Helper',resolve('scripts/Profile-Compatibility.ps1'),'-Folder',folder],{encoding:'utf8',windowsHide:true});
+  const result=spawnSync(engine,['-NoProfile','-NonInteractive','-File',runner,'-Helper',resolve('scripts/Profile-Compatibility.ps1'),'-Folder',folder],{encoding:'utf8',windowsHide:true});
   assert.equal(result.status,0,result.stdout+result.stderr);
 });
 
@@ -60,11 +62,10 @@ test(
     );
     const invoke = (version) =>
       spawnSync(
-        'powershell.exe',
+        engine,
         [
           '-NoProfile',
-          '-ExecutionPolicy',
-          'Bypass',
+          '-NonInteractive',
           '-File',
           runner,
           '-Helper',
@@ -99,6 +100,11 @@ test(
       assert.equal(invoke('0.1.4').status, 0);
       assert.equal(invoke('0.2.0').status, 0);
     }
+    const marker=join(profile,'data/profile-format.json');
+    await writeFile(marker,JSON.stringify({minReader:2,minAppVersion:'0.1.7'}));
+    const denied=invoke('0.1.6');assert.notEqual(denied.status,0);assert.match(denied.stderr,/0\.1\.7/);
+    const unknownReader=invoke('0.1.7');assert.notEqual(unknownReader.status,0);assert.match(unknownReader.stderr,/packaged profile reader/);
+    const {unlink}=await import('node:fs/promises');await unlink(marker);
     await writeFile(world, 'broken');
     assert.notEqual(invoke('0.1.3').status, 0);
     assert.equal(await readFile(world, 'utf8'), 'broken');

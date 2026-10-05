@@ -101,6 +101,16 @@ test('quiet requests suppress volunteers; a named question retains its own speak
  assert.notEqual(f.requests.at(-1).ambient?.id,'quiet-company');assert.ok(f.requests.at(-1).settings.personas.some(p=>p.id==='momo'));
  assert.equal(f.s.audience.presence.pop,'lurking');assert.equal(f.s.ambient.snapshot().quiet,true);
 });
+
+test('negated quiet request resumes viewers who heard it and keeps later arrivals excluded',async t=>{
+ const f=fixture(t);await f.s.react({image:'same',speech:'잠깐 조용히 봐주세요'});f.lurk();f.s.audience.setPresence('new','away',f.s.now());f.advance(5000);
+ const speech='조용히 하지 말고 같이 얘기해';f.s.receiveSpeech({id:randomUUID(),sessionId:f.s.sessionId,text:speech,source:'keyboard'});
+ f.advance(1);f.s.audience.setPresence('new','lurking',f.s.now());await f.s.react({image:'same'});
+ const req=f.requests.at(-1);assert.notEqual(req.ambient?.quiet,true);assert.equal(f.s.ambient.snapshot().quiet,false);
+ assert.ok(req.settings.personas.some(p=>p.id==='momo'));assert.ok(!req.settings.personas.some(p=>p.id==='new'));
+ assert.equal(req.speech,speech);assert.ok(req.liveSpeech[0].hearers.includes('momo'));assert.ok(!req.liveSpeech[0].hearers.includes('new'));
+ assert.equal(f.s.audience.presence.momo,'lurking');
+});
 test('a volunteered lurker still receives current video and is dropped after leaving mid-response',async t=>{
  let resolve;const f=fixture(t,async a=>a.ambient?.id==='quiet-company'?new Promise(r=>resolve=r):{observation:observation()});
  const sourceId=randomUUID(),video=image=>({sessionId:f.s.sessionId,sourceId,frames:[{image,at:f.s.now()}]});

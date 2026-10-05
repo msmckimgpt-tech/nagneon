@@ -30,7 +30,7 @@ function fixture(t,{provider=fake(),save=()=>{}}={}){
 test('autonomous reading with retired HTTP trigger survives restart/rename into only that viewers live context and deletion removes the source',async()=>{
   const dir=await folder();let service,args;const provider=fake(async a=>{args=a;return result(a.special?[reply()]:[]);});
   try{
-    service=await startServer({port:0,dataDir:dir,provider,localSpeech:false});seedMetAudience(service.studio);const s=service.studio;s.ai.update({background:true});clearInterval(s.timer);s.configure({...s.settings,mode:'live',category:'just-chatting',chatPace:4,lurkRatio:0,maxCalls:30});s.start();
+    service=await startServer({port:0,dataDir:dir,provider,localSpeech:false});seedMetAudience(service.studio);const s=service.studio;s.social.preferences({enabled:false});s.ai.update({background:true});clearInterval(s.timer);s.configure({...s.settings,mode:'live',category:'just-chatting',chatPace:4,lurkRatio:0,maxCalls:30});s.start();
     const gift=donationMessage({id:randomUUID(),at:T,amount:24,anonymous:true,text:'퍼즐 해결 축하'}),c=s.clips.create(base({messages:[gift]}));
     const parent=s.clips.comment(c.id,{name:'플레이어',text:'기차 소리 별명은 야간열차로 할게요'});
     const headers={Authorization:'Bearer '+service.accessToken,'X-Backseat-Client':'studio','Content-Type':'application/json'};

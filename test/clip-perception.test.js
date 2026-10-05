@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,link,symlink} from 'node:fs/promises';
-import {resolve,join,basename} from 'node:path';
+import {mkdtemp,writeFile,readFile,link,symlink,rm} from 'node:fs/promises';
+import {join,basename} from 'node:path';
+import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
@@ -15,7 +16,7 @@ const image='data:image/jpeg;base64,AA==',turn=()=>new Promise(r=>setImmediate(r
 const bytes=Buffer.concat([Buffer.from('1a45dfa3','hex'),Buffer.alloc(196)]);
 const decoded=(input)=>({ok:true,sources:input.sources.map(s=>({role:s.role,durationMs:3000,frames:s.kind==='video'?[{offsetMs:0,image},{offsetMs:1500,image},{offsetMs:2800,image}]:[],audioStartMs:0,...(s.hasAudio?{audio:{durationMs:3000,silent:false,volumeDb:-20,balance:0,classes:[],transcript:s.audioSource==='microphone'?'드디어 들어갔다':'문이 열렸습니다',cues:s.audioSource==='microphone'?{delivery:'큰 음량'}:null}}:{})}))});
 async function fixture(t,{layout='separate',voice=true,kind='video',manual=false,result=decoded,timeoutMs=75000}={}){
- await mkdir('artifacts',{recursive:true});const folder=await mkdtemp(resolve('artifacts/clip-perception-test-')),now=Date.now(),clips=new Clips({dir:join(folder,'media')});
+ const folder=await mkdtemp(join(tmpdir(),'nagneon-clip-perception-')),now=Date.now(),clips=new Clips({dir:join(folder,'media')});
  const c=clips.create({title:'caption',game:'synthetic',scene:'caption',participants:[],messages:[],sessionId:randomUUID(),observedAt:now-1000,source:'spectator'});
  clips.recording(c.id,bytes,{kind,startedAt:now-3000,endedAt:now,hasAudio:true,audioLayout:layout});
  if(voice)clips.recording(c.id,bytes,{kind:'voice',startedAt:now-2800,endedAt:now+200,hasAudio:true,audioLayout:'separate'});
@@ -27,7 +28,7 @@ async function fixture(t,{layout='separate',voice=true,kind='video',manual=false
   calls.push({bin,args,options,child});return child;
  };
  const reader=new ClipPerception({clips:{python:executable},clipPerception:{worker:executable,timeoutMs}},launch);
- t.after(async()=>{for(const c of calls)c.child.emit('close',1);await reader.close();});
+ t.after(async()=>{for(const c of calls)c.child.emit('close',1);await reader.close();await rm(folder,{recursive:true,force:true});});
  return {reader,calls,clips,clip:clips.get(c.id),folder};
 }
 test('stored media yields ordered frames, separate audio identities, timestamps and private source hashes',async t=>{

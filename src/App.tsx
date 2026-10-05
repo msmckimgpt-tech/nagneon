@@ -1,9 +1,13 @@
+import { CommunitySpace } from './CommunitySpace';
+import { version as appVersion } from '../package.json';
 import { AiDashboard } from './AiDashboard';
 import { CommunityLore } from './CommunityLore';
 import { RuntimeDownloads } from './RuntimeDownloads';
 import { GuidedTutorial, FirstViewerStatus } from './GuidedTutorial';
 import { TextReactions } from './TextReactions';
 import { Brand } from './Brand';
+import { useChatReceipt } from './useChatReceipt';
+import { InputLatencyDiagnostics } from './InputLatencyDiagnostics';
 import { ExternalChatPanel } from './ExternalChatPanel';
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
@@ -57,8 +61,11 @@ import { ReactionDiagnostics } from './ReactionDiagnostics';
 import { ChatBriefing } from './ChatBriefing';
 import { useMedia } from './useMedia';
 import { useChatFollow } from './useChatFollow';
+import { useChatHistory } from './useChatHistory';
 import { useStudioState } from './useStudioState';
 import type { Message, Settings } from './types';
+import { createNavigationHistory, type NavigationDirection } from '../shared/navigation-history.js';
+import { subscribeNavigationInputs } from '../shared/navigation-input.js';
 
 const time = (n: number) =>
   new Date(n).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -74,7 +81,7 @@ const ChatLine = memo(function ChatLine({
   managerId: string;
 }) {
   return (
-    <div className={'chat-line ' + message.kind}>
+    <div className={'chat-line ' + message.kind} data-message-id={message.id}>
       <span className="chat-time">{time(message.time)}</span>
       <div>
         <strong style={{ color: message.color }}>
@@ -117,7 +124,8 @@ export function App() {
   const [error, setError] = useState('');
   const [settingsTab, setSettingsTab] = useState<'broadcast' | 'mood' | 'connection'>('broadcast');
   const composeInput = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState('studio'),
+  const [communitySection, setCommunitySection] = useState<'broadcast' | 'outside'>('broadcast');
+  const [tab, setTabState] = useState('studio'),
     [draft, setDraft] = useState<Settings | null>(null),
     [modal, setModal] = useState(false),
     [captureSound, setCaptureSound] = useState<boolean | null>(null),
@@ -131,8 +139,25 @@ export function App() {
   const [overlayTransparency, setOverlayTransparency] = useState(0);
   const [focusMessage, setFocusMessage] = useState<Message | null>(null);
   const [donationsOpen, setDonationsOpen] = useState(false);
+  const [tabHistory] = useState(() => createNavigationHistory('studio'));
+  const navigateTab = useCallback(
+    (destination: string) => setTabState(tabHistory.push(destination).current),
+    [tabHistory],
+  );
+  const moveTabHistory = useCallback(
+    (direction: NavigationDirection) => setTabState(tabHistory.move(direction).current),
+    [tabHistory],
+  );
   const chatEnd = useRef<HTMLDivElement>(null);
   const media = useMedia(overlay ? null : state, setError);
+  const subscriptionStartPending = useRef(false);
+  const broadcastAfterCapture = useRef(false);
+  useEffect(() => {
+    if (!overlay && state?.running && subscriptionStartPending.current) {
+      subscriptionStartPending.current = false;
+      void media.startMic();
+    }
+  }, [overlay, state?.running, state?.sessionId]);
   useEffect(() => {
     const timer = overlay ? undefined : setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -142,10 +167,27 @@ export function App() {
     state?.messages.at(-1)?.id || '',
     state?.sessionId || '',
   );
+  const chatHistory = useChatHistory(state, !overlay, chatFollow.preserve);
+  useChatReceipt(
+    state?.sessionId || null,
+    chatHistory.messages
+      .filter(
+        (message) =>
+          state?.settings.showStreamerMessages !== false ||
+          (message.kind !== 'streamer' && message.personaId !== 'streamer'),
+      )
+      .slice(-100)
+      .map((message) => message.id),
+    !overlay && tab === 'studio' && !!state?.running,
+  );
   useEffect(() => {
     if (state && initialGuide === null) setInitialGuide(state.onboarding?.status === 'new');
   }, [state, initialGuide]);
   useEffect(() => window.backseat?.onOverlayState(setThrough), []);
+  useEffect(() => {
+    if (overlay) return;
+    return subscribeNavigationInputs(window, window.backseat?.onNavigationHistory, moveTabHistory);
+  }, [overlay, moveTabHistory]);
   const action = useCallback(async (path: string, body?: unknown, method?: string) => {
     try {
       setError('');
@@ -154,24 +196,45 @@ export function App() {
       setError(e instanceof Error ? e.message : '요청 실패');
     }
   }, []);
+  useEffect(() => {
+    if (
+      overlay ||
+      !broadcastAfterCapture.current ||
+      !media.soundSharing ||
+      media.capturePreparing ||
+      state?.running
+    )
+      return;
+    broadcastAfterCapture.current = false;
+    subscriptionStartPending.current =
+      state?.nativeAudio?.mode === 'remote' &&
+      state.nativeAudio.transport === 'subscription' &&
+      state.nativeAudio.consent;
+    void action('start').then((result) => {
+      if (!result) subscriptionStartPending.current = false;
+    });
+  }, [overlay, media.soundSharing, media.capturePreparing, state?.running, action]);
   const moderate = useCallback(
     (actionName: string, id: string) => void action('moderate', { action: actionName, id }),
     [action],
   );
-  const showInsight = useCallback((message: Message) => {
-    setFocusMessage(message);
-    setTab('special');
-  }, []);
+  const showInsight = useCallback(
+    (message: Message) => {
+      setFocusMessage(message);
+      navigateTab('special');
+    },
+    [navigateTab],
+  );
   function settings() {
     if (!state) return;
     setSettingsTab('broadcast');
     setDraft(structuredClone(state.settings));
     setModal(true);
   }
-  async function screen(withSound = false) {
+  async function screen(_withSound = true) {
     if (media.capturePreparing) return;
-    if (window.backseat) setCaptureSound(withSound);
-    else await media.share(undefined, { systemAudio: withSound, picture: true });
+    if (window.backseat) setCaptureSound(true);
+    else await media.share(undefined, { systemAudio: true, picture: true });
   }
   async function openOverlay() {
     if (window.backseat) await window.backseat.openOverlay();
@@ -196,7 +259,8 @@ export function App() {
     manager = s.personas.find((p) => p.id === s.managerId);
   const showMessage = (m: Message) =>
     s.showStreamerMessages !== false || (m.kind !== 'streamer' && m.personaId !== 'streamer');
-  const shownMessages = state.messages.filter(showMessage);
+  const shownMessages = chatHistory.messages.filter(showMessage);
+  const liveMessageIds = new Set(state.messages.map((message) => message.id));
   const present =
     state.running && s.mode === 'live'
       ? active.filter((p) => ['active', 'lurking'].includes(state.audience.presence[p.id]))
@@ -211,14 +275,16 @@ export function App() {
         className="overlay-shell"
         style={{ '--overlay-opacity': 1 - overlayTransparency / 100 } as CSSProperties}
       >
-        <DonationToast messages={state.messages} publicMode={s.overlayMode === 'public'} />
         {s.overlayMode === 'public' && (
           <div className="overlay-public-disclosure">
             AI 관객과 함께하는 방송 · 가상 포인트
             <br />
             <small>관객 수와 포인트는 플랫폼의 실제 시청자·후원이 아닙니다</small>
+            <br />
+            <small>AI 반응은 이전 장면이나 대화에 늦게 도착할 수 있습니다</small>
           </div>
         )}
+        <DonationToast messages={state.messages} publicMode={s.overlayMode === 'public'} />
         <div className="overlay-grip">
           <span>
             <i className={'dot ' + (state.running ? 'green' : '')} /> NAGNEON · CHAT
@@ -293,13 +359,13 @@ export function App() {
         onDone={() => {
           setInitialGuide(false);
           setStarter(true);
-          setTab('studio');
+          navigateTab('studio');
         }}
       />
     );
   return (
     <div className={tutorialActive ? 'guided-layout' : undefined}>
-      {tutorialActive && <GuidedTutorial state={state} tab={tab} navigate={setTab} />}
+      {tutorialActive && <GuidedTutorial state={state} tab={tab} navigate={navigateTab} />}
       <div className="app-shell">
         <aside className="sidebar">
           <a className="brand" href="/">
@@ -321,7 +387,7 @@ export function App() {
                 data-tutorial={'nav-' + item.id}
                 key={item.id}
                 className={tab === item.id ? 'selected' : ''}
-                onClick={() => setTab(item.id)}
+                onClick={() => navigateTab(item.id)}
               >
                 <item.icon size={18} />
                 {item.label}
@@ -398,7 +464,7 @@ export function App() {
               </b>
             </div>
             <div className="top-status">
-              <button className="ai-status-link" onClick={() => setTab('ai')}>
+              <button className="ai-status-link" onClick={() => navigateTab('ai')}>
                 {!connected
                   ? 'AI 상태 확인 불가'
                   : state.ai?.policy.paused
@@ -417,7 +483,7 @@ export function App() {
           </header>
           <main>
             <RuntimeDownloads state={state} activeOnly />
-            <FirstViewerStatus state={state} onView={() => setTab('audience')} />
+            <FirstViewerStatus state={state} onView={() => navigateTab('audience')} />
             {state.tutorial?.status === 'paused' && (
               <div className="first-viewer-status">
                 <span>따라 배우기를 잠시 쉬고 있어요. 이전 단계부터 이어갈 수 있어요.</span>
@@ -514,7 +580,12 @@ export function App() {
                     setSettingsTab(destination === 'settings:mood' ? 'mood' : 'connection');
                     setDraft(structuredClone(state.settings));
                     setModal(true);
-                  } else setTab(destination);
+                  } else if (destination.startsWith('community:')) {
+                    setCommunitySection(
+                      destination === 'community:outside' ? 'outside' : 'broadcast',
+                    );
+                    navigateTab('community');
+                  } else navigateTab(destination);
                 }}
               />
             )}
@@ -626,7 +697,7 @@ export function App() {
                         {media.sharing && (
                           <div className="preview-caption">
                             <span className="dot green" /> 선택한 화면 미리보기{' '}
-                            <button onClick={media.stopScreen}>연결 해제</button>
+                            <button onClick={media.stopPicture}>화면 공유 중지</button>
                           </div>
                         )}
                       </div>
@@ -649,7 +720,11 @@ export function App() {
                       <div className="stage-controls">
                         <div>
                           <button
-                            className={media.mic ? 'control active' : 'control'}
+                            className={
+                              media.mic && !media.micStatus.includes('신호 중단')
+                                ? 'control active'
+                                : 'control'
+                            }
                             title="마이크"
                             disabled={
                               media.mic || media.micPreparing || !state.running || s.mode !== 'live'
@@ -661,7 +736,9 @@ export function App() {
                               {media.micPreparing
                                 ? '마이크 연결 중'
                                 : media.mic
-                                  ? '마이크 켜짐'
+                                  ? media.micStatus.includes('신호 중단')
+                                    ? '마이크 신호 중단'
+                                    : '마이크 켜짐'
                                   : state.running && s.mode === 'live'
                                     ? '마이크 재연결'
                                     : '방송 시작 시 자동 연결'}
@@ -678,16 +755,27 @@ export function App() {
                               />
                             ))}
                           </div>
+                          <span role="status" className="field-note">
+                            {media.micStatus}
+                          </span>
                           <button
-                            className={media.soundSharing ? 'control active' : 'control'}
-                            title="시스템 출력 소리"
-                            disabled={!!media.capturePreparing && !media.soundSharing}
-                            onClick={() =>
-                              media.soundSharing ? media.stopSound() : void screen(true)
+                            className={
+                              media.soundSharing &&
+                              !media.soundProblem &&
+                              ['구독 소리 연결됨', '듣는 중'].includes(media.soundStatus)
+                                ? 'control active'
+                                : 'control'
                             }
+                            title="게임·시스템 소리는 방송과 함께 공유합니다"
+                            disabled={!!media.capturePreparing && !media.soundSharing}
+                            onClick={() => void screen(true)}
                           >
                             <Volume2 size={18} />
-                            <span>{media.soundSharing ? '소리 공유 중' : '소리 연결'}</span>
+                            <span>
+                              {media.soundProblem || media.soundSharing
+                                ? '게임·시스템 소리 · ' + media.soundStatus
+                                : '게임·시스템 소리 연결'}
+                            </span>
                           </button>
                           <button
                             className="icon"
@@ -705,9 +793,47 @@ export function App() {
                           disabled={!connected}
                           onClick={async () => {
                             if (state.running) {
+                              subscriptionStartPending.current = false;
+                              broadcastAfterCapture.current = false;
                               media.stopAll();
                               await action('stop');
-                            } else await action(tutorialActive ? 'tutorial/rehearsal' : 'start');
+                            } else {
+                              if (
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                state.nativeAudio?.mode === 'remote' &&
+                                (!state.nativeAudio.consent ||
+                                  state.nativeAudio.consentVersion !== 2)
+                              ) {
+                                setSettingsTab('connection');
+                                setDraft(structuredClone(state.settings));
+                                setModal(true);
+                                setError(
+                                  '방송 전에 마이크와 게임·시스템 소리의 전송 범위를 확인해주세요.',
+                                );
+                                return;
+                              }
+                              if (
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                s.category === 'gaming' &&
+                                !media.soundSharing
+                              ) {
+                                broadcastAfterCapture.current = true;
+                                await screen(true);
+                                return;
+                              }
+                              subscriptionStartPending.current =
+                                !tutorialActive &&
+                                s.mode === 'live' &&
+                                state.nativeAudio?.mode === 'remote' &&
+                                state.nativeAudio.transport === 'subscription' &&
+                                state.nativeAudio.consent;
+                              const result = await action(
+                                tutorialActive ? 'tutorial/rehearsal' : 'start',
+                              );
+                              if (!result) subscriptionStartPending.current = false;
+                            }
                           }}
                         >
                           {state.running ? (
@@ -725,7 +851,7 @@ export function App() {
                         </button>
                       </div>
                     </section>
-                    <ObsPanel state={state} onSelected={media.stopScreen} onError={setError} />
+                    <ObsPanel state={state} onSelected={media.stopPicture} onError={setError} />
                     <ExternalChatPanel state={state} onError={setError} />
                     {starter && !tutorialActive && (
                       <section className="studio-starter">
@@ -812,6 +938,8 @@ export function App() {
                         sound={state.sound}
                         enabled={media.soundSharing}
                         status={media.soundStatus}
+                        problem={media.soundProblem}
+                        remote={state.nativeAudio?.mode === 'remote'}
                         level={media.soundLevel}
                       />
                     </section>
@@ -822,7 +950,7 @@ export function App() {
                           <b>오늘의 관객</b>
                           <span className="count">{present.filter((p) => !p.system).length}</span>
                         </div>
-                        <button className="text-button" onClick={() => setTab('audience')}>
+                        <button className="text-button" onClick={() => navigateTab('audience')}>
                           모두 보기 <ChevronRight size={14} />
                         </button>
                       </div>
@@ -872,6 +1000,22 @@ export function App() {
                       </div>
                     </div>
                     <div className="chat-scroll">
+                      {state.sessionId && (
+                        <div className="chat-history-controls">
+                          {chatHistory.hasMore ? (
+                            <button
+                              className="secondary"
+                              disabled={chatHistory.loading}
+                              onClick={() => void chatHistory.loadMore()}
+                            >
+                              {chatHistory.loading ? '이전 채팅 불러오는 중…' : '이전 채팅 더보기'}
+                            </button>
+                          ) : chatHistory.messages.length > 0 ? (
+                            <p className="muted">보관된 이전 채팅을 모두 불러왔어요.</p>
+                          ) : null}
+                          {chatHistory.error && <p role="alert">{chatHistory.error}</p>}
+                        </div>
+                      )}
                       {shownMessages.length === 0 && (
                         <div className="chat-empty">
                           <MessageCircle size={30} />
@@ -885,13 +1029,19 @@ export function App() {
                           message={m}
                           moderate={moderate}
                           managerId={s.managerId}
-                          onInsight={showInsight}
+                          onInsight={liveMessageIds.has(m.id) ? showInsight : undefined}
                         />
                       ))}
                       <div ref={chatEnd} />
                     </div>
-                    {chatFollow.unread && (
-                      <button className="chat-jump" onClick={chatFollow.jump}>
+                    {(chatFollow.unread || chatHistory.pausedTail) && (
+                      <button
+                        className="chat-jump"
+                        onClick={() => {
+                          chatHistory.showLatest();
+                          chatFollow.jump();
+                        }}
+                      >
                         새 채팅 보기 ↓
                       </button>
                     )}
@@ -1087,25 +1237,32 @@ export function App() {
                       </div>
                     ))}
                   <ReactionDiagnostics />
+                  <InputLatencyDiagnostics />
                 </section>
               </div>
             )}
             {tab === 'community' && (
-              <>
+              <CommunitySpace
+                state={state}
+                onError={setError}
+                section={communitySection}
+                setSection={setCommunitySection}
+              >
                 <CommunityGallery state={state} onError={setError} />
                 <details className="panel teaching">
                   <summary>방송에서 나눈 대화 기억</summary>
                   <ConversationMemories state={state} onError={setError} />
                 </details>
                 <CommunityLore items={state.audience.lore} onError={setError} />
-              </>
+              </CommunitySpace>
             )}
             <footer>
               <span>
                 <span className="dot green" /> 내 방송에 머무는, 반가운 얼굴들.
               </span>
               <span>
-                NAGNEON · 0.1 <span className="divider" /> 나그네온 방송실
+                NAGNEON · <span aria-label="앱 버전">{appVersion}</span>{' '}
+                <span className="divider" /> 나그네온 방송실
               </span>
             </footer>
           </main>
@@ -1113,10 +1270,15 @@ export function App() {
         {captureSound !== null && (
           <CapturePicker
             initialSound={captureSound}
-            onClose={() => setCaptureSound(null)}
+            onClose={() => {
+              broadcastAfterCapture.current = false;
+              setCaptureSound(null);
+            }}
             onSelect={(id, options) => {
               setCaptureSound(null);
-              void media.share(id, options);
+              void media.share(id, options).then((ready) => {
+                if (!ready) broadcastAfterCapture.current = false;
+              });
             }}
           />
         )}
@@ -1136,7 +1298,7 @@ export function App() {
             initialTab={settingsTab}
             onDashboard={() => {
               setModal(false);
-              setTab('ai');
+              navigateTab('ai');
             }}
             onClose={() => setModal(false)}
             onSaved={() => setModal(false)}
