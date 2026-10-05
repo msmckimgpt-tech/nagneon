@@ -43,6 +43,7 @@ import { Studio } from './studio.js';
 import { BroadcastTrace } from './broadcast-trace.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
 import { NativeAudio, NativeAudioConfig } from './native-audio.js';
+import { throwAudioFailures } from './audio-lifetime.js';
 import { nativeAudioRoutes } from './native-audio-routes.js';
 import { SubscriptionSound, subscriptionSoundRoutes } from './subscription-sound.js';
 import {
@@ -89,7 +90,32 @@ export async function startServer(options = {}) {
     const service = await startServerImpl(options, (cleanup) => cleanups.push(cleanup));
     const close = service.close;
     let closing;
-    service.close = () => (closing ||= close().finally(release));
+    service.close = () => {
+      if (closing) return closing;
+      let complete, fail;
+      closing = new Promise((done, reject) => {
+        complete = done;
+        fail = reject;
+      });
+      (async () => {
+        const errors = [];
+        try {
+          await close();
+        } catch (error) {
+          errors.push(error);
+        }
+        try {
+          release();
+        } catch (error) {
+          errors.push(error);
+        }
+        // Keep the server's existing AggregateError boundary when release
+        // succeeds; a second release error must not replace that original.
+        if (errors.length === 1) throw errors[0];
+        if (errors.length) throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+      })().then(complete, fail);
+      return closing;
+    };
     return service;
   } catch (error) {
     await Promise.allSettled(cleanups.map((cleanup) => Promise.resolve().then(cleanup)));
@@ -399,34 +425,54 @@ async function startServerImpl(
     releaseLocal: () => sound.close?.(),
   });
   onResource(() => subscriptionSound.close());
-  const appendSpeechRaw = async (entry) => {
-    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
-    try {
-      if (subscriptionSound.inputs.has(entry.inputEpoch)) subscriptionSound.capture(entry);
-      else nativeAudio.capture(entry);
-    } catch {
-      nativeAudio.error =
-        '원격 청취 입력을 확인하지 못해 전송을 중단했습니다. 원음 저장은 계속합니다.';
-      nativeAudio.stop('capture-invalid');
-      void subscriptionSound.stop('capture-invalid');
-    }
-    let result;
-    try {
-      result = await speechRecovery.append({
-        ...entry,
-        source: subscriptionSound.inputs.has(entry.inputEpoch) ? 'system-output' : 'microphone',
-      });
-    } catch (error) {
-      nativeAudio.error = error.message;
-      await nativeAudio.stop('storage-error');
-      await subscriptionSound.stop('storage-error');
-      studio.publish();
-      throw error;
-    }
-    if (subscriptionSound.inputs.has(entry.inputEpoch))
-      await subscriptionSound.stored(entry, result);
-    else await nativeAudio.stored(entry, result);
-    return result;
+  const stopSpeechInputs = (reason) =>
+    Promise.allSettled([
+      Promise.resolve().then(() => nativeAudio.stop(reason)),
+      Promise.resolve().then(() => subscriptionSound.stop(reason)),
+    ]).then((results) =>
+      results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : [])),
+    );
+  const appendSpeechRaw = (entry) => {
+    const owner = subscriptionSound.inputs.has(entry.inputEpoch) ? subscriptionSound : nativeAudio;
+    return owner.acceptInput(entry, async () => {
+      if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+      let captureStopErrors = Promise.resolve([]);
+      try {
+        if (subscriptionSound.inputs.has(entry.inputEpoch)) subscriptionSound.capture(entry);
+        else nativeAudio.capture(entry);
+      } catch {
+        nativeAudio.error =
+          '원격 청취 입력을 확인하지 못해 전송을 중단했습니다. 원음 저장은 계속합니다.';
+        captureStopErrors = stopSpeechInputs('capture-invalid');
+      }
+      let result;
+      try {
+        result = await speechRecovery.append({
+          ...entry,
+          source: subscriptionSound.inputs.has(entry.inputEpoch) ? 'system-output' : 'microphone',
+        });
+      } catch (error) {
+        nativeAudio.error = error.message;
+        const stopped = await Promise.all([captureStopErrors, stopSpeechInputs('storage-error')]);
+        const failures = [error, ...stopped.flat()];
+        try {
+          studio.publish();
+        } catch (publishError) {
+          failures.push(publishError);
+        }
+        throwAudioFailures(failures);
+      }
+      let storedError;
+      try {
+        if (subscriptionSound.inputs.has(entry.inputEpoch))
+          await subscriptionSound.stored(entry, result);
+        else await nativeAudio.stored(entry, result);
+      } catch (error) {
+        storedError = error;
+      }
+      throwAudioFailures([storedError, ...(await captureStopErrors)]);
+      return result;
+    });
   };
   onResource(() => studio.close());
   onResource(() => studio.culture.close());
@@ -1307,67 +1353,75 @@ async function startServerImpl(
     accessToken: access.token,
     close: () => {
       if (closing) return closing;
-      const closingAt = performance.now();
-      studio.trace.lifecycle('service', 'started');
-      clearInterval(health);
-      clearInterval(speechRetention);
-      // Start every cleanup even if another one fails, and keep the event loop
-      // alive until all owned requests have left their cleanup/finally blocks.
-      const invoke = (component, fn) => {
-        const started = performance.now();
-        studio.trace.lifecycle(component, 'started');
-        let task;
-        try {
-          task = Promise.resolve(fn());
-        } catch (error) {
-          task = Promise.reject(error);
-        }
-        return task.then(
-          (value) => {
-            studio.trace.lifecycle(component, 'completed', performance.now() - started);
-            return value;
-          },
-          (error) => {
-            studio.trace.lifecycle(component, 'failed', performance.now() - started);
-            throw error;
-          },
-        );
-      };
-      const tasks = [
-        invoke('obs', () => obsInput.disconnect()),
-        invoke('native-audio', () => nativeAudio.close()),
-        invoke('system-audio', () => subscriptionSound.close()),
-        invoke('runtime-components', () => runtimeComponents?.close()),
-        invoke('requests', () => requests.close()),
-        invoke('tutorial', () => tutorial.operation),
-        invoke('probe', () => probe.cancel()),
-        invoke('studio', () => studio.close()),
-        invoke('culture', () => studio.culture.close()),
-        invoke('clip-inspector', () => clipInspector.close()),
-        invoke('speech', () => speech.close()),
-        invoke('community', () => studio.communityActivity.yield()),
-        invoke('clip-perception', () => studio.clipPerception.close()),
-        invoke('sound', () => sound.close()),
-        invoke(
-          'http',
-          () =>
-            new Promise((done, fail) => {
-              server.close((error) => (error ? fail(error) : done()));
-              server.closeAllConnections();
-            }),
-        ),
-      ];
-      closing = Promise.allSettled(tasks).then((results) => {
-        const errors = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason);
-        studio.trace.lifecycle(
-          'service',
-          errors.length ? 'failed' : 'completed',
-          performance.now() - closingAt,
-        );
-        if (errors.length) throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+      let complete, fail;
+      closing = new Promise((done, reject) => {
+        complete = done;
+        fail = reject;
       });
+      (async () => {
+        const closingAt = performance.now();
+        studio.trace.lifecycle('service', 'started');
+        clearInterval(health);
+        clearInterval(speechRetention);
+        // Start every cleanup even if another one fails, and keep the event loop
+        // alive until all owned requests have left their cleanup/finally blocks.
+        const invoke = (component, fn) => {
+          const started = performance.now();
+          studio.trace.lifecycle(component, 'started');
+          let task;
+          try {
+            task = Promise.resolve(fn());
+          } catch (error) {
+            task = Promise.reject(error);
+          }
+          return task.then(
+            (value) => {
+              studio.trace.lifecycle(component, 'completed', performance.now() - started);
+              return value;
+            },
+            (error) => {
+              studio.trace.lifecycle(component, 'failed', performance.now() - started);
+              throw error;
+            },
+          );
+        };
+        const tasks = [
+          invoke('obs', () => obsInput.disconnect()),
+          invoke('native-audio', () => nativeAudio.close()),
+          invoke('system-audio', () => subscriptionSound.close()),
+          invoke('runtime-components', () => runtimeComponents?.close()),
+          invoke('requests', () => requests.close()),
+          invoke('tutorial', () => tutorial.operation),
+          invoke('probe', () => probe.cancel()),
+          invoke('studio', () => studio.close()),
+          invoke('culture', () => studio.culture.close()),
+          invoke('clip-inspector', () => clipInspector.close()),
+          invoke('speech', () => speech.close()),
+          invoke('community', () => studio.communityActivity.yield()),
+          invoke('clip-perception', () => studio.clipPerception.close()),
+          invoke('sound', () => sound.close()),
+          invoke(
+            'http',
+            () =>
+              new Promise((done, fail) => {
+                server.close((error) => (error ? fail(error) : done()));
+                server.closeAllConnections();
+              }),
+          ),
+        ];
+        return Promise.allSettled(tasks).then((results) => {
+          const errors = results
+            .filter((result) => result.status === 'rejected')
+            .map((result) => result.reason);
+          studio.trace.lifecycle(
+            'service',
+            errors.length ? 'failed' : 'completed',
+            performance.now() - closingAt,
+          );
+          if (errors.length)
+            throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+        });
+      })().then(complete, fail);
       return closing;
     },
   };
