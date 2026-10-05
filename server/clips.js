@@ -88,7 +88,7 @@ export class ClipFeatures {
     const created=[];
     for(const pick of (observation.clipPicks||[]).slice(0,2)){
       const p=s.settings.personas.find(p=>p.id===pick.personaId&&p.enabled&&!p.system&&p.id!==s.settings.managerId);
-      if(!p||!witnesses.includes(p.id)||s.settings.blockedWords.some(w=>(pick.title+' '+pick.reason).includes(w)))continue;
+      if(!p||!witnesses.includes(p.id)||s.settings.blockedWords.some(w=>(pick.title+' '+pick.reason).normalize('NFKC').toLocaleLowerCase().includes(w.normalize('NFKC').toLocaleLowerCase())))continue;
       if(pick.soundId&&pick.speechId)continue;
       const spoken=pick.speechId?liveSpeech.find(e=>e.messageId===pick.speechId):null;
       if(pick.speechId&&!spoken)continue;
