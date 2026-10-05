@@ -26,10 +26,15 @@ const ids = (max) => z.array(uuid).max(max).refine(unique, '중복된 기록 ID�
 export const SocialPreferences = z
   .object({
     enabled: z.boolean().default(true),
+    creativeImages: z.boolean().default(false),
     arrivalsEnabled: z.boolean().default(true),
     notifications: z.boolean().default(false),
-    mutedCommunities: z.array(communityId).max(4).refine(unique).default([]),
-    mutedTopics: z.array(topicId).max(8).refine(unique).default([]),
+    mutedCommunities: z.array(communityId).max(definitions.length).refine(unique).default([]),
+    mutedTopics: z
+      .array(topicId)
+      .max(definitions.flatMap((d) => d.topics).length)
+      .refine(unique)
+      .default([]),
     hiddenThreads: ids(SOCIAL_LIMITS.threads).default([]),
     bookmarks: ids(SOCIAL_LIMITS.threads).default([]),
   })
@@ -38,10 +43,15 @@ export const SocialPreferences = z
 export const SocialPreferencePatch = z
   .object({
     enabled: z.boolean().optional(),
+    creativeImages: z.boolean().optional(),
     arrivalsEnabled: z.boolean().optional(),
     notifications: z.boolean().optional(),
-    mutedCommunities: z.array(communityId).max(4).refine(unique).optional(),
-    mutedTopics: z.array(topicId).max(8).refine(unique).optional(),
+    mutedCommunities: z.array(communityId).max(definitions.length).refine(unique).optional(),
+    mutedTopics: z
+      .array(topicId)
+      .max(definitions.flatMap((d) => d.topics).length)
+      .refine(unique)
+      .optional(),
     hiddenThreads: ids(SOCIAL_LIMITS.threads).optional(),
     bookmarks: ids(SOCIAL_LIMITS.threads).optional(),
   })

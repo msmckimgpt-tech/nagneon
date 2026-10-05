@@ -41,6 +41,11 @@ test('discovery changes social and game-expertise tendency without determining a
   assert.deepEqual(new Set(guide.map(x=>x.interest)),new Set(browse.map(x=>x.interest)));
 });
 
+test('creation directions include durable register and chat-style variety rather than generic politeness',()=>{
+  const random=seeded(123),rows=Array.from({length:300},()=>arrivalIndividuality([],'browse',random)),voices=new Set(rows.map(x=>x.conversation));
+  assert.ok(voices.size>=8);assert.ok([...voices].some(v=>v.includes('존댓말')));assert.ok([...voices].some(v=>v.includes('반말')));assert.ok([...voices].some(v=>v.includes('초성')));
+});
+
 test('a real admission generates once, persists only the person and preserves hidden-profile access',async t=>{
   const dataDir=await directory();let calls=0,randomCalls=0,input;
   const provider={status:()=>({configured:true}),react:async args=>{calls++;input=args;return answer(args.special.individuality);}};
@@ -69,5 +74,5 @@ test('failed composition refunds the hold without keeping an unseen character or
 test('extra creation directions are absent from normal live and private interview prompts',()=>{
   const provider=new OpenAIProvider({}),base={settings:defaults,history:[],speech:''};
   for(const special of [undefined,{kind:'interview'}])assert.ok(!provider.payload({...base,special}).instructions.includes('이번 첫 만남에서만 사용하는 내부 창작 방향'));
-  assert.ok(provider.payload({...base,special:{kind:'audience-arrival'}}).instructions.includes('이번 첫 만남에서만 사용하는 내부 창작 방향'));
+  const creation=provider.payload({...base,special:{kind:'audience-arrival'}}).instructions;assert.ok(creation.includes('이번 첫 만남에서만 사용하는 내부 창작 방향'));assert.ok(creation.includes('다음 방송과 다음 모델 호출에서도 이어갈 습관'));
 });

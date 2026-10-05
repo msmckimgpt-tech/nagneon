@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {startServer} from '../server/index.js';
-import {OpenAIProvider} from '../server/provider.js';
+import {OpenAIProvider,format} from '../server/provider.js';
 import {defaults} from '../shared/defaults.js';
 
 test('debug prompts append, fully replace and restore the generated provider instructions',()=>{
@@ -11,7 +11,13 @@ test('debug prompts append, fully replace and restore the generated provider ins
   const normal=provider.payload(args);
   assert.equal(provider.payload({...args,debugPrompt:{enabled:false,mode:'replace',prompt:'ignored'}}).instructions,normal.instructions);
   const changed=provider.payload({...args,debugPrompt:{enabled:true,mode:'replace',prompt:'사용자 지침'}});
-  assert.equal(changed.instructions,'사용자 지침');assert.deepEqual(changed.input,normal.input);assert.deepEqual(changed.text,normal.text);
+  assert.equal(changed.instructions,'사용자 지침');assert.deepEqual(changed.input,normal.input);
+  // A replacement also removes the built-in writing annotation, while all
+  // original schema constraints remain exactly the shared validation contract.
+  assert.deepEqual(changed.text,{format});
+  const normalValidation=structuredClone(normal.text);
+  delete normalValidation.format.schema.properties.messages.items.properties.text.description;
+  assert.deepEqual(normalValidation,changed.text);
   assert.equal(provider.payload({...args,debugPrompt:{enabled:true,mode:'append',prompt:'추가 지침'}}).instructions,normal.instructions+'\n\n추가 지침');
 });
 

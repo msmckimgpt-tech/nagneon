@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import { get } from 'node:http';
+import { extractFile } from '@electron/asar';
 
 const option = (name) =>
   process.argv.find((value) => value.startsWith('--' + name + '='))?.slice(name.length + 3);
@@ -34,6 +35,9 @@ const debuggerPages = (port) => new Promise((done, fail) => {
 const folder = resolve(
   option('folder') || JSON.parse(await readFile('artifacts/latest-package.json', 'utf8')).folder,
 );
+const { version: packageVersion } = JSON.parse(
+  extractFile(join(folder, 'resources/app.asar'), 'package.json').toString('utf8'),
+);
 await mkdir('artifacts/packaged-ui', { recursive: true });
 const output = await mkdtemp(resolve('artifacts/packaged-ui/run-'));
 const profile = resolve(option('profile') || join(output, 'profile'));
@@ -48,6 +52,7 @@ await unlink(join(profile, 'DevToolsActivePort')).catch((error) => {
 });
 const report = {
   folder,
+  packageVersion,
   profile,
   output,
   synthetic: true,
@@ -68,13 +73,27 @@ report.lifecycle = { spawnedAt };
 child.stdout.on('data', (bytes) => logs.push(bytes));
 child.stderr.on('data', (bytes) => logs.push(bytes));
 let exited = false;
+const evidenceWrites = [];
+const saveLateEvidence = (name, value) => {
+  const saved = writeFile(join(output, name), value).catch(error => {
+    (report.evidenceErrors ||= []).push({ name, message: error.message });
+    process.exitCode = 1;
+    console.error('Lifecycle evidence write failed:', name, error.message);
+  });
+  evidenceWrites.push(saved);
+};
 child.once('exit', (code, signal) => {
   report.lifecycle.processExit = { at: Date.now(), code, signal };
+  // Preserve late completion even if the original 15-second check already
+  // wrote its failure report. Exit and inherited stdio closure are distinct.
+  saveLateEvidence('process-exit.json', JSON.stringify(report.lifecycle, null, 2));
 });
 const closed = once(child, 'close').then(([code]) => {
   exited = true;
   report.exitCode = code;
   report.lifecycle.pipesClosedAt = Date.now();
+  saveLateEvidence('process-close.json', JSON.stringify(report.lifecycle, null, 2));
+  saveLateEvidence('native-complete.log', Buffer.concat(logs));
 });
 // Exercise the Windows title-bar close path. CDP Browser.close can time out
 // without acknowledging shutdown; it is not evidence of a normal user close.
@@ -143,7 +162,7 @@ async function until(expression) {
 const click = async (text) =>
   assert.equal(
     await evaluate(
-      `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)return false;b.click();return true})()`,
+      `(()=>{const b=[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)}));if(!b||b.disabled)return false;b.click();return true})()`,
     ),
     true,
     text,
@@ -203,6 +222,11 @@ try {
     await click('나중에 계속하기');
   if (!legacy)
     assert.equal(await evaluate("document.body.innerText.includes('방송 놀이터')"), false);
+  report.displayedVersion = await evaluate(
+    `document.querySelector('[aria-label="앱 버전"]')?.textContent`,
+  );
+  assert.equal(report.displayedVersion, packageVersion, 'Delivered UI version matches its ASAR package');
+  report.checks.push('visible app version matches delivered package.json');
   const seed = option('seed'),
     expected = option('expect');
   if (seed) {
@@ -244,14 +268,34 @@ try {
   if (process.argv.includes('--social')) {
     await click('방송 밖 이야기');await until("!!document.querySelector('.community-sections')");
     await click('바깥 커뮤니티');await until("!!document.querySelector('.outside-community .social-settings')");
-    assert.equal(await evaluate("document.querySelectorAll('.social-community-list button').length"),5);
+    assert.equal(await evaluate("document.querySelectorAll('.social-community-list button').length"),6);
     const prefs=await evaluate("fetch('/api/social/communities').then(r=>r.json()).then(d=>d.preferences)");
     assert.equal(prefs.enabled,true);assert.equal(prefs.arrivalsEnabled,true);
+    if(process.argv.includes('--social-residents')) {
+      await until("document.querySelectorAll('.social-post').length===2");
+      assert.equal(await evaluate("document.querySelectorAll('.social-post .social-viewer-badge').length"),1);
+      const authors=await evaluate("fetch('/api/social/search').then(r=>r.json()).then(d=>d.posts.map(p=>({author:p.author,viewer:p.authorIsViewer})))");
+      assert.ok(authors.some(p=>p.author==='일반주민검증'&&!p.viewer));assert.ok(authors.some(p=>p.author==='관객검증'&&p.viewer));
+      await writeFile(join(output,'resident-authors.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
+      report.checks.push('persisted independent author and current audience highlight survive packaged launch');
+    }
+    if(process.argv.includes('--social-threads')) {
+      const post=await evaluate("fetch('/api/social/search').then(r=>r.json()).then(d=>d.posts.find(p=>p.attachments.length===2))");
+      assert.ok(post);assert.equal(post.comments.length,2);assert.equal(post.recommendationCount,1);assert.equal(prefs.creativeImages,false);
+      await evaluate(`[...document.querySelectorAll('.social-post')].find(p=>p.textContent.includes(${JSON.stringify(post.title)})).click()`);
+      await until("!!document.querySelector('.social-discussion')");await evaluate("document.querySelector('.social-discussion').scrollIntoView({block:'start'})");
+      await until("document.querySelector('.social-attachments img')?.naturalWidth===256 && document.querySelector('.social-attachments video')?.readyState>=2");
+      assert.equal(await evaluate("document.querySelectorAll('.social-comment').length"),2);
+      assert.equal(await evaluate("document.querySelectorAll('.social-replies .social-comment').length"),1);
+      await evaluate("document.querySelector('.social-attachments video').play()");await until("document.querySelector('.social-attachments video').currentTime>0.1");await evaluate("document.querySelector('.social-attachments video').pause()");
+      await writeFile(join(output,'threads.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
+      await click('← 글 목록');report.checks.push('persisted comments/reply/recommendation and actual PNG/WebM render and play in packaged app');
+    }
     const before=await readFile(join(profile,'data/world.json'),'utf8');
     await click('내 이야기 찾기');await until("!document.querySelector('.social-search button').disabled");
     assert.equal(await readFile(join(profile,'data/world.json'),'utf8'),before);
     await writeFile(join(output,'social.png'),Buffer.from((await call('Page.captureScreenshot')).data,'base64'));
-    report.checks.push('delivered four communities, default ON and pure ego search');
+    report.checks.push('delivered five communities, default ON and pure ego search');
     await click('방송 커뮤니티');await until("!!document.querySelector('.community-gallery')");
     await click('방송실');
   }
@@ -260,7 +304,7 @@ try {
   );
   assert.equal(changed, 200);
   const enabledButton = (label) =>
-    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&b.textContent.trim()===${JSON.stringify(label)})`;
+    `[...document.querySelectorAll('button')].some(b=>!b.disabled&&(b.textContent.trim()===${JSON.stringify(label)}||b.getAttribute('aria-label')===${JSON.stringify(label)}))`;
   await until(enabledButton('리허설 시작'));
   await click('리허설 시작');
   await until(enabledButton('방송 종료'));
@@ -293,6 +337,8 @@ try {
 } finally {
   if (!exited) await closeNativeWindow().catch(error => { report.cleanupError = error.message; });
   socket?.close();
+  await Promise.all(evidenceWrites);
+  if (report.evidenceErrors?.length) report.passed = false;
   await writeFile(join(output, 'native.log'), Buffer.concat(logs));
   await writeFile(join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));

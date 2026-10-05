@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {JsonStore} from './storage.js';
 import {JournalData,emptyJournal} from './conversation-journal.js';
+import {assertSupportedProfileFormat,readProfileFormat,writeProfileFormat,LONG_SPEECH_FORMAT} from './profile-capabilities.js';
 
 const Index=z.object({version:z.literal(1),revision:z.number().int().nonnegative(),nextOrder:z.number().int().nonnegative(),chunks:z.record(z.string().regex(/^[a-f0-9]{2}$/),z.string().regex(/^[a-f0-9]{64}$/))});
 const emptyIndex=()=>({version:1,revision:0,nextOrder:0,chunks:{}});
@@ -30,6 +31,7 @@ export class JournalStore {
     if(new Set(rows.map(r=>r.order)).size!==rows.length)throw Error('중복된 대화 기억 순서');rows.sort((a,b)=>a.order-b.order);const data=JournalData.parse({version:1,revision:index.revision,entries:rows.map(r=>r.entry)});return {data,buckets,rows:new Map(rows.map(r=>[r.entry.id,r]))};
   }
   load(){
+    assertSupportedProfileFormat(readProfileFormat(this.dir));
     // Index backups are authoritative once any index exists. Never resurrect
     // an old monolithic migration source after a damaged committed index.
     const hasIndex=existsSync(this.file)||(existsSync(this.dir)&&readdirSync(this.dir).some(n=>/^conversation-journal-index\.json\.bak\.\d+$/.test(n)));
@@ -39,6 +41,7 @@ export class JournalStore {
   }
   save(value){
     const data=JournalData.parse(value),next={version:1,revision:data.revision,nextOrder:this.current.nextOrder,chunks:{}},buckets=new Map(),rows=new Map();
+    assertSupportedProfileFormat(readProfileFormat(this.dir));
     for(const entry of data.entries){const old=this.rows.get(entry.id);const row=old&&same(old.entry,entry)?old:{entry,order:old?.order??next.nextOrder++};rows.set(entry.id,row);const key=entry.id.slice(0,2).toLowerCase();if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(row);}
     this.ensureDir();
     for(const [key,bucket] of buckets){const old=this.buckets.get(key);if(old&&old.length===bucket.length&&bucket.every((r,i)=>r===old[i])&&this.current.chunks[key]){next.chunks[key]=this.current.chunks[key];continue;}
@@ -49,6 +52,9 @@ export class JournalStore {
     }
     // A failed index save leaves current rows and all previously referenced
     // immutable files untouched. Unreferenced new files are harmless orphans.
+    // Older readers cannot validate a long original. Raise the compatibility
+    // floor before committing an index that refers to it, preventing fallback.
+    if(data.entries.some(entry=>entry.text.length>3000))writeProfileFormat(this.dir,LONG_SPEECH_FORMAT);
     this.index.save(next);this.current=next;this.rows=rows;this.buckets=buckets;this.data=data;
     if(data.revision%64===0)try{this.collect();}catch(error){this.cleanupWarning='대화 기억 정리를 미뤘습니다. '+error.message;}
   }

@@ -26,12 +26,19 @@ export class Economy {
     else if(steps){w.balance=Math.min(ceiling,w.balance+steps);w.refillAt=w.balance===ceiling?effective:w.refillAt+steps*rules.refillSeconds*1000;}
     return w;
   }
-  snapshot(personas){
+  snapshot(personas,session={}){
     // Recharge is projected without mutating persisted wallets. Private moments and
     // purchase fingerprints/shares are not part of the public snapshot to clone.
     const copy={wallets:structuredClone(this.data.wallets),purchases:this.data.purchases};const wallets={};
     for(const p of personas){const w=this.wallet(copy,p.id);wallets[p.id]={balance:w.balance,cap:rules.walletCap,nextRefillAt:w.balance<rules.walletCap-this.incoming(copy,p.id)?w.refillAt+rules.refillSeconds*1000:null};}
-    const quotes=this.data.quotes.map(({floor,...q})=>({...q,status:q.status==='open'&&q.expiresAt<=this.now()?'expired':q.status}));
+    const quotes=this.data.quotes.map(({floor,...q})=>{
+      let status=q.status;
+      if(['open','agreed'].includes(status)){
+        if(q.expiresAt<=this.now())status='expired';
+        else if(Object.hasOwn(session,'sessionId')&&q.sessionId!==session.sessionId)status='cancelled';
+      }
+      return {...q,status};
+    });
     // Public nested records remain detached so callers cannot alter saved history.
     return {...structuredClone({balance:this.data.balance,wallets,ledger:this.data.ledger.map(e=>e.kind==='donation'?publicDonation(e):e),quotes,purchases:this.data.purchases.map(({fingerprint,shares,...p})=>p)}),rules};
   }
@@ -91,7 +98,7 @@ export class Economy {
   refund(id,error){return this.change(d=>{const p=d.purchases.find(p=>p.id===id);if(!p||p.status!=='pending')return;d.balance+=p.cost;p.status='failed';p.error=error;const q=d.quotes.find(q=>q.id===p.key);if(q)q.status='failed';this.entry(d,'refund',p.cost,error);});}
   quote({targets,kind,text,settings,audience,sessionId}){
     if(!rules.actions[kind]||!targets.length||targets.length>8||new Set(targets).size!==targets.length)throw new Error('행동과 관객 1~8명을 선택하세요.');
-    if(this.data.quotes.some(q=>['open','agreed','executing'].includes(q.status)&&q.expiresAt>this.now()&&q.targets.some(id=>targets.includes(id))))throw new Error('이 관객과 진행 중인 협상이 있습니다. 기존 협상을 끝내거나 취소하세요.');
+    if(this.data.quotes.some(q=>(q.status==='executing'||(['open','agreed'].includes(q.status)&&q.sessionId===sessionId&&q.expiresAt>this.now()))&&q.targets.some(id=>targets.includes(id))))throw new Error('이 관객과 진행 중인 협상이 있습니다. 기존 협상을 끝내거나 취소하세요.');
     const people=targets.map(id=>{const p=settings.personas.find(p=>p.id===id&&p.enabled&&p.id!==settings.managerId);if(!p||!['active','lurking'].includes(audience.presence[id]))throw new Error('현재 시청 중인 일반 관객만 협상할 수 있습니다.');return p;});
     const forbidden=settings.blockedWords.some(w=>normalize(text).includes(normalize(w)))||(settings.spoilerGuard&&/스포일러|결말.*알려|범인.*알려/.test(text));
     const costs=people.map(p=>{const affinity=audience.data.members[p.id]?.affinity||0;const fit=kind==='debate'?p.expertise:p.sociability;return Math.max(8,Math.round(rules.actions[kind].base*(1.25-fit*.4-affinity*.25)));});

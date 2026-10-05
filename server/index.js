@@ -4,6 +4,11 @@ import {
   markWorldFormat,
   backupWorldV1,
 } from './profile-writer.js';
+import {
+  readProfileFormat,
+  requiredProfileFormat,
+  mergeProfileFormat,
+} from './profile-capabilities.js';
 import { socialRoutes } from './social-runtime.js';
 import { Tutorial, TutorialData, initialTutorial, tutorialRoutes } from './tutorial.js';
 import { SpeechCapture } from './speech-screen.js';
@@ -24,6 +29,9 @@ import { Knowledge } from './knowledge.js';
 import { LocalSound } from './local-sound.js';
 import { soundRoutes } from './sound-routes.js';
 import { LocalSpeech } from './local-speech.js';
+import { SpeechRecoveryStore } from './speech-recovery-store.js';
+import { MicrophoneConfig, defaultMicrophoneConfig } from '../shared/microphone-config.js';
+import { SpeechRetentionConfig, defaultSpeechRetention } from '../shared/speech-retention.js';
 import { Audience } from './audience.js';
 import { Economy } from './economy.js';
 import { Clips } from './clips.js';
@@ -32,7 +40,12 @@ import { ClipInspector } from './clip-inspector.js';
 import { clipRecordingRoutes } from './clip-recording-routes.js';
 import { randomUUID } from 'node:crypto';
 import { Studio } from './studio.js';
+import { BroadcastTrace } from './broadcast-trace.js';
 import { AiControl, AiControlData, emptyAiControl } from './ai-control.js';
+import { NativeAudio, NativeAudioConfig } from './native-audio.js';
+import { throwAudioFailures } from './audio-lifetime.js';
+import { nativeAudioRoutes } from './native-audio-routes.js';
+import { SubscriptionSound, subscriptionSoundRoutes } from './subscription-sound.js';
 import {
   CultureLearningData,
   emptyCultureLearning,
@@ -77,7 +90,32 @@ export async function startServer(options = {}) {
     const service = await startServerImpl(options, (cleanup) => cleanups.push(cleanup));
     const close = service.close;
     let closing;
-    service.close = () => (closing ||= close().finally(release));
+    service.close = () => {
+      if (closing) return closing;
+      let complete, fail;
+      closing = new Promise((done, reject) => {
+        complete = done;
+        fail = reject;
+      });
+      (async () => {
+        const errors = [];
+        try {
+          await close();
+        } catch (error) {
+          errors.push(error);
+        }
+        try {
+          release();
+        } catch (error) {
+          errors.push(error);
+        }
+        // Keep the server's existing AggregateError boundary when release
+        // succeeds; a second release error must not replace that original.
+        if (errors.length === 1) throw errors[0];
+        if (errors.length) throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+      })().then(complete, fail);
+      return closing;
+    };
     return service;
   } catch (error) {
     await Promise.allSettled(cleanups.map((cleanup) => Promise.resolve().then(cleanup)));
@@ -104,6 +142,7 @@ async function startServerImpl(
     openExternalAuth,
     providerFactories,
     providerSwitchAllowed = () => true,
+    nativeAudioProviderFactory,
   } = {},
   onResource = () => {},
 ) {
@@ -111,17 +150,44 @@ async function startServerImpl(
   let expectedHost;
   const stores = [];
   const worldFormat = persist ? inspectWorldFormat(dataDir) : { protected: false, migrate: false };
+  let profileFormat = persist ? readProfileFormat(dataDir) : null;
+  const namedStores = new Map();
+  const protectExpandedReaders = (required) => {
+    if (!required) return;
+    const next = mergeProfileFormat(profileFormat, required);
+    if (JSON.stringify(next) === JSON.stringify(profileFormat)) return;
+    // Reader 3 protects both files from fallback. Materialize an absent, validated
+    // clip store before raising the marker, so a gallery-only profile can restart.
+    const clip = namedStores.get('clips');
+    if (!existsSync(clip.store.file)) clip.store.save(clip.data);
+    profileFormat = markWorldFormat(dataDir, required);
+    for (const name of ['world', 'clips']) namedStores.get(name).store.forbidRecovery = true;
+  };
   const useStore = (name, schema, initial) => {
     if (!persist) return { data: initial(), save: () => {} };
     const store = new JsonStore(resolve(dataDir, name + '.json'), {
       validate: (value) => schema.parse(value),
       initial,
       backupCount: 3,
-      forbidRecovery: name === 'world' && worldFormat.protected,
+      skipUnchanged: name === 'world',
+      forbidRecovery:
+        (name === 'world' && worldFormat.protected) ||
+        (name === 'clips' && profileFormat?.minReader >= 3),
     });
     const data = store.load();
     stores.push(store);
-    return { data, save: (value) => store.save(value) };
+    namedStores.set(name, { store, data });
+    return {
+      data,
+      save: (value) => {
+        if (name === 'world' || name === 'clips') {
+          const validated = schema.parse(value);
+          protectExpandedReaders(requiredProfileFormat(name, validated));
+          return store.save(validated);
+        }
+        return store.save(value);
+      },
+    };
   };
   let providerChoice;
   if (!provider) {
@@ -167,6 +233,7 @@ async function startServerImpl(
   const clipInspector = new ClipInspector(runtime.clips);
   const runtimeComponents = runtime.components ? new RuntimeComponents(runtime.components) : null;
   if (runtimeComponents) {
+    onResource(() => runtimeComponents.close());
     runtime.speech.prepare = (signal, device) =>
       runtimeComponents.prepare('microphone', signal, device);
     runtime.sound.prepare = (signal) => runtimeComponents.prepare('sound', signal);
@@ -233,12 +300,27 @@ async function startServerImpl(
     return value;
   });
   const clipsStore = useStore('clips', ClipsData, () => []);
+  const microphoneStore = useStore('microphone', MicrophoneConfig, defaultMicrophoneConfig);
+  const speechRetentionStore = useStore(
+    'speech-retention',
+    SpeechRetentionConfig,
+    defaultSpeechRetention,
+  );
   const episodesStore = useStore('episodes', EpisodesData, () => []);
   const seasonsStore = useStore('seasons', SeasonsData, emptySeasons);
+  const nativeAudioStore = useStore('native-audio', NativeAudioConfig, () => ({
+    mode: persist && !hasPreviousSettings ? 'remote' : 'local',
+    transport: 'subscription',
+    consent: false,
+  }));
   const journalStorage = persist ? new JournalStore(dataDir) : null;
   const journalStore = {
     data: journalStorage?.load() || emptyJournal(),
-    save: (value) => journalStorage?.save(value),
+    save: (value) => {
+      if (!journalStorage) return;
+      protectExpandedReaders(requiredProfileFormat('journal', value));
+      journalStorage.save(value);
+    },
   };
   if (journalStorage) stores.push(journalStorage);
   // Validate every existing store before writing anything. Then record the
@@ -247,10 +329,25 @@ async function startServerImpl(
     onboardingStore.save(onboardingStore.data);
   if (persist) {
     backupWorldV1(dataDir);
-    markWorldFormat(dataDir);
+    // A world with reader-4 source metadata can also contain a long journal.
+    // Inspect every validated representation, including journals already saved
+    // by builds that assigned both capabilities the same reader number.
+    for (const [name, data] of [
+      ['world', worldStore.data],
+      ['clips', clipsStore.data],
+      ['journal', journalStore.data],
+    ])
+      protectExpandedReaders(requiredProfileFormat(name, data));
+    profileFormat = markWorldFormat(dataDir);
   }
   if (!hasWorld || worldFormat.migrate) worldStore.save(worldStore.data);
   const world = new World(worldStore.data, worldStore.save);
+  const speechRecovery = persist
+    ? new SpeechRecoveryStore(resolve(dataDir, 'speech-recovery'), {
+        policy: () => speechRetentionStore.data,
+        isActive: (sessionId) => studio.running && studio.sessionId === sessionId,
+      })
+    : null;
   if (
     stores.some(
       (store) =>
@@ -263,7 +360,14 @@ async function startServerImpl(
   world.recover();
   const knowledge = new Knowledge(knowledgeStore.data, knowledgeStore.save);
   const audience = new Audience(world.data.audience, (value) => world.part('audience', value));
-  const journal = new ConversationJournal(journalStore.data, journalStore.save);
+  const journal = new ConversationJournal(journalStore.data, journalStore.save, {
+    legacyAudienceIds: () => {
+      const settings = world.snapshot().settings;
+      return settings.personas
+        .filter((persona) => persona.role === 'viewer' && persona.id !== settings.managerId)
+        .map((persona) => persona.id);
+    },
+  });
   const economy = new Economy(world.data.economy, (value) => world.part('economy', value));
   const clips = new Clips({
     data: clipsStore.data,
@@ -281,6 +385,7 @@ async function startServerImpl(
     aiControl.storageError =
       'AI 사용 기록을 백업에서 복구해 새 호출을 차단했습니다. 사용 기록과 실행 허용 설정을 확인해주세요.';
   studio = new Studio({
+    trace: new BroadcastTrace({ dir: persist ? resolve(dataDir, 'broadcast-trace') : undefined }),
     aiControl,
     cultureLearning: { data: cultureStore.data, save: cultureStore.save },
     provider,
@@ -295,6 +400,80 @@ async function startServerImpl(
     clipPerception: new ClipPerception(runtime),
     storageStatus,
   });
+  studio.trace.lifecycle('service', 'started', undefined, 'startup');
+  onResource(() => studio.trace.lifecycle('service', 'failed', undefined, 'startup'));
+  const nativeAudio = new NativeAudio({
+    studio,
+    recovery: speechRecovery,
+    config: nativeAudioStore.data,
+    save: nativeAudioStore.save,
+    dir: persist ? resolve(dataDir, 'native-audio') : undefined,
+    key: nativeAudioStore.data.transport === 'subscription' ? '' : process.env.OPENAI_API_KEY || '',
+    subscriptionBin: provider.bin || provider.codex?.bin,
+    subscriptionEnv: provider.env || provider.codex?.env,
+    releaseLocal: () => speech.stopWorker?.(),
+    providerFactory: nativeAudioProviderFactory,
+  });
+  onResource(() => nativeAudio.close());
+  const subscriptionSound = new SubscriptionSound({
+    studio,
+    recovery: speechRecovery,
+    dir: persist ? resolve(dataDir, 'native-audio', 'system-subscription') : undefined,
+    bin: provider.bin || provider.codex?.bin,
+    env: provider.env || provider.codex?.env,
+    config: () => nativeAudio.config,
+    releaseLocal: () => sound.close?.(),
+  });
+  onResource(() => subscriptionSound.close());
+  const stopSpeechInputs = (reason) =>
+    Promise.allSettled([
+      Promise.resolve().then(() => nativeAudio.stop(reason)),
+      Promise.resolve().then(() => subscriptionSound.stop(reason)),
+    ]).then((results) =>
+      results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : [])),
+    );
+  const appendSpeechRaw = (entry) => {
+    const owner = subscriptionSound.inputs.has(entry.inputEpoch) ? subscriptionSound : nativeAudio;
+    return owner.acceptInput(entry, async () => {
+      if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+      let captureStopErrors = Promise.resolve([]);
+      try {
+        if (subscriptionSound.inputs.has(entry.inputEpoch)) subscriptionSound.capture(entry);
+        else nativeAudio.capture(entry);
+      } catch {
+        nativeAudio.error =
+          '원격 청취 입력을 확인하지 못해 전송을 중단했습니다. 원음 저장은 계속합니다.';
+        captureStopErrors = stopSpeechInputs('capture-invalid');
+      }
+      let result;
+      try {
+        result = await speechRecovery.append({
+          ...entry,
+          source: subscriptionSound.inputs.has(entry.inputEpoch) ? 'system-output' : 'microphone',
+        });
+      } catch (error) {
+        nativeAudio.error = error.message;
+        const stopped = await Promise.all([captureStopErrors, stopSpeechInputs('storage-error')]);
+        const failures = [error, ...stopped.flat()];
+        try {
+          studio.publish();
+        } catch (publishError) {
+          failures.push(publishError);
+        }
+        throwAudioFailures(failures);
+      }
+      let storedError;
+      try {
+        if (subscriptionSound.inputs.has(entry.inputEpoch))
+          await subscriptionSound.stored(entry, result);
+        else await nativeAudio.stored(entry, result);
+      } catch (error) {
+        storedError = error;
+      }
+      throwAudioFailures([storedError, ...(await captureStopErrors)]);
+      return result;
+    });
+  };
   onResource(() => studio.close());
   onResource(() => studio.culture.close());
   onResource(() => studio.communityActivity.yield());
@@ -349,6 +528,15 @@ async function startServerImpl(
           .status(401)
           .json({ error: '앱 연결 인증이 필요합니다. Nagneon 창에서 다시 연결하세요.' }),
   );
+  // Studio users may read/moderate resident attachments, not upload into
+  // another resident's post. Reject before parsing bodies; internal resident
+  // generation/storage remains available through SocialRuntime.
+  app.post('/api/social/threads/:id/attachments', (_req, res) =>
+    res.status(403).json({
+      code: 'resident-attachments-only',
+      error: '이 게시글에는 스트리머가 파일을 추가할 수 없습니다. 주민의 첨부는 열람할 수 있어요.',
+    }),
+  );
   app.use(express.json({ limit: '3mb' }));
   app.use((req, res, next) =>
     probe.controller &&
@@ -364,7 +552,7 @@ async function startServerImpl(
       ? res.status(409).json({ error: 'AI 제공처 변경을 마친 뒤 다시 시도하세요.' })
       : next(),
   );
-  socialRoutes(app, studio);
+  socialRoutes(app, studio, persist ? resolve(dataDir, 'social-media') : undefined);
   app.get('/api/state', (_req, res) => res.json(studio.state()));
   app.get('/api/ai', (_req, res) => res.json(studio.ai.snapshot()));
   app.patch('/api/ai/policy', (req, res) => res.json(studio.ai.update(req.body)));
@@ -386,6 +574,9 @@ async function startServerImpl(
       onboarding: { ...onboardingStore.data },
       tutorial: tutorial.snapshot(),
       connectionProbe: probe.status(),
+      nativeAudio: nativeAudio.snapshot(),
+      microphone: microphoneStore.data,
+      subscriptionSound: subscriptionSound.snapshot(),
       ...(providerChoice ? { providerChoice: providerChoice.snapshot() } : {}),
       obsInput: obsInput.snapshot(),
       debug: debug.summary(),
@@ -393,16 +584,28 @@ async function startServerImpl(
       ...(runtimeComponents ? { runtimeComponents: runtimeComponents.snapshot() } : {}),
     }),
     beforeStop: [
+      ['원격 원음', () => nativeAudio.stop('broadcast-stop')],
+      ['게임·시스템 소리', () => subscriptionSound.stop('broadcast-stop')],
       ['외부 채팅', () => external.disconnect()],
       ['OBS', () => obsInput.disconnect()],
     ],
+    onAiPolicy: (affected) => {
+      if (affected.includes('native-audio')) {
+        nativeAudio.stop('policy');
+        void subscriptionSound.stop('policy');
+      }
+    },
   });
+  nativeAudioRoutes(app, nativeAudio, studio);
+  subscriptionSoundRoutes(app, subscriptionSound, studio);
   if (runtimeComponents) runtimeComponents.onChange = () => studio.publish();
   app.post('/api/runtime/prepare', async (req, res) => {
     const { feature } = z
       .object({ feature: z.enum(['microphone', 'sound', 'clips', 'perception']) })
       .strict()
       .parse(req.body);
+    if (['microphone', 'sound'].includes(feature) && nativeAudio.config.mode === 'remote')
+      return res.json({ ok: true, local: false, nativeAudio: true });
     const controller = new AbortController();
     const disconnect = () => {
       if (!res.writableEnded) controller.abort();
@@ -812,12 +1015,10 @@ async function startServerImpl(
     ),
   );
   app.post('/api/special/bid', (req, res) => {
-    studio.special.ready();
     const { id, amount } = z
       .object({ id: z.string().uuid(), amount: z.number().int().min(1).max(10000) })
       .parse(req.body);
-    economy.bid(id, amount);
-    studio.publish();
+    studio.special.bid({ id, amount });
     res.json({ ok: true });
   });
   app.post('/api/special/cancel', (req, res) => {
@@ -855,6 +1056,18 @@ async function startServerImpl(
       ),
     ),
   );
+  app.get('/api/chat/history', (req, res) => {
+    const query = z
+      .object({
+        sessionId: z.string().uuid(),
+        revision: z.coerce.number().int().min(0),
+        before: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(100),
+      })
+      .strict()
+      .parse(req.query);
+    res.set('Cache-Control', 'no-store').json(studio.chatHistory.page(query));
+  });
   app.post(
     '/api/react',
     express.raw({ type: FRAME_WIRE_TYPE, limit: FRAME_JSON_LIMIT }),
@@ -884,8 +1097,12 @@ async function startServerImpl(
       ),
     ),
   );
-  soundRoutes(app, studio, sound);
+  soundRoutes(app, studio, sound, subscriptionSound);
   app.post('/api/audio/prepare', async (_req, res) => {
+    if (nativeAudio.config.mode === 'remote') {
+      nativeAudio.allowed();
+      return res.json({ ok: true, local: false, nativeAudio: true });
+    }
     if (!localSpeech) return res.json({ ok: true, local: false });
     const controller = new AbortController();
     const disconnect = () => {
@@ -906,6 +1123,8 @@ async function startServerImpl(
     async (req, res) => {
       if (!Buffer.isBuffer(req.body) || !req.body.length)
         throw new Error('음성 데이터가 비어 있습니다.');
+      if (nativeAudio.config.mode === 'remote')
+        throw new Error('원격 원음 모드에서는 로컬 전사 경로를 실행하지 않습니다.');
       const controller = new AbortController();
       const disconnect = () => {
         if (!res.writableEnded) controller.abort();
@@ -928,6 +1147,93 @@ async function startServerImpl(
       }
     },
   );
+  app.post(
+    '/api/audio/raw',
+    express.raw({ type: 'application/octet-stream', limit: '64kb' }),
+    async (req, res) => {
+      if (!speechRecovery)
+        return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+      const result = await appendSpeechRaw({
+        sessionId: req.headers['x-speech-session'],
+        inputEpoch: req.headers['x-speech-epoch'],
+        sequence: Number(req.headers['x-speech-sequence']),
+        startFrame: Number(req.headers['x-speech-frame']),
+        frameCount: Number(req.headers['x-speech-count']),
+        data: req.body,
+      });
+      res.json({ ok: true, ...result });
+    },
+  );
+  app.get('/api/audio/storage', async (_req, res) => {
+    if (!speechRecovery)
+      return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+    res.set('Cache-Control', 'no-store').json(await speechRecovery.status());
+  });
+  app.get('/api/microphone/config', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json(microphoneStore.data);
+  });
+  app.post('/api/microphone/config', (req, res) => {
+    const config = MicrophoneConfig.parse(req.body);
+    if (!config.deviceId) throw new Error('사용할 마이크를 선택해주세요.');
+    microphoneStore.save(config);
+    microphoneStore.data = config;
+    studio.publish();
+    res.json(config);
+  });
+  app.post('/api/audio/storage/config', async (req, res) => {
+    if (studio.running) throw new Error('방송을 중지한 뒤 원음 보관 설정을 바꿔주세요.');
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const config = SpeechRetentionConfig.parse(req.body);
+    speechRetentionStore.save(config);
+    speechRetentionStore.data = config;
+    await speechRecovery.sweep();
+    await nativeAudio.subscription.refreshRetainedAudio();
+    await subscriptionSound.refreshRetainedAudio();
+    studio.publish();
+    res.json(await speechRecovery.status());
+  });
+  app.post('/api/audio/storage/delete', async (req, res) => {
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const value = z
+      .object({
+        sessionId: z.string().uuid(),
+        inputEpoch: z.string().uuid(),
+        confirm: z.literal(true),
+      })
+      .strict()
+      .parse(req.body);
+    await speechRecovery.remove(value.sessionId, value.inputEpoch);
+    await nativeAudio.subscription.refreshRetainedAudio();
+    await subscriptionSound.refreshRetainedAudio();
+    studio.publish();
+    res.json(await speechRecovery.status());
+  });
+  app.get('/api/audio/storage/:sessionId/:inputEpoch', async (req, res) => {
+    if (!speechRecovery) throw new Error('로컬 원음 보존을 사용할 수 없습니다.');
+    const ids = z
+      .object({ sessionId: z.string().uuid(), inputEpoch: z.string().uuid() })
+      .parse(req.params);
+    const audio = await speechRecovery.download(ids.sessionId, ids.inputEpoch);
+    if (!audio)
+      return res.status(404).json({ error: '보관된 원음이 없거나 보관 기간이 지났습니다.' });
+    res.attachment('nagneon-original-audio.wav').type('audio/wav');
+    res.set('Cache-Control', 'no-store');
+    res.set('Content-Length', String(audio.bytes));
+    res.once('close', () => audio.stream.destroy());
+    audio.stream.once('error', () => res.destroy());
+    audio.stream.pipe(res);
+  });
+  app.get('/api/audio/raw/:sessionId/:inputEpoch', async (req, res) => {
+    if (!speechRecovery)
+      return res.status(503).json({ error: '로컬 원음 보존을 사용할 수 없습니다.' });
+    const audio = await speechRecovery.readRange(
+      req.params.sessionId,
+      req.params.inputEpoch,
+      Number(req.query.start),
+      Number(req.query.end),
+    );
+    res.type('audio/wav').send(audio);
+  });
   app.post('/api/moderate', (req, res) => {
     const { action, id } = z
       .object({ action: z.enum(['delete', 'ban', 'unban', 'clear']), id: z.string().default('') })
@@ -969,7 +1275,32 @@ async function startServerImpl(
   });
   app.get('/api/diagnostics/reactions', (req, res) => {
     if (req.query.download === 'true') res.attachment('nagneon-reaction-diagnostics.json');
-    res.set('Cache-Control', 'no-store').json(studio.reactions.snapshot(studio.queue));
+    res.set('Cache-Control', 'no-store').json({
+      ...studio.reactions.snapshot(studio.queue),
+      trace: studio.trace.status(),
+    });
+  });
+  app.get('/api/diagnostics/input-latency', (req, res) => {
+    if (req.query.download === 'true') res.attachment('nagneon-input-latency.json');
+    res.set('Cache-Control', 'no-store').json(studio.inputLatency.snapshot());
+  });
+  app.get('/api/diagnostics/broadcast-trace', (req, res) => {
+    if (req.query.download === 'true') res.attachment('nagneon-broadcast-trace.json');
+    res.set('Cache-Control', 'no-store').json(studio.trace.snapshot());
+  });
+  app.post('/api/diagnostics/input-latency/rendered', (req, res) => {
+    const value = z
+      .object({
+        sessionId: z.string().uuid(),
+        ids: z.array(z.string().min(1).max(100)).max(100),
+        at: z.number().finite(),
+      })
+      .strict()
+      .parse(req.body);
+    if (value.sessionId !== studio.sessionId) throw new Error('이미 끝난 방송의 표시 기록입니다.');
+    studio.inputLatency.rendered(value.ids, value.at);
+    studio.trace.rendered(value.sessionId, value.ids, value.at);
+    res.json({ ok: true });
   });
   app.get('/api/export', (_req, res) => {
     res.attachment(`nagneon-${studio.sessionId || 'session'}.json`).json({
@@ -981,7 +1312,9 @@ async function startServerImpl(
     });
   });
   app.use(express.static(resolve(root, 'dist')));
-  app.get(['/', '/overlay'], (_req, res) => res.sendFile(resolve(root, 'dist/index.html')));
+  app.get(['/', '/overlay'], (_req, res) =>
+    res.sendFile('index.html', { root: resolve(root, 'dist') }),
+  );
   app.use((error, _req, res, _next) =>
     res.status(error instanceof z.ZodError ? 400 : 409).json({
       error:
@@ -992,54 +1325,103 @@ async function startServerImpl(
   );
   const server = await listenBrowserLoopback(createServer(app), { port });
   expectedHost = `127.0.0.1:${server.address().port}`;
+  // 기존 설치는 앱 시작을 막지 않고 확인한다. 다운로드나 음성 장치는 시작하지 않는다.
+  void runtimeComponents?.inspectInstalled();
   // Start the local worker only when the renderer requests audio preparation.
   const health = setInterval(() => studio.publish(), 5000);
   health.unref();
+  if (speechRecovery)
+    void speechRecovery
+      .sweep()
+      .catch((error) => console.warn('마이크 원음 보존 정리 실패:', error.message));
+  const speechRetention = setInterval(() => {
+    if (speechRecovery)
+      void speechRecovery
+        .sweep()
+        .catch((error) => console.warn('마이크 원음 보존 정리 실패:', error.message));
+  }, 60000);
+  speechRetention.unref();
+  studio.trace.lifecycle('service', 'completed', undefined, 'startup');
   return {
     server,
     studio,
+    appendSpeechRaw,
+    nativeAudio,
+    subscriptionSound,
     obsInput,
     url: `http://${expectedHost}`,
     accessToken: access.token,
     close: () => {
       if (closing) return closing;
-      clearInterval(health);
-      obsInput.disconnect();
-      // Start every cleanup even if another one fails, and keep the event loop
-      // alive until all owned requests have left their cleanup/finally blocks.
-      const invoke = (fn) => {
-        try {
-          return Promise.resolve(fn());
-        } catch (error) {
-          return Promise.reject(error);
-        }
-      };
-      const tasks = [
-        invoke(() => runtimeComponents?.close()),
-        requests.close(),
-        invoke(() => tutorial.operation),
-        invoke(() => probe.cancel()),
-        invoke(() => studio.close()),
-        invoke(() => studio.culture.close()),
-        invoke(() => clipInspector.close()),
-        invoke(() => speech.close()),
-        invoke(() => studio.communityActivity.yield()),
-        invoke(() => studio.clipPerception.close()),
-        invoke(() => sound.close()),
-        invoke(
-          () =>
-            new Promise((done, fail) => {
-              server.close((error) => (error ? fail(error) : done()));
-              server.closeAllConnections();
-            }),
-        ),
-      ];
-      closing = Promise.allSettled(tasks).then((results) => {
-        const errors = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason);
-        if (errors.length) throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+      let complete, fail;
+      closing = new Promise((done, reject) => {
+        complete = done;
+        fail = reject;
       });
+      (async () => {
+        const closingAt = performance.now();
+        studio.trace.lifecycle('service', 'started');
+        clearInterval(health);
+        clearInterval(speechRetention);
+        // Start every cleanup even if another one fails, and keep the event loop
+        // alive until all owned requests have left their cleanup/finally blocks.
+        const invoke = (component, fn) => {
+          const started = performance.now();
+          studio.trace.lifecycle(component, 'started');
+          let task;
+          try {
+            task = Promise.resolve(fn());
+          } catch (error) {
+            task = Promise.reject(error);
+          }
+          return task.then(
+            (value) => {
+              studio.trace.lifecycle(component, 'completed', performance.now() - started);
+              return value;
+            },
+            (error) => {
+              studio.trace.lifecycle(component, 'failed', performance.now() - started);
+              throw error;
+            },
+          );
+        };
+        const tasks = [
+          invoke('obs', () => obsInput.disconnect()),
+          invoke('native-audio', () => nativeAudio.close()),
+          invoke('system-audio', () => subscriptionSound.close()),
+          invoke('runtime-components', () => runtimeComponents?.close()),
+          invoke('requests', () => requests.close()),
+          invoke('tutorial', () => tutorial.operation),
+          invoke('probe', () => probe.cancel()),
+          invoke('studio', () => studio.close()),
+          invoke('culture', () => studio.culture.close()),
+          invoke('clip-inspector', () => clipInspector.close()),
+          invoke('speech', () => speech.close()),
+          invoke('community', () => studio.communityActivity.yield()),
+          invoke('clip-perception', () => studio.clipPerception.close()),
+          invoke('sound', () => sound.close()),
+          invoke(
+            'http',
+            () =>
+              new Promise((done, fail) => {
+                server.close((error) => (error ? fail(error) : done()));
+                server.closeAllConnections();
+              }),
+          ),
+        ];
+        return Promise.allSettled(tasks).then((results) => {
+          const errors = results
+            .filter((result) => result.status === 'rejected')
+            .map((result) => result.reason);
+          studio.trace.lifecycle(
+            'service',
+            errors.length ? 'failed' : 'completed',
+            performance.now() - closingAt,
+          );
+          if (errors.length)
+            throw new AggregateError(errors, '앱 종료 정리를 완료하지 못했습니다.');
+        });
+      })().then(complete, fail);
       return closing;
     },
   };

@@ -1,3 +1,4 @@
+import {addGenrePresets,genrePresets} from '../shared/genre-presets.js';
 import {DebugPanel} from './DebugPanel';
 import {StorageSettings} from './StorageSettings';
 import {useMemo,useRef,useState,type KeyboardEvent} from 'react';
@@ -58,6 +59,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
   function updateGame(index:number,patch:Partial<Game>){
     setDraft(prev=>({...prev,games:prev.games.map((g,i)=>i===index?{...g,...patch}:g)}));
   }
+  const missingGenres=genrePresets.filter(game=>!draft.games.some(existing=>existing.id===game.id)).length;
   function addGame(){
     setDraft(prev=>({...prev,games:[...prev.games,{
       id:crypto.randomUUID(),name:'새 게임',genre:'기타',
@@ -196,7 +198,7 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
           <p className="field-note">공개 문서를 사이트당 12시간 이상 간격으로 최대 3개 읽습니다. 방송이 쉬는 동안 바뀐 자료만 연결된 AI에 전달하므로 해당 연결의 사용량이 발생합니다. 로그인·수집 제한이 있는 사이트는 건너뜁니다. 저장된 요약은 모델 재학습이 아니며 최신 유행을 보장하지 않습니다. 도메인을 지우면 해당 참고자료를 사용하지 않습니다.</p>
           {state.culture?.active&&<p role="status">문화 자료 확인 중: {state.culture.active}</p>}
           {state.culture?.error&&<p role="alert">{state.culture.error}</p>}
-          {state.culture?.sources.map(source=><p key={source.origin}>{source.origin} · {source.error||(source.analyzedAt?`분석: ${new Date(source.analyzedAt).toLocaleString('ko-KR')}`:'분석 대기')} · 다음 확인: {new Date(source.nextAt).toLocaleString('ko-KR')}</p>)}
+          {state.culture?.sources.map(source=><p key={source.origin}>{source.origin} · {source.error||(source.status==='ready'?`참고 패턴 ${source.patternCount}개`:source.status==='no-patterns'?'활용할 패턴 없음':source.status==='stale'?'다시 확인이 필요한 참고자료':source.status==='unavailable'?'자료 수집·분석 미완료':'분석 대기')}{source.analyzedAt>0&&` · 마지막 분석: ${new Date(source.analyzedAt).toLocaleString('ko-KR')}`} · 다음 확인: {new Date(source.nextAt).toLocaleString('ko-KR')}</p>)}
 
           <label className="set-field">스트리머 성향
             <textarea value={draft.streamerStyle} maxLength={2000}
@@ -315,10 +317,10 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
             <input type="checkbox" checked={draft.autoHighlights}
               onChange={e=>update('autoHighlights',e.target.checked)}/>
             <span>관객의 장면 기록 허용
-              <small>관객이 좋아한 순간을 화면 이미지와 대화로 남겨요. 조용한 잡담이나 웃긴 실패처럼, 꼭 멋진 순간이 아니어도 기록될 수 있어요.</small>
+              <small>관객이 좋아한 순간을 화면 이미지와 대화로 남겨요. 녹화가 없으면 방송 밖 이야기의 게시글 첨부로 보관해요. 조용한 잡담이나 웃긴 실패처럼, 꼭 멋진 순간이 아니어도 기록될 수 있어요.</small>
             </span>
           </label>
-          <p className="field-note">직접 공유한 화면과 켜 둔 마이크·연결된 소리만 기록합니다. 버퍼를 끄거나 연결을 끊으면 해당 임시 구간을 비우고, 이미 저장된 클립은 핫클립에서 삭제할 수 있어요.</p>
+          <p className="field-note">직접 공유한 화면과 켜 둔 마이크·연결된 소리만 기록합니다. 버퍼를 끄거나 연결을 끊으면 해당 임시 구간을 비우고, 저장된 영상·음성은 핫클립에서, 사진·대화 기록은 방송 밖 이야기에서 삭제할 수 있어요.</p>
           <StorageSettings locked={locked}/>
           <h3>포인트와 특수 기능</h3>
           <label className="set-check">
@@ -337,6 +339,14 @@ export function SettingsDialog({state,initial,onClose,onSaved,onGuide,initialTab
       case 'games':
         return <>
           <p className="field-note">실제 방송에서 인식한 게임과 직접 추가한 프로필이 관객의 관찰 기준이 됩니다.</p>
+          <button type="button" className="secondary"
+            disabled={missingGenres===0||draft.games.length+missingGenres>100}
+            onClick={()=>setDraft(prev=>({...prev,games:addGenrePresets(prev.games)}))}>
+            <Plus size={15}/> {missingGenres===0?'장르 기본값 추가됨':'장르 기본값 추가'}
+          </button>
+          <p className="field-note">로그라이크·호러·소울라이크·샌드박스·리듬·시뮬레이션 중 없는 항목만 추가합니다. 기존 설정은 유지되며 저장 후 적용됩니다.
+            {missingGenres>0&&draft.games.length+missingGenres>100&&' 게임 프로필은 최대 100개까지 저장할 수 있어 전체 장르 기본값을 추가할 공간이 부족합니다.'}
+          </p>
           {draft.games.map((g,i)=><div className="persona-editor" key={g.id}>
             <div className="set-row">
               <label className="set-field">게임 이름

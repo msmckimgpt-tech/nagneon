@@ -10,6 +10,13 @@ const ok=(id='clip-1',video=true)=>Response.json({id,video});
 async function until(predicate){for(let n=0;n<150;n++){if(predicate())return;await delay(5);}assert.ok(predicate(),'condition did not complete');}
 function make(options={}){const errors=[],calls=[];const q=new ClipUploads({sessionId:'a',now:()=>T,takeAt:async()=>recording,allowed:()=>true,onError:m=>errors.push(m),retryDelays:[0,0],request:async(path,init)=>{calls.push({path,init});return ok();},...options});return {q,errors,calls};}
 
+test('default fetch keeps the browser receiver instead of using the upload queue as this',async t=>{
+  let posts=0;
+  t.mock.method(globalThis,'fetch',function(){assert.ok(this===undefined||this===globalThis,'browser fetch rejects foreign receiver');posts++;return Promise.resolve(ok());});
+  const {q,errors}=make({request:undefined});t.after(()=>q.dispose());q.add([candidate()]);
+  await until(()=>posts===1);await delay(10);assert.deepEqual(errors,[]);
+});
+
 test('repeat state publications and simultaneous candidates upload each clip once',async t=>{
   let resolveFirst;const first=new Promise(r=>resolveFirst=r);const calls=[];
   const {q}=make({request:async(path,init)=>{calls.push({path,init});if(calls.length===1)await first;return ok(path.split('/')[3]);}});t.after(()=>q.dispose());
@@ -49,6 +56,13 @@ test('missing, expired and different-session media cannot be uploaded',async t=>
   for(const value of [null,{...recording,sessionId:'other'},{...recording,endedAt:T-120001}]){
     const {q,calls}=make({takeAt:async()=>value});t.after(()=>q.dispose());q.add([candidate()]);await delay(10);assert.equal(calls.length,0);
   }
+});
+
+test('an unavailable selected moment reports recording failure once instead of silently claiming success',async t=>{
+  const {q,calls,errors}=make({takeAt:async()=>null});t.after(()=>q.dispose());
+  q.add([candidate()]);await until(()=>errors.length===1);
+  q.add([candidate()]);await delay(15);
+  assert.equal(calls.length,0);assert.equal(errors.length,1);assert.match(errors[0],/버퍼가 없어/);
 });
 test('only recent unsaved spectator picks in this session are eligible',async t=>{
   const {q,calls}=make();t.after(()=>q.dispose());q.add([candidate('manual',{source:'manual'}),candidate('other',{sessionId:'b'}),candidate('saved',{video:true}),candidate('old',{createdAt:T-120001})]);await delay(10);assert.equal(calls.length,0);

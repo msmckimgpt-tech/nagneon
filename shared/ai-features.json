@@ -120,6 +120,15 @@
     "enabledByDefault": true
   },
   {
+    "id": "native-audio",
+    "name": "원격 원음 이해",
+    "group": "원격 음성",
+    "scope": "live",
+    "trigger": "동의한 마이크의 원음 구간",
+    "destination": "settings:connection",
+    "enabledByDefault": true
+  },
+  {
     "id": "remote-stt",
     "name": "원격 음성 전사",
     "group": "음성 전사",

@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import {
+  PRICING_CATALOG,
+  costStatsShape,
+  zeroCostStats,
+  pricingSchema,
+  pricingVendor,
+  priceUsage,
+  addPriceToStats,
+  backfillPrices,
+} from './ai-pricing.js';
 import features from '../shared/ai-features.json' with { type: 'json' };
 
 export const AI_ATTEMPT = Symbol('nagneon-ai-attempt');
@@ -11,8 +21,22 @@ const usageSchema = z.object({
   cached: finite.nullable(),
   output: finite.nullable(),
   total: finite.nullable(),
+  cacheWrite: finite.nullable().optional(),
+  modalities: z
+    .object({
+      textInput: finite.nullable(),
+      audioInput: finite.nullable(),
+      imageInput: finite.nullable(),
+      textCached: finite.nullable(),
+      audioCached: finite.nullable(),
+      imageCached: finite.nullable(),
+      textOutput: finite.nullable(),
+      audioOutput: finite.nullable(),
+    })
+    .optional(),
 });
 const statsSchema = z.object({
+  ...costStatsShape,
   calls: finite,
   failed: finite,
   cancelled: finite,
@@ -27,8 +51,8 @@ const statsSchema = z.object({
 const statsMap = z.record(z.string().max(80), statsSchema);
 const rateSchema = z
   .object({
-    connection: z.string().max(64),
-    model: z.string().min(1).max(200),
+    connection: z.string().trim().max(64),
+    model: z.string().trim().min(1).max(200),
     input: finite.max(100000),
     cached: finite.max(100000),
     output: finite.max(100000),
@@ -42,6 +66,23 @@ const policySchema = z
     rates: z.array(rateSchema).max(40),
   })
   .strict();
+const communityKinds = [
+  'social-birth',
+  'social-daily',
+  'social-mention',
+  'social-read',
+  'social-discuss',
+  'clip-comment',
+  'gallery-comment',
+  'community-review',
+];
+const communityResults = [
+  'resident-created',
+  'post-created',
+  'comment-created',
+  'read-only',
+  'no-post',
+];
 const attemptSchema = z.object({
   id: z.string().uuid(),
   operationId: z.string().uuid(),
@@ -56,7 +97,11 @@ const attemptSchema = z.object({
   status: z.enum(['running', 'completed', 'failed', 'cancelled', 'interrupted']),
   usage: usageSchema.nullable(),
   estimatedUsd: finite.nullable(),
+  pricingVendor: z.enum(['openai', 'custom']).optional(),
+  pricing: pricingSchema.optional(),
   application: z.enum(['unconfirmed', 'accepted']),
+  activityKind: z.enum(communityKinds).optional(),
+  activityResult: z.enum(communityResults).optional(),
 });
 export const AiControlData = z
   .object({
@@ -99,6 +144,7 @@ export const AiPolicyPatch = policySchema
         ctx.addIssue({ code: 'custom', message: '등록되지 않은 AI 기능입니다.' });
   });
 const zero = () => ({
+  ...zeroCostStats(),
   calls: 0,
   failed: 0,
   cancelled: 0,
@@ -120,10 +166,39 @@ export function normalizeUsage(value) {
   const cached = count(
     value.cached_input_tokens ??
       value.input_tokens_details?.cached_tokens ??
+      value.input_token_details?.cached_tokens ??
       value.prompt_tokens_details?.cached_tokens,
   );
   return [input, output, total, cached].some((n) => n !== null)
-    ? { input, output, total, cached }
+    ? {
+        input,
+        output,
+        total,
+        cached,
+        ...(value.input_token_details
+          ? {
+              modalities: {
+                textInput: count(value.input_token_details.text_tokens),
+                audioInput: count(value.input_token_details.audio_tokens),
+                imageInput: count(value.input_token_details.image_tokens),
+                textCached: count(value.input_token_details.cached_tokens_details?.text_tokens),
+                audioCached: count(value.input_token_details.cached_tokens_details?.audio_tokens),
+                imageCached: count(value.input_token_details.cached_tokens_details?.image_tokens),
+                textOutput: count(value.output_token_details?.text_tokens),
+                audioOutput: count(value.output_token_details?.audio_tokens),
+              },
+            }
+          : {}),
+        ...(value.input_tokens_details?.cache_write_tokens != null ||
+        value.prompt_tokens_details?.cache_write_tokens != null
+          ? {
+              cacheWrite: count(
+                value.input_tokens_details?.cache_write_tokens ??
+                  value.prompt_tokens_details?.cache_write_tokens,
+              ),
+            }
+          : {}),
+      }
     : null;
 }
 export const aiDay = (at) => new Date(at + 9 * 3600000).toISOString().slice(0, 10);
@@ -153,6 +228,8 @@ export class AiControl {
     this.onPolicy = () => {};
     // A process exit cannot establish whether a provider charged a pending request.
     for (const row of this.data.recent) if (row.status === 'running') row.status = 'interrupted';
+    // Pure in-memory upgrade; the next normal ledger save persists it.
+    backfillPrices(this.data);
   }
   bind({ context, onChange, onPolicy }) {
     this.context = context;
@@ -189,7 +266,11 @@ export class AiControl {
     if (!p.features[id]) return '이 AI 기능의 실행 허용이 꺼져 있습니다.';
     if (f.scope === 'background' && !p.background)
       return '방송 밖 자동 AI 호출이 차단되어 있습니다.';
-    if (id === 'community' && ctx.settings?.communityActivityEnabled === false && !ctx.social?.enabled)
+    if (
+      id === 'community' &&
+      ctx.settings?.communityActivityEnabled === false &&
+      !ctx.social?.enabled
+    )
       return '기존 설정에서 커뮤니티 자동 활동을 껐습니다.';
     if (id === 'culture' && ctx.settings?.memesEnabled === false)
       return '기존 설정에서 문화·밈 사용을 껐습니다.';
@@ -207,6 +288,7 @@ export class AiControl {
       before = this.data.policy;
     this.mutate((d) => {
       d.policy = { ...d.policy, ...patch, features: { ...d.policy.features, ...patch.features } };
+      if (patch.rates) backfillPrices(d);
     });
     const affected = features.filter((f) => this.reason(f.id)).map((f) => f.id);
     for (const id of affected) this.generation.set(id, (this.generation.get(id) || 0) + 1);
@@ -258,14 +340,15 @@ export class AiControl {
         estimatedUsd: null,
         application: 'unconfirmed',
       };
+    if (op.featureId === 'community' && communityKinds.includes(op.args.special?.kind))
+      row.activityKind = op.args.special.kind;
     if (op.featureId === 'remote-stt') {
       row.model = String(backend.transcriptionModel || 'unknown').slice(0, 200);
       row.provider = 'openai';
       row.connection = String(backend.transcriptionConnection || connection).slice(0, 64);
     }
-    const rate = this.data.policy.rates.find(
-      (r) => r.connection === row.connection && r.model === row.model,
-    );
+    row.pricingVendor = pricingVendor(backend.base);
+    const rates = structuredClone(this.data.policy.rates);
     this.mutate((d) => {
       for (const s of this.buckets(d, row)) {
         s.calls++;
@@ -305,32 +388,23 @@ export class AiControl {
       throw error;
     } finally {
       const usage = reported || null;
-      const canPrice =
-        row.provider === 'openai' &&
-        rate &&
-        usage?.input !== null &&
-        usage?.input !== undefined &&
-        usage?.output !== null &&
-        usage?.cached !== null &&
-        usage.cached <= usage.input;
-      const cost = canPrice
-        ? ((usage.input - usage.cached) * rate.input +
-            usage.cached * rate.cached +
-            usage.output * rate.output) /
-          1e6
-        : null;
+      const pricing = priceUsage({ ...row, status: outcome, usage }, rates);
+      const cost = pricing.kind === 'api' ? pricing.usd : null;
       this.mutate((d) => {
         const stored = d.recent.find((r) => r.id === row.id);
-        Object.assign(stored, { status: outcome, endedAt: this.time(), usage, estimatedUsd: cost });
+        Object.assign(stored, {
+          status: outcome,
+          endedAt: this.time(),
+          usage,
+          estimatedUsd: cost,
+          pricing,
+        });
         for (const s of this.buckets(d, row)) {
           if (usage?.total !== null && usage?.total !== undefined) s.unknown--;
           for (const key of ['input', 'cached', 'output', 'total']) s[key] += usage?.[key] || 0;
           if (outcome === 'failed') s.failed++;
           if (outcome === 'cancelled') s.cancelled++;
-          if (cost !== null) {
-            s.estimatedUsd += cost;
-            s.priced++;
-          }
+          addPriceToStats(s, pricing);
         }
       });
       this.onChange();
@@ -387,7 +461,7 @@ export class AiControl {
     )
       throw cancelled();
   }
-  accepted(result) {
+  accepted(result, activityResult) {
     this.assertCurrent(result);
     const ids = result?.aiReceipt?.attempts;
     if (!ids?.length) return;
@@ -395,7 +469,10 @@ export class AiControl {
     try {
       this.mutate((d) => {
         for (const r of d.recent)
-          if (ids.includes(r.id) && r.status === 'completed') r.application = 'accepted';
+          if (ids.includes(r.id) && r.status === 'completed') {
+            r.application = 'accepted';
+            if (r.featureId === 'community' && activityResult) r.activityResult = activityResult;
+          }
       });
     } catch {
       /* storageError is published by mutate */
@@ -448,6 +525,7 @@ export class AiControl {
       now = this.time();
     return {
       policy: structuredClone(this.data.policy),
+      pricingCatalog: structuredClone(PRICING_CATALOG),
       timezone: 'Asia/Seoul',
       day: aiDay(now),
       storageError: this.storageError,
@@ -483,7 +561,7 @@ export class AiControl {
       recent: this.data.recent
         .slice(-40)
         .reverse()
-        .map((r) => ({ ...r })),
+        .map((r) => ({ ...r, pricing: r.pricing || priceUsage(r, this.data.policy.rates) })),
       retained: { days: 31, requests: 500 },
     };
   }

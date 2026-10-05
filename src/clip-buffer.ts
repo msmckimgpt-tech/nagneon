@@ -1,7 +1,9 @@
 export type ClipSegment={blob:Blob;startedAt:number;endedAt:number;hasAudio:boolean;sessionId:string;kind:'video'|'audio';audioLayout?:'mixed'|'separate'|'microphone-only';voice?:ClipSegment};
 type Timer=ReturnType<typeof setTimeout>;
-type Clock={now:()=>number;set:typeof setTimeout;clear:typeof clearTimeout};
-const clock:Clock={now:Date.now,set:setTimeout,clear:clearTimeout};
+type Clock={now:()=>number;set:(callback:()=>void,ms:number)=>Timer;clear:(timer:Timer|undefined)=>void};
+// Browser timers require their Window receiver. Storing them as clock methods
+// invokes them with `clock` as this and aborts recording with Illegal invocation.
+const clock:Clock={now:Date.now,set:(callback,ms)=>setTimeout(callback,ms),clear:timer=>clearTimeout(timer)};
 export const CLIP_RETENTION_MS=120_000;
 const SEGMENT_MS=15_000,MAX_BYTES=24*1024*1024,MAX_SEGMENT_BYTES=20*1024*1024;
 

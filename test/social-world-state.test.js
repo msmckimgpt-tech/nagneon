@@ -76,8 +76,8 @@ function reading(s) {
   };
 }
 test('공동체 네 곳과 주제 ID는 독립적이며 기존 유입 분류에 연결된다', () => {
-  assert.equal(communities.length, 4);
-  assert.equal(new Set(communities.map((c) => c.id)).size, 4);
+  assert.equal(communities.length, 5);
+  assert.equal(new Set(communities.map((c) => c.id)).size, 5);
   const topics = communities.flatMap((c) => c.topics.map((t) => t.id));
   assert.equal(new Set(topics).size, topics.length);
   for (const c of communities) {

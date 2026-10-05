@@ -59,7 +59,7 @@ type DeliveryItem={id:string;sessionId:string;text:string;source:'keyboard'|'mic
 export class SpeechOutbox {
   items:DeliveryItem[]=[];running=false;generation=0;controller:AbortController|null=null;idFactory:()=>string;sendTimeoutMs:number;
   constructor(idFactory:()=>string=()=>crypto.randomUUID(),sendTimeoutMs=SPEECH_DELIVERY_TIMEOUT_MS){this.idFactory=idFactory;this.sendTimeoutMs=sendTimeoutMs;}
-  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const chunks=new SpeechMailbox();if(!chunks.add(text)||this.items.length+chunks.items.length>40)return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source,...(source==='microphone'&&capture?{capture:structuredClone(capture)}:{})})));return true;}
+  add(text:string,sessionId:string,source:'keyboard'|'microphone'='keyboard',capture?:SpeechCapture){const chunks=new SpeechMailbox();if(!chunks.add(text))return false;this.items.push(...chunks.items.map(item=>({id:this.idFactory(),sessionId,text:item.text,source,...(source==='microphone'&&capture?{capture:structuredClone(capture)}:{})})));return true;}
   clear(){this.generation++;this.items=[];this.controller?.abort();}
   async flush(send:(item:DeliveryItem,signal:AbortSignal)=>Promise<unknown>){
     if(this.running)return;this.running=true;const generation=this.generation,limit=this.items.length;let delivered=0;

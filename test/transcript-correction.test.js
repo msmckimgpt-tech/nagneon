@@ -78,5 +78,5 @@ test('failed annotation storage retains the exact source and suppresses the depe
 test('unchanged proposals are harmless while deleted speech cannot return through a late correction',async t=>{
   const same=make(t,{react:args=>observation([{messageId:args.transcriptCandidates[0].messageId,...proposed(raw)}])});receive(same.s);assert.equal((await same.s.react({})).ok,true);assert.ok(same.s.queue.length);assert.equal(same.s.messages[0].transcription.correction,undefined);
   let finish;const late=make(t,{react:args=>new Promise(resolve=>finish=()=>resolve(observation([{messageId:args.transcriptCandidates[0].messageId,...proposed(corrected)}])))});
-  const input=receive(late.s),job=late.s.react({});late.s.moderate('delete',input.messageId);finish();assert.equal((await job).transcriptionNeedsReview,true);assert.equal(late.s.queue.length,0);assert.equal(late.s.journal.data.entries.length,0);
+  const input=receive(late.s),job=late.s.react({});late.s.moderate('delete',input.messageId);finish();assert.deepEqual(await job,{skipped:'superseded'});assert.equal(late.calls(),1);assert.equal(late.s.queue.length,0);assert.equal(late.s.journal.data.entries.length,0);assert.equal(late.s.messages.length,0);
 });

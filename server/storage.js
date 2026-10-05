@@ -5,6 +5,8 @@ import { resolve, dirname, basename } from 'node:path';
 // 생성자 옵션 fs 로 부분 덮어쓰기가 가능하다.
 const nodeFs = { existsSync, readFileSync, readdirSync, writeSync, renameSync, mkdirSync, unlinkSync, copyFileSync, openSync, fsyncSync, closeSync };
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const windowsRenameDelays = [10, 20, 40];
+const renameWait = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
 
 // 로컬 JSON 저장을 위한 견고한 building block.
 // - 저장은 임시 파일 → fsync → rename 으로 원자적으로 커밋한다.
@@ -12,11 +14,13 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // - 복구가 불가능하면 절대 조용히 덮어쓰거나 초기화하지 않고 오류를 던진다.
 // - 백업은 store 이름에 정확히 종속된 경로만 다루며, 개수 상한을 지킨다.
 export class JsonStore {
-  constructor(file, { validate, initial = () => ({}), backupCount = 3, fs = {}, forbidRecovery = false } = {}) {
+  constructor(file, { validate, initial = () => ({}), backupCount = 3, fs = {}, forbidRecovery = false, skipUnchanged = false } = {}) {
     if (typeof file !== 'string' || !file.trim()) throw new Error('JsonStore: 저장 파일 경로가 필요합니다.');
     if (typeof validate !== 'function') throw new Error('JsonStore: validate 함수가 필요합니다.');
     if (typeof initial !== 'function') throw new Error('JsonStore: initial 은 함수여야 합니다.');
     if (!Number.isInteger(backupCount) || backupCount < 0) throw new Error('JsonStore: backupCount 는 0 이상의 정수여야 합니다.');
+    if (typeof skipUnchanged !== 'boolean') throw new Error('JsonStore: skipUnchanged 는 boolean 이어야 합니다.');
+    this.skipUnchanged = skipUnchanged;
     this.forbidRecovery = forbidRecovery;
     this.file = resolve(file);
     this.dir = dirname(this.file);
@@ -81,6 +85,16 @@ export class JsonStore {
     const validated = this._validate(structuredClone(value)); // 사본을 검증해 호출자 변형을 격리
     if (validated === undefined) throw new Error('validate 함수가 검증된 데이터를 반환하지 않았습니다.');
     const json = JSON.stringify(validated, null, 2);
+    // Compare actual bytes, never mutable cached objects or decoded UTF-8. An
+    // unchanged commit must not consume an older recovery generation. Pending
+    // corrupt preservation still follows the normal repair/atomic-save path.
+    if (this.skipUnchanged && !this._preserveCorrupt && !this.fs.existsSync(this._tmp)) {
+      const raw = this._read(this.file, null);
+      if (raw !== null && raw.equals(Buffer.from(json, 'utf8'))) {
+        this._cache = validated;
+        return structuredClone(validated);
+      }
+    }
     this._ensureDir();
     this._writeTemp(json); // 여기서 실패하면 기본 파일은 그대로 유지된다.
     try {
@@ -89,7 +103,7 @@ export class JsonStore {
         if (this._primaryIsValid()) { if (this.backupCount > 0) this._backupCurrent(); }
         else this._preserve(); // load 없이 저장했거나 외부 변조된 손상 원본도 보존, 백업 오염 방지
       }
-      this.fs.renameSync(this._tmp, this.file); // 원자적 커밋
+      this._commitTemp(); // 원자적 커밋
     } catch (e) {
       this._safeUnlink(this._tmp);
       throw e;
@@ -102,8 +116,20 @@ export class JsonStore {
 
   _bakPath(n) { return this.file + '.bak.' + n; }
 
-  _read(path) {
-    try { return this.fs.readFileSync(path, 'utf8'); }
+  _commitTemp() {
+    for (let attempt = 0; ; attempt++) {
+      try { this.fs.renameSync(this._tmp, this.file); return; }
+      catch (error) {
+        // Windows의 짧은 공유 핸들 충돌만 재시도한다. 기본 파일을 삭제하거나
+        // 임시 기록·백업 회전을 반복하지 않으며, 마지막 오류를 그대로 전달한다.
+        if (process.platform !== 'win32' || error?.code !== 'EPERM' || attempt >= windowsRenameDelays.length) throw error;
+        Atomics.wait(renameWait, 0, 0, windowsRenameDelays[attempt]);
+      }
+    }
+  }
+
+  _read(path, encoding = 'utf8') {
+    try { return this.fs.readFileSync(path, encoding); }
     catch (e) { if (e && e.code === 'ENOENT') return null; throw new Error(`저장 파일을 읽을 수 없습니다: ${path} (${e.message})`); }
   }
 
